@@ -11,8 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var organizeWindowController: OrganizeWindowController?
     private var settingsWindowController: SettingsWindowController?
     private var weeklyReviewWindowController: WeeklyReviewWindowController?
+    private var onboardingWindowController: OnboardingWindowController?
     private var notificationManager: NotificationManager!
     private var hotKey: HotKey?
+    private var sleepObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
+    private var sleepStoppedTimer: (task: String, minutes: Int)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         store.rolloverIfNeeded()
@@ -25,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.openWeeklyReview()
         })
         notificationManager.configure()
+        installSleepObservers()
 
         popoverController = PopoverController(store: store, onOpenOrganize: { [weak self] in
             self?.openOrganize()
@@ -46,6 +51,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         modifiers: UInt32(optionKey)) { [weak self] in
             self?.togglePopover()
         }
+
+        if !UserDefaults.standard.bool(forKey: "pareDidCompleteOnboarding") {
+            onboardingWindowController = OnboardingWindowController(
+                manager: notificationManager,
+                onOpenOrganize: { [weak self] in self?.openOrganize() },
+                onFinish: { [weak self] in self?.onboardingWindowController = nil })
+            onboardingWindowController?.present()
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -54,6 +67,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.rolloverIfNeeded()
         statusItemController?.refreshBadge()
         notificationManager?.reschedule()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        let center = NSWorkspace.shared.notificationCenter
+        if let sleepObserver { center.removeObserver(sleepObserver) }
+        if let wakeObserver { center.removeObserver(wakeObserver) }
+    }
+
+    private func installSleepObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        sleepObserver = center.addObserver(forName: NSWorkspace.willSleepNotification,
+                                           object: nil, queue: .main) { [weak self] _ in
+            guard let self, let task = self.store.activeTimerTask,
+                  let minutes = self.store.stopTimer(now: Date()) else { return }
+            self.sleepStoppedTimer = (task.text, minutes)
+        }
+        wakeObserver = center.addObserver(forName: NSWorkspace.didWakeNotification,
+                                          object: nil, queue: .main) { [weak self] _ in
+            guard let self, let stopped = self.sleepStoppedTimer else { return }
+            self.sleepStoppedTimer = nil
+            self.notificationManager.sendSleepStoppedNotice(task: stopped.task, minutes: stopped.minutes)
+        }
     }
 
     private func togglePopover() {

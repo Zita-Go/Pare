@@ -235,8 +235,11 @@ extension Store {
     public func todayOverload(now: Date = Date()) -> TodayOverload? {
         _ = now
         guard settings.todayOverloadEnabled else { return nil }
-        let count = todayTotal
-        let minutes = todayEstimatedMinutes
+        // Capacity is about work still competing for today's attention. Finished
+        // items remain in progress statistics but must not keep an overload
+        // warning alive after the user has already done the work.
+        let count = tasks.filter { $0.isToday && !$0.completed }.count
+        let minutes = todayRemainingEstimatedMinutes
         let exceedsCount = count > settings.todayMaxCount
         let exceedsCapacity = minutes > settings.todayCapacityMinutes
         guard exceedsCount || exceedsCapacity else { return nil }

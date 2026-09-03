@@ -18,6 +18,7 @@ final class StatusItemController {
     private let onOpenSettings: () -> Void
     private let onQuit: () -> Void
     private var cancellable: AnyCancellable?
+    private var timerCancellable: AnyCancellable?
 
     init(store: Store,
          onLeftClick: @escaping () -> Void,
@@ -42,6 +43,12 @@ final class StatusItemController {
         cancellable = store.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.refreshBadge() }
         }
+        timerCancellable = Timer.publish(every: 30, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard self?.store.activeTimer != nil else { return }
+                self?.refreshBadge()
+            }
     }
 
     private func configureButton() {
@@ -57,6 +64,13 @@ final class StatusItemController {
         let attention = needsAttention
         button.image = Self.glyph(attention: attention)
         let remaining = store.todayRemaining
+        if let task = store.activeTimerTask {
+            let minutes = max(1, store.timerElapsedMinutes())
+            button.title = " ⏱ \(DurationLabel.short(minutes))"
+            button.setAccessibilityLabel("正在专注：\(task.text)，已 \(DurationLabel.short(minutes))")
+            button.imagePosition = .imageLeading
+            return
+        }
         button.title = remaining > 0 ? " \(remaining)" : ""
         button.imagePosition = (button.image == nil) ? .noImage
                              : (remaining > 0 ? .imageLeading : .imageOnly)

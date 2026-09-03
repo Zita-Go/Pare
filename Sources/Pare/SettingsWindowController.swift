@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import PareCore
 
 /// Shared helper for the accessory ↔ regular activation-policy dance: a
@@ -61,9 +62,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 private struct SettingsView: View {
     @ObservedObject var store: Store
     let manager: NotificationManager
+    @StateObject private var loginItem = LoginItemManager()
 
     @State private var authText = "检查中…"
     @State private var testSent = false
+    @State private var dataMessage: String?
 
     var body: some View {
         ScrollView {
@@ -73,15 +76,28 @@ private struct SettingsView: View {
                     .foregroundColor(Theme.text)
 
                 permissionCard
-                planCard
-                reviewCard
-                weeklyCard
-                pileupCard
-                focusStalenessCard
-                overloadCard
-                quadrantCleanupCard
+                settingsGroup("启动与数据") {
+                    startupAndDataCard
+                }
+                settingsGroup("提醒与节奏") {
+                    planCard
+                    groupDivider
+                    reviewCard
+                    groupDivider
+                    weeklyCard
+                    groupDivider
+                    pileupCard
+                }
+                settingsGroup("规划边界") {
+                    overloadCard
+                }
+                settingsGroup("整理纪律") {
+                    focusStalenessCard
+                    groupDivider
+                    quadrantCleanupCard
+                }
 
-                Text("单个任务的定时提醒：在「整理」窗口点任务右侧的 🔔 设置。到点会单独提醒你，可选「完成 / 稍后」。")
+                Text("单个任务的定时提醒：在「整理」窗口点任务右侧的「…」设置任意时间与重复规则。到点可选「完成 / 稍后」。")
                     .font(Theme.font(11))
                     .foregroundColor(Theme.textDim)
                     .fixedSize(horizontal: false, vertical: true)
@@ -98,10 +114,48 @@ private struct SettingsView: View {
             // Returning from System Settings (or reopening the panel) should
             // reflect a freshly granted permission without extra taps.
             refreshAuth()
+            loginItem.refresh()
         }
     }
 
     // MARK: Cards
+
+    private var startupAndDataCard: some View {
+        sectionContent {
+            Toggle(isOn: Binding(get: { loginItem.enabled }, set: { loginItem.setEnabled($0) })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("登录时自动启动 Pare")
+                        .font(Theme.font(15, weight: .medium)).foregroundColor(Theme.text)
+                    Text(loginItem.statusText)
+                        .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                }
+            }
+            .toggleStyle(.switch).tint(Theme.amber)
+
+            groupDivider
+
+            if let issue = store.persistenceIssue {
+                HStack(alignment: .top, spacing: 7) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundColor(Theme.qUrgent)
+                    Text(issue).font(Theme.font(11)).foregroundColor(Theme.text)
+                }
+            } else {
+                Text("每次保存都会保留一份上一版本自动备份。")
+                    .font(Theme.font(11)).foregroundColor(Theme.textDim)
+            }
+
+            HStack(spacing: 8) {
+                actionButton("导出备份") { exportBackup() }
+                actionButton("导入备份") { importBackup() }
+                actionButton("恢复自动备份") {
+                    dataMessage = store.restoreAutomaticBackup() ? "已恢复自动备份 ✓" : "没有可恢复的自动备份"
+                }
+            }
+            if let dataMessage {
+                Text(dataMessage).font(Theme.font(11)).foregroundColor(Theme.amber)
+            }
+        }
+    }
 
     private var permissionCard: some View {
         card {
@@ -132,7 +186,7 @@ private struct SettingsView: View {
     }
 
     private var planCard: some View {
-        card {
+        sectionContent {
             sectionToggle("早晨规划提醒", isOn: settingsBinding(\.planReminderEnabled))
             Text("每天提醒你花几分钟整理、挑出今天要做的几件事。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -143,7 +197,7 @@ private struct SettingsView: View {
     }
 
     private var reviewCard: some View {
-        card {
+        sectionContent {
             sectionToggle("傍晚收尾提醒", isOn: settingsBinding(\.reviewReminderEnabled))
             Text("下班前汇总一句：还有几件没做、或今天完成了几件。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -155,7 +209,7 @@ private struct SettingsView: View {
 
     // RFC-0001 T3: 每周回顾提醒 —— 周日晚提醒点开「本周回顾」，可开关、改星期与时间。
     private var weeklyCard: some View {
-        card {
+        sectionContent {
             sectionToggle("每周回顾提醒", isOn: settingsBinding(\.weeklyReviewEnabled))
             Text("每周挑一个晚上回看整周：完成了多少、集中在哪个象限、什么总被拖，可一键复制成 Markdown。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -184,7 +238,7 @@ private struct SettingsView: View {
     }
 
     private var pileupCard: some View {
-        card {
+        sectionContent {
             sectionToggle("待整理堆积提醒", isOn: settingsBinding(\.inboxPileupEnabled))
             Text("随手记攒多了，就在每日提醒里带一句，提醒你抽空整理。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -201,7 +255,7 @@ private struct SettingsView: View {
     // RFC-0001 T4: 三组「主动但克制」的整理纪律信号，均可在此关闭 / 调阈值。
 
     private var focusStalenessCard: some View {
-        card {
+        sectionContent {
             sectionToggle("象限二停滞提醒", isOn: settingsBinding(\.focusStalenessEnabled))
             Text("「重要 · 不紧急」里的事搁太久，就在早晨规划提醒里带一句，别让深度的事被一直拖着。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -217,7 +271,7 @@ private struct SettingsView: View {
     }
 
     private var overloadCard: some View {
-        card {
+        sectionContent {
             sectionToggle("今日超载提示", isOn: settingsBinding(\.todayOverloadEnabled))
             Text("今天挑的事太多或排得太满时，在整理窗顶部轻声提示一句 —— 只提示，不阻止你继续添加。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -238,7 +292,7 @@ private struct SettingsView: View {
     }
 
     private var quadrantCleanupCard: some View {
-        card {
+        sectionContent {
             sectionToggle("象限四清理引导", isOn: settingsBinding(\.quadrantCleanupEnabled))
             Text("「不重要 · 不紧急」积压时，在那一格顶部给一句清理引导，并提供便捷清空。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -261,6 +315,31 @@ private struct SettingsView: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .panel(corner: 12)
+    }
+
+    @ViewBuilder
+    private func sectionContent<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) { content() }
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func settingsGroup<Content: View>(_ title: String,
+                                              @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 13) {
+            Text(title.uppercased())
+                .font(Theme.font(11, weight: .semibold))
+                .tracking(0.7)
+                .foregroundColor(Theme.amber)
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panel(corner: 12)
+    }
+
+    private var groupDivider: some View {
+        Rectangle().fill(Theme.hairline).frame(height: 1)
     }
 
     private func sectionToggle(_ title: String, isOn: Binding<Bool>) -> some View {
@@ -292,6 +371,43 @@ private struct SettingsView: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+
+    private func exportBackup() {
+        let panel = NSSavePanel()
+        panel.title = "导出 Pare 备份"
+        panel.nameFieldStringValue = "Pare-backup.json"
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try store.exportData(to: url)
+            dataMessage = "备份已导出 ✓"
+        } catch {
+            dataMessage = error.localizedDescription
+        }
+    }
+
+    private func importBackup() {
+        let panel = NSOpenPanel()
+        panel.title = "选择 Pare 备份"
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "导入这个备份？"
+        alert.informativeText = "当前数据会先保存为自动备份，导入失败时不会改变现有内容。"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "导入")
+        alert.addButton(withTitle: "取消")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            try store.importData(from: url)
+            dataMessage = "备份已导入 ✓"
+        } catch {
+            dataMessage = error.localizedDescription
+        }
     }
 
     // MARK: Bindings & helpers

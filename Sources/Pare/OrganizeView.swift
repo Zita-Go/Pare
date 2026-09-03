@@ -3,6 +3,12 @@ import AppKit
 import UniformTypeIdentifiers
 import PareCore
 
+private enum WorkspaceMode: String, CaseIterable {
+    case matrix = "四象限"
+    case today = "今日计划"
+    case library = "想法与历史"
+}
+
 /// The "整理状态" — the four quadrants are the main act, each with its own quiet
 /// color so you can read the map at a glance. Unprocessed captures sit in a
 /// recessed tray on the left; drag each into a quadrant (or use its context
@@ -17,6 +23,7 @@ struct OrganizeView: View {
     var onOpenWeeklyReview: () -> Void = {}
     /// RFC-0001: 整理窗全键盘归位的当前"光标" —— 选中的待整理项或象限任务。
     @StateObject private var focus = OrganizeFocus()
+    @State private var workspace: WorkspaceMode = .matrix
 
     var body: some View {
         HStack(spacing: 0) {
@@ -27,16 +34,20 @@ struct OrganizeView: View {
                 // RFC-0001 T2: 顶部一张可展开 / 收起的「今日小结」收束卡片。
                 TodaySummaryCard(store: store, expanded: $summaryState.expanded)
                 topBar
-                quadrantGrid
+                workspaceContent
             }
             .padding(18)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 820, minHeight: 560, alignment: .top)
+        .frame(minWidth: 880, minHeight: 580, alignment: .top)
         .padding(.top, 28)
         .background(FrostBackground(tint: 0.66))
         // RFC-0001: 透明的按键捕获层，成为第一响应者后处理 ↑↓ / 1–4 / 空格 / esc。
         .background(KeyCaptureView { handleKey($0) })
+        .overlay(alignment: .bottomTrailing) {
+            UndoToast(store: store).padding(22)
+        }
+        .animation(.easeOut(duration: 0.18), value: store.undoMessage)
     }
 
     private var topBar: some View {
@@ -59,7 +70,16 @@ struct OrganizeView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            keyboardHint
+            HStack {
+                Picker("工作区", selection: $workspace) {
+                    ForEach(WorkspaceMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 320)
+                Spacer()
+                if workspace == .matrix { keyboardHint }
+            }
             if store.todayTotal > 0 {
                 ProgressBar(fraction: Double(store.todayCompleted) / Double(max(1, store.todayTotal)))
                     .animation(.easeOut(duration: 0.35), value: store.todayCompleted)
@@ -68,6 +88,14 @@ struct OrganizeView: View {
             if let overload = store.todayOverload() {
                 overloadHint(overload)
             }
+        }
+    }
+
+    @ViewBuilder private var workspaceContent: some View {
+        switch workspace {
+        case .matrix: quadrantGrid
+        case .today: TodayPlannerView(store: store)
+        case .library: LibraryView(store: store)
         }
     }
 
@@ -192,6 +220,7 @@ struct OrganizeView: View {
 
     /// 把一次按键翻译成动作。返回 true 表示已消费（不再让系统处理/发出提示音）。
     private func handleKey(_ key: OrganizeKey) -> Bool {
+        guard workspace == .matrix else { return false }
         switch key {
         case .up:    moveSelection(-1); return true
         case .down:  moveSelection(1);  return true
@@ -279,12 +308,29 @@ private struct InboxCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Text(item.text)
-                .font(Theme.font(13))
-                .foregroundColor(Theme.text)
-                .lineLimit(5)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(item.text)
+                    .font(Theme.font(13))
+                    .foregroundColor(Theme.text)
+                    .lineLimit(5)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let date = item.suggestedRemindAt {
+                    HStack(spacing: 3) {
+                        Image(systemName: "bell.fill")
+                        Text(ReminderFormat.short(date))
+                    }
+                    .font(Theme.font(10, weight: .medium))
+                    .foregroundColor(Theme.amber)
+                }
+            }
             Spacer(minLength: 0)
+            Button { _ = store.keepAsThought(inboxID: item.id) } label: {
+                Image(systemName: "lightbulb").font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(Theme.amber)
+            .help("保留为想法")
+            .accessibilityLabel("保留为想法")
             if hovering {
                 Button { store.deleteInbox(item.id) } label: {
                     Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
@@ -312,6 +358,8 @@ private struct InboxCard: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint("选中后按 1–4 归入象限")
         .contextMenu {
+            Button("保留为想法") { store.keepAsThought(inboxID: item.id) }
+            Divider()
             ForEach(Quadrant.allCases, id: \.self) { q in
                 Button("移到「\(q.title)」") { store.organize(inboxID: item.id, to: q) }
             }
@@ -493,16 +541,19 @@ private struct QuadrantTaskRow: View {
                     .layoutPriority(1)
                     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 Spacer(minLength: 6)
-                // RFC-0001: 尾部控件"已设置常显、未设置悬停才露出"，避免占宽挤压文字；
-                // 未悬停也能一眼看出这行已排的估时 / 提醒 / 今天。核心操作在右键菜单里始终可达。
-                if task.estimatedMinutes != nil || hovering {
+                if let due = task.dueAt { DueBadge(date: due, completed: task.completed) }
+                // 已设置的状态常显；未设置项统一收进“…”详情，避免一排悬停按钮挤压任务标题。
+                if task.estimatedMinutes != nil {
                     DurationPill(minutes: task.estimatedMinutes) { store.setEstimate(task.id, minutes: $0) }
                 }
                 // 完成后提醒已无意义（提醒本身也会随完成撤销），让位给「实际用时」控件。
                 if task.completed {
                     actualControl
-                } else if task.remindAt != nil || hovering {
+                } else if task.remindAt != nil {
                     ReminderPill(date: task.remindAt) { store.setRemind(task.id, at: $0) }
+                }
+                if !task.completed, (hovering || store.activeTimer?.taskID == task.id) {
+                    FocusTimerButton(store: store, task: task)
                 }
                 if task.isToday || hovering {
                     Button { store.toggleToday(task.id) } label: {
@@ -514,6 +565,7 @@ private struct QuadrantTaskRow: View {
                     .help(task.isToday ? "移出今天" : "加入今天")
                     .accessibilityLabel(task.isToday ? "移出今天" : "加入今天")
                 }
+                TaskDetailsButton(store: store, task: task)
             }
             // RFC-0001 T5：打勾完成后就地弹出一排预设时长，点一下即记，点 ✕ 跳过。
             if task.completed, showActualPrompt, task.actualMinutes == nil {

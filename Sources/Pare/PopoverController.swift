@@ -21,6 +21,11 @@ final class PopoverController {
     /// Bridges AppKit show/close into the SwiftUI entrance/exit animation.
     final class Chrome: ObservableObject {
         @Published var visible = false
+        /// Bumped on every show so the capture field re-focuses each time the
+        /// panel appears. The panel reuses one SwiftUI view for the app's whole
+        /// lifetime, so `onAppear` fires only once — without this, "打开即写"
+        /// (cursor already waiting) would only hold on the very first open.
+        @Published var focusTick = 0
     }
 
     private let store: Store
@@ -48,7 +53,7 @@ final class PopoverController {
         // All stored properties are initialized; `self` is now usable, so the
         // 整理 button can close the panel before opening the organize window.
         let container = CapturePanelContainer(chrome: chrome, margin: shadowMargin) {
-            CaptureView(store: store, onOpenOrganize: { [weak self] in
+            CaptureView(store: store, chrome: chrome, onOpenOrganize: { [weak self] in
                 self?.close()
                 onOpenOrganize()
             })
@@ -81,9 +86,11 @@ final class PopoverController {
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
         }
-        // Flip on the next runloop so SwiftUI animates from the hidden state.
+        // Flip on the next runloop so SwiftUI animates from the hidden state,
+        // and bump focusTick so the capture field re-focuses on every open.
         DispatchQueue.main.async { [weak self] in
             self?.chrome.visible = true
+            self?.chrome.focusTick += 1
         }
         installMonitors()
     }

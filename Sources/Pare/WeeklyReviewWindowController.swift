@@ -63,6 +63,7 @@ private struct WeeklyReviewView: View {
         // window (or completing a task while it is open) always reflects fresh
         // data. The projection is pure and cheap.
         let review = store.weeklyReview()
+        let trends = store.longTermTrends()
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header(review)
@@ -78,6 +79,8 @@ private struct WeeklyReviewView: View {
                 if !review.stalledFocus.isEmpty {
                     stalledSection(review)
                 }
+
+                longTermSection(trends)
 
                 copyButton(review)
             }
@@ -201,6 +204,38 @@ private struct WeeklyReviewView: View {
         }
     }
 
+    // MARK: Long-term mirror
+
+    private func longTermSection(_ trends: LongTermTrends) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("长期 · 最近 8 周")
+                    .font(Theme.font(17, weight: .semibold)).foregroundColor(Theme.text)
+                Spacer()
+                Text("只读镜子").font(Theme.font(10, weight: .medium)).foregroundColor(Theme.textDim)
+            }
+            TrendSparkline(values: trends.completionSeries)
+                .frame(height: 64)
+                .accessibilityLabel("最近八周完成量：\(trends.completionSeries.map(String.init).joined(separator: "，"))")
+            trendLine(icon: "chart.line.uptrend.xyaxis", title: "完成节奏", text: trends.completionInsight)
+            trendLine(icon: "target", title: "长期投入", text: trends.focusInsight)
+            trendLine(icon: "clock.arrow.circlepath", title: "估时校准", text: trends.biasInsight)
+            trendLine(icon: "trash.slash", title: "注意力清理", text: trends.cleanupInsight)
+        }
+        .padding(16)
+        .panel(corner: 14, accent: Theme.amber)
+    }
+
+    private func trendLine(icon: String, title: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: icon).font(.system(size: 12)).foregroundColor(Theme.amber).frame(width: 16)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(Theme.font(12, weight: .semibold)).foregroundColor(Theme.text)
+                Text(text).font(Theme.font(11)).foregroundColor(Theme.textDim).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     // MARK: Copy Markdown
 
     private func copyButton(_ review: WeeklyReview) -> some View {
@@ -299,6 +334,41 @@ private struct WeeklyReviewView: View {
             ? "平均每件\(direction)约 \(DurationLabel.short(avg))"
             : "合计\(direction)约 \(DurationLabel.short(abs(bias.deltaMinutes)))"
         return "记录了 \(bias.comparableCount) 件：预估合计 \(est) · 实际合计 \(act) · \(magnitude)。"
+    }
+}
+
+/// Tiny native SwiftUI sparkline: no chart dependency, no axes, just the shape
+/// of recent completion rhythm and a dot for each natural week.
+private struct TrendSparkline: View {
+    let values: [Int]
+
+    var body: some View {
+        GeometryReader { geo in
+            let points = makePoints(in: geo.size)
+            ZStack {
+                RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.14))
+                Path { path in
+                    guard let first = points.first else { return }
+                    path.move(to: first)
+                    for point in points.dropFirst() { path.addLine(to: point) }
+                }
+                .stroke(Theme.amber, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                ForEach(Array(points.enumerated()), id: \.offset) { _, point in
+                    Circle().fill(Theme.amber).frame(width: 5, height: 5).position(point)
+                }
+            }
+        }
+    }
+
+    private func makePoints(in size: CGSize) -> [CGPoint] {
+        guard !values.isEmpty else { return [] }
+        let maxValue = max(1, values.max() ?? 1)
+        let xStep = values.count > 1 ? (size.width - 20) / CGFloat(values.count - 1) : 0
+        return values.enumerated().map { index, value in
+            let x = 10 + CGFloat(index) * xStep
+            let y = size.height - 10 - CGFloat(value) / CGFloat(maxValue) * (size.height - 20)
+            return CGPoint(x: x, y: y)
+        }
     }
 }
 

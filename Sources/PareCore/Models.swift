@@ -26,16 +26,73 @@ public enum Quadrant: Int, Codable, CaseIterable, Hashable {
     }
 }
 
+/// A deliberately small recurrence vocabulary for task reminders. Pare keeps
+/// recurrence attached to the reminder rather than pretending it is a due
+/// date: due dates describe the work, reminders describe when to interrupt.
+public enum RecurrenceRule: String, Codable, CaseIterable, Hashable {
+    case daily
+    case weekly
+    case monthly
+
+    public var title: String {
+        switch self {
+        case .daily:   return "每天"
+        case .weekly:  return "每周"
+        case .monthly: return "每月"
+        }
+    }
+}
+
 /// A raw, unprocessed capture written in "随手记" mode.
 public struct InboxItem: Identifiable, Codable, Hashable {
     public var id: UUID
     public var text: String
     public var createdAt: Date
+    /// Filled when capture text contains a small, local natural-language
+    /// reminder such as “30 分钟后提醒我喝水”. It follows the item into a task.
+    public var suggestedRemindAt: Date?
 
-    public init(id: UUID = UUID(), text: String, createdAt: Date = Date()) {
+    public init(id: UUID = UUID(), text: String, createdAt: Date = Date(),
+                suggestedRemindAt: Date? = nil) {
         self.id = id
         self.text = text
         self.createdAt = createdAt
+        self.suggestedRemindAt = suggestedRemindAt
+    }
+}
+
+/// A captured idea that should remain thinkable instead of being forced into
+/// the task system. Thoughts are intentionally light: a title and free notes.
+public struct ThoughtItem: Identifiable, Codable, Hashable {
+    public var id: UUID
+    public var text: String
+    public var notes: String?
+    public var createdAt: Date
+    public var updatedAt: Date
+    /// Optional date to intentionally bring the idea back into the morning
+    /// planning nudge, without turning it into a task or standalone alert.
+    public var reviewAt: Date?
+
+    public init(id: UUID = UUID(), text: String, notes: String? = nil,
+                createdAt: Date = Date(), updatedAt: Date = Date(), reviewAt: Date? = nil) {
+        self.id = id
+        self.text = text
+        self.notes = notes
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.reviewAt = reviewAt
+    }
+}
+
+/// The single running focus timer. Only its start instant is persisted, so a
+/// relaunch resumes from real elapsed time without a drifting tick counter.
+public struct ActiveTimer: Codable, Equatable {
+    public var taskID: UUID
+    public var startedAt: Date
+
+    public init(taskID: UUID, startedAt: Date) {
+        self.taskID = taskID
+        self.startedAt = startedAt
     }
 }
 
@@ -65,6 +122,15 @@ public struct TaskItem: Identifiable, Codable, Hashable {
     /// to `createdAt`. Optional so old store files (without this key) decode
     /// cleanly.
     public var lastProgressAt: Date?
+    /// Optional detail fields keep the quadrant row terse while giving a task
+    /// somewhere to hold thought, a concrete next action and a real deadline.
+    public var note: String?
+    public var nextAction: String?
+    public var dueAt: Date?
+    /// Recurrence applies to `remindAt`, never implicitly to `dueAt`.
+    public var recurrence: RecurrenceRule?
+    /// Stable user-defined order inside the Today planner.
+    public var todayOrder: Int?
 
     public init(id: UUID = UUID(),
                 text: String,
@@ -76,7 +142,12 @@ public struct TaskItem: Identifiable, Codable, Hashable {
                 estimatedMinutes: Int? = nil,
                 remindAt: Date? = nil,
                 actualMinutes: Int? = nil,
-                lastProgressAt: Date? = nil) {
+                lastProgressAt: Date? = nil,
+                note: String? = nil,
+                nextAction: String? = nil,
+                dueAt: Date? = nil,
+                recurrence: RecurrenceRule? = nil,
+                todayOrder: Int? = nil) {
         self.id = id
         self.text = text
         self.quadrant = quadrant
@@ -88,6 +159,11 @@ public struct TaskItem: Identifiable, Codable, Hashable {
         self.remindAt = remindAt
         self.actualMinutes = actualMinutes
         self.lastProgressAt = lastProgressAt
+        self.note = note
+        self.nextAction = nextAction
+        self.dueAt = dueAt
+        self.recurrence = recurrence
+        self.todayOrder = todayOrder
     }
 }
 

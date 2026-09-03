@@ -18,13 +18,16 @@ public struct PlannedReminder: Equatable {
     public let fireDate: Date
     public let title: String
     public let body: String
+    public let repeatRule: RecurrenceRule?
 
-    public init(kind: Kind, identifier: String, fireDate: Date, title: String, body: String) {
+    public init(kind: Kind, identifier: String, fireDate: Date, title: String, body: String,
+                repeatRule: RecurrenceRule? = nil) {
         self.kind = kind
         self.identifier = identifier
         self.fireDate = fireDate
         self.title = title
         self.body = body
+        self.repeatRule = repeatRule
     }
 
     /// The task this reminder belongs to, if any.
@@ -85,6 +88,10 @@ extension Store {
             if !stalled.isEmpty {
                 body += "（象限二有 \(stalled.count) 件 ≥\(settings.focusStalenessDays) 天没推进）"
             }
+            let thoughts = thoughtsDueForReview(now: now)
+            if !thoughts.isEmpty {
+                body += "（有 \(thoughts.count) 个想法到了回看时间）"
+            }
             result.append(PlannedReminder(
                 kind: .plan,
                 identifier: "daily.plan",
@@ -134,17 +141,58 @@ extension Store {
                 body: "点开看看这周做成了哪些事，几分钟收束一整周。"))
         }
 
-        // Per-task: only future, still-incomplete reminders.
+        // Per-task reminders. A recurring reminder is materialised as the next
+        // four one-shot requests so its chosen start date is honoured.
         for task in tasks where !task.completed {
-            guard let at = task.remindAt, at > now else { continue }
-            result.append(PlannedReminder(
-                kind: .task(task.id),
-                identifier: "task.\(task.id.uuidString)",
-                fireDate: at,
-                title: "该做这件事了",
-                body: task.text))
+            guard let at = task.remindAt else { continue }
+            if let rule = task.recurrence {
+                for (index, fireDate) in recurringOccurrences(start: at, rule: rule,
+                                                               after: now, count: 4).enumerated() {
+                    result.append(PlannedReminder(
+                        kind: .task(task.id),
+                        identifier: "task.\(task.id.uuidString).repeat.\(index)",
+                        fireDate: fireDate,
+                        title: "该做这件事了",
+                        body: task.text,
+                        repeatRule: rule))
+                }
+            } else if at > now {
+                result.append(PlannedReminder(
+                    kind: .task(task.id),
+                    identifier: "task.\(task.id.uuidString)",
+                    fireDate: at,
+                    title: "该做这件事了",
+                    body: task.text))
+            }
         }
 
         return result
+    }
+
+    private func recurringOccurrences(start: Date, rule: RecurrenceRule, after now: Date,
+                                      count: Int) -> [Date] {
+        var candidate = start
+        var safety = 0
+        while candidate <= now, safety < 1_000 {
+            candidate = nextRecurringDate(after: candidate, rule: rule)
+            safety += 1
+        }
+        var result: [Date] = []
+        while result.count < count {
+            result.append(candidate)
+            candidate = nextRecurringDate(after: candidate, rule: rule)
+        }
+        return result
+    }
+
+    private func nextRecurringDate(after date: Date, rule: RecurrenceRule) -> Date {
+        let component: Calendar.Component
+        switch rule {
+        case .daily: component = .day
+        case .weekly: component = .weekOfYear
+        case .monthly: component = .month
+        }
+        return calendar.date(byAdding: component, value: 1, to: date)
+            ?? date.addingTimeInterval(86_400)
     }
 }

@@ -6,6 +6,9 @@ import PareCore
 /// into 整理. Frosted-glass backdrop keeps it feeling light and present.
 struct CaptureView: View {
     @ObservedObject var store: Store
+    /// 由 PopoverController 注入：每次唤出面板 focusTick 递增，驱动输入框重新聚焦，
+    /// 保证「打开即写」在第二次以后也成立（面板复用同一视图，onAppear 只触发一次）。
+    @ObservedObject var chrome: PopoverController.Chrome
     var onOpenOrganize: () -> Void
 
     @State private var draft: String = ""
@@ -14,6 +17,8 @@ struct CaptureView: View {
     /// RFC-0001: 纯净模式 —— 收起「今日任务」列表，让弹窗回到"只管记下"的最聚焦形态。
     /// 用 @AppStorage 记住选择，跨弹窗开合与重启保持一致。
     @AppStorage("pareCapturePureMode") private var pureMode = false
+    /// 记下成功瞬间的确认脉冲：输入框描边闪一下琥珀微光再淡出，给"记进去了"的即时反馈。
+    @State private var justCaptured = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -29,7 +34,8 @@ struct CaptureView: View {
         .padding(18)
         .frame(width: 372)
         .background(FrostBackground(tint: 0.55))
-        .onAppear { focused = true }
+        // 每次唤出面板都聚焦输入框：focusTick 首次订阅即发一次、之后每次 show 递增。
+        .onReceive(chrome.$focusTick) { _ in focused = true }
     }
 
     // MARK: Pieces
@@ -66,6 +72,13 @@ struct CaptureView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 11, style: .continuous)
                         .stroke(focused ? Theme.amber.opacity(0.9) : Theme.border, lineWidth: focused ? 1.6 : 1)
+                )
+                // 记下瞬间的确认脉冲：一圈琥珀描边突现，再放大淡出，只闪一次。
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(Theme.amber, lineWidth: 2)
+                        .scaleEffect(justCaptured ? 1.0 : 1.03)
+                        .opacity(justCaptured ? 0.9 : 0)
                 )
                 .shadow(color: Theme.amber.opacity(focused ? 0.18 : 0), radius: 8)
                 .animation(.easeOut(duration: 0.15), value: focused)
@@ -114,15 +127,22 @@ struct CaptureView: View {
     }
 
     private var emptyToday: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 12))
-                .foregroundColor(Theme.textFaint)
-            Text("今天还没挑事情 · 打开「整理」选几件")
-                .font(Theme.font(12))
-                .foregroundColor(Theme.textDim)
+        Button(action: onOpenOrganize) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.textFaint)
+                Text("今天还没挑事情 · 点这里打开「整理」选几件")
+                    .font(Theme.font(12))
+                    .foregroundColor(Theme.textDim)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 8)
         }
-        .padding(.vertical, 8)
+        .buttonStyle(.plain)
+        .accessibilityLabel("今天还没挑事情，点这里打开整理选几件")
+        .accessibilityHint("打开整理窗口")
     }
 
     private var footer: some View {
@@ -153,17 +173,25 @@ struct CaptureView: View {
             Spacer()
 
             if store.inboxCount > 0 {
-                HStack(spacing: 5) {
-                    Image(systemName: "tray.full").font(.system(size: 10))
-                    Text("待整理 \(store.inboxCount)")
-                        .font(Theme.font(12, weight: .medium))
+                Button(action: onOpenOrganize) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "tray.full").font(.system(size: 10))
+                        Text("待整理").font(Theme.font(12, weight: .medium))
+                        Text("\(store.inboxCount)")
+                            .font(Theme.font(12, weight: .medium))
+                            .contentTransition(.numericText())
+                    }
+                    .foregroundColor(Theme.amber)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Theme.amberSoft))
+                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: store.inboxCount)
                 }
-                .foregroundColor(Theme.amber)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(Capsule().fill(Theme.amberSoft))
+                .buttonStyle(.plain)
+                .help("打开整理，处理待整理")
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("待整理 \(store.inboxCount) 条")
+                .accessibilityHint("打开整理窗口")
             }
         }
     }
@@ -183,7 +211,14 @@ struct CaptureView: View {
     }
 
     private func submit() {
-        if store.capture(draft) { draft = "" }
+        if store.capture(draft) {
+            draft = ""
+            // 记下确认脉冲：先亮起，下个 runloop 再放大淡出（同 TaskCheckbox 的一次性手法）。
+            justCaptured = true
+            DispatchQueue.main.async {
+                withAnimation(.easeOut(duration: 0.5)) { justCaptured = false }
+            }
+        }
         focused = true
     }
 }
@@ -222,6 +257,19 @@ private struct TodayRow: View {
                     }
                     .foregroundColor(Theme.amber.opacity(0.85))
                 }
+                if !task.completed {
+                    FocusTimerButton(store: store, task: task)
+                }
+                TaskDetailsButton(store: store, task: task)
+            }
+            if !task.completed, task.nextAction != nil || task.dueAt != nil {
+                HStack(spacing: 7) {
+                    if let action = task.nextAction {
+                        Text("下一步：\(action)").font(Theme.font(10)).foregroundColor(Theme.textDim).lineLimit(1)
+                    }
+                    if let due = task.dueAt { DueBadge(date: due) }
+                }
+                .padding(.leading, 30)
             }
             if task.completed, showActualPrompt, task.actualMinutes == nil {
                 CompletionTimeChips(

@@ -21,6 +21,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private let onOpenWeeklyReview: () -> Void
     private let center = UNUserNotificationCenter.current()
     private var cancellable: AnyCancellable?
+    private var refreshCancellable: AnyCancellable?
     private var pendingReschedule: DispatchWorkItem?
 
     // Category / action identifiers.
@@ -57,15 +58,16 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     func configure() {
         center.delegate = self
         registerCategories()
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
-            Self.diag("authorization granted=\(granted) error=\(error?.localizedDescription ?? "nil")")
-            self?.logSettings()
-            DispatchQueue.main.async { self?.reschedule() }
-        }
+        // Do not throw the system permission sheet at first launch without
+        // context. Onboarding and Settings explain the value, then request it.
+        logSettings()
         // Keep reminders in sync with any data / settings change.
         cancellable = store.objectWillChange.sink { [weak self] in
             self?.scheduleRescheduleSoon()
         }
+        refreshCancellable = Timer.publish(every: 6 * 60 * 60, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.reschedule() }
         reschedule()
         // Diagnostics: confirm the requests actually landed in the center.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.dumpPending() }
@@ -139,7 +141,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     private func isOurs(_ id: String) -> Bool {
         id == "daily.plan" || id == Self.reviewIdentifier || id == Self.weeklyIdentifier
-            || id.hasPrefix("task.") || id == Self.testIdentifier
+            || id.hasPrefix("task.") || id == Self.testIdentifier || id == "timer.sleep"
     }
 
     // MARK: - Settings-panel helpers
@@ -159,6 +161,16 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                 Self.diag("test add err=\(err?.localizedDescription ?? "nil")")
             }
         }
+    }
+
+    func sendSleepStoppedNotice(task: String, minutes: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "专注计时已自动停止"
+        content.body = "电脑休眠前已为“\(task)”记录 \(DurationLabel.short(minutes))，避免把离开时间算进去。"
+        content.sound = .default
+        content.categoryIdentifier = Self.dailyCategory
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)
+        center.add(UNNotificationRequest(identifier: "timer.sleep", content: content, trigger: trigger))
     }
 
     func requestAuthorizationAgain() {

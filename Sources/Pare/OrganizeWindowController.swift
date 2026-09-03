@@ -17,7 +17,7 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
         self.onClose = onClose
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 940, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 1060, height: 700),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false)
@@ -28,7 +28,7 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
         window.backgroundColor = .clear
         window.appearance = NSAppearance(named: .darkAqua)
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 780, height: 540)
+        window.minSize = NSSize(width: 880, height: 580)
 
         let hosting = NSHostingController(rootView: OrganizeView(store: store, summaryState: summaryState, onOpenWeeklyReview: onOpenWeeklyReview))
         window.contentViewController = hosting

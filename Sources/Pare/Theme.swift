@@ -16,8 +16,11 @@ enum Theme {
     static let panelHi   = Color(hex: 0x37473F)   // hover / 抬起态
     static let border    = Color(hex: 0x3D5046)   // 边界
     static let hairline  = Color(hex: 0xF0EDE6).opacity(0.07)
-    static let textDim   = Color(hex: 0xF0EDE6).opacity(0.5)
-    static let textFaint = Color(hex: 0xF0EDE6).opacity(0.28)
+    // Small helper text appears on translucent green panels, where the old
+    // 50%/28% values fell below comfortable contrast. Keep the hierarchy with
+    // two steps, but both now remain readable at 11–13 pt.
+    static let textDim   = Color(hex: 0xF0EDE6).opacity(0.68)
+    static let textFaint = Color(hex: 0xF0EDE6).opacity(0.56)
 
     static let nsBg = NSColor(hex: 0x1A1F1C)
 
