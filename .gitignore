@@ -1,0 +1,14 @@
+# Swift Package Manager build products
+.build/
+dist/
+
+# macOS
+.DS_Store
+
+# Agent scratch & conversation archives — never upload
+.nexau_tmp/
+
+# Xcode / SwiftPM local state
+.swiftpm/
+*.xcuserstate
+*.xcuserdatad
