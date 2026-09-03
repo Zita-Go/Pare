@@ -11,6 +11,9 @@ struct CaptureView: View {
     @State private var draft: String = ""
     @FocusState private var focused: Bool
     @State private var hoverOrganize = false
+    /// RFC-0001: 纯净模式 —— 收起「今日任务」列表，让弹窗回到"只管记下"的最聚焦形态。
+    /// 用 @AppStorage 记住选择，跨弹窗开合与重启保持一致。
+    @AppStorage("pareCapturePureMode") private var pureMode = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -39,6 +42,8 @@ struct CaptureView: View {
             Text(progressString)
                 .font(Theme.font(16, weight: .medium))
                 .foregroundColor(Theme.amber)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             if store.todayTotal > 0 {
                 ProgressBar(fraction: Double(store.todayCompleted) / Double(max(1, store.todayTotal)))
                     .animation(.easeOut(duration: 0.35), value: store.todayCompleted)
@@ -64,6 +69,8 @@ struct CaptureView: View {
                 )
                 .shadow(color: Theme.amber.opacity(focused ? 0.18 : 0), radius: 8)
                 .animation(.easeOut(duration: 0.15), value: focused)
+                .accessibilityLabel("随手记输入框")
+                .accessibilityHint("输入一句话，回车记下")
             Text("回车记下 · 点别处关闭")
                 .font(Theme.font(11))
                 .foregroundColor(Theme.textFaint)
@@ -72,18 +79,37 @@ struct CaptureView: View {
 
     private var todaySection: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("今日任务")
-                .font(Theme.font(11, weight: .semibold))
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) { pureMode.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("今日任务")
+                        .font(Theme.font(11, weight: .semibold))
+                        .tracking(0.6)
+                    Text("\(store.todayTasks.count)")
+                        .font(Theme.font(11, weight: .semibold))
+                    Spacer()
+                    Image(systemName: pureMode ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 9, weight: .bold))
+                }
                 .foregroundColor(Theme.textDim)
-                .tracking(0.6)
-            ScrollView {
-                LazyVStack(spacing: 3) {
-                    ForEach(store.todayTasks) { task in
-                        TodayRow(store: store, task: task)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(pureMode ? "展开今日任务（\(store.todayTasks.count) 件）" : "收起今日任务，进入纯净模式")
+            .accessibilityHint("纯净模式下只保留输入框，收起今日列表")
+
+            if !pureMode {
+                ScrollView {
+                    LazyVStack(spacing: 3) {
+                        ForEach(store.todayTasks) { task in
+                            TodayRow(store: store, task: task)
+                        }
                     }
                 }
+                .frame(maxHeight: 240)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            .frame(maxHeight: 240)
         }
     }
 
@@ -122,6 +148,7 @@ struct CaptureView: View {
             .buttonStyle(.plain)
             .onHover { hoverOrganize = $0 }
             .animation(.easeOut(duration: 0.12), value: hoverOrganize)
+            .accessibilityLabel("打开整理窗口")
 
             Spacer()
 
@@ -135,6 +162,8 @@ struct CaptureView: View {
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)
                 .background(Capsule().fill(Theme.amberSoft))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("待整理 \(store.inboxCount) 条")
             }
         }
     }
@@ -159,33 +188,48 @@ struct CaptureView: View {
     }
 }
 
-/// A single row in today's focus list. Estimate + reminder are shown read-only
-/// here; you set them in the 整理 window.
+/// A single row in today's focus list. Estimate is shown read-only here; you
+/// set it in the 整理 window. Completing a task offers a one-tap 实际用时 record
+/// (RFC-0001 T5) so the quick popover closes the calibration loop too.
 private struct TodayRow: View {
     @ObservedObject var store: Store
     let task: TaskItem
     @State private var hovering = false
+    /// RFC-0001 T5: 刚完成、等待记录实际用时时展开的就地 chip 提示。
+    @State private var showActualPrompt = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            TaskCheckbox(completed: task.completed) { store.toggleComplete(task.id) }
-            Text(task.text)
-                .font(Theme.font(14))
-                .foregroundColor(task.completed ? Theme.textDim : Theme.text)
-                .strikethrough(task.completed, color: Theme.textDim)
-                .lineLimit(2)
-            Spacer(minLength: 0)
-            if let minutes = task.estimatedMinutes {
-                Text(DurationLabel.short(minutes))
-                    .font(Theme.font(11, weight: .medium))
-                    .foregroundColor(task.completed ? Theme.textDim : Theme.amber.opacity(0.85))
-            }
-            if let d = task.remindAt, !task.completed {
-                HStack(spacing: 2) {
-                    Image(systemName: "bell.fill").font(.system(size: 9))
-                    Text(ReminderFormat.short(d)).font(Theme.font(10, weight: .medium))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                TaskCheckbox(completed: task.completed, label: task.text) { toggleComplete() }
+                Text(task.text)
+                    .font(Theme.font(14))
+                    .foregroundColor(task.completed ? Theme.textDim : Theme.text)
+                    .strikethrough(task.completed, color: Theme.textDim)
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+                if let minutes = task.estimatedMinutes {
+                    Text(DurationLabel.short(minutes))
+                        .font(Theme.font(11, weight: .medium))
+                        .foregroundColor(task.completed ? Theme.textDim : Theme.amber.opacity(0.85))
                 }
-                .foregroundColor(Theme.amber.opacity(0.85))
+                if task.completed {
+                    actualControl
+                } else if let d = task.remindAt {
+                    HStack(spacing: 2) {
+                        Image(systemName: "bell.fill").font(.system(size: 9))
+                        Text(ReminderFormat.short(d)).font(Theme.font(10, weight: .medium))
+                    }
+                    .foregroundColor(Theme.amber.opacity(0.85))
+                }
+            }
+            if task.completed, showActualPrompt, task.actualMinutes == nil {
+                CompletionTimeChips(
+                    onPick: { store.setActual(task.id, minutes: $0); showActualPrompt = false },
+                    onSkip: { showActualPrompt = false }
+                )
+                .padding(.leading, 30)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(.vertical, 5)
@@ -195,5 +239,22 @@ private struct TodayRow: View {
                 .fill(hovering ? Theme.panel.opacity(0.5) : Color.clear)
         )
         .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: showActualPrompt)
+    }
+
+    /// 完成态尾部的实际用时控件：已记录→可改/清除；未记录且提示已收起→补记入口。
+    @ViewBuilder private var actualControl: some View {
+        if let actual = task.actualMinutes {
+            ActualTimePill(minutes: actual) { store.setActual(task.id, minutes: $0) }
+        } else if !showActualPrompt {
+            RecordActualButton { withAnimation(.easeOut(duration: 0.15)) { showActualPrompt = true } }
+        }
+    }
+
+    /// 打勾完成时顺手弹出用时提示；取消完成时收起。
+    private func toggleComplete() {
+        let willComplete = !task.completed
+        store.toggleComplete(task.id)
+        showActualPrompt = willComplete && task.actualMinutes == nil
     }
 }

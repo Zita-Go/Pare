@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popoverController: PopoverController!
     private var organizeWindowController: OrganizeWindowController?
     private var settingsWindowController: SettingsWindowController?
+    private var weeklyReviewWindowController: WeeklyReviewWindowController?
     private var notificationManager: NotificationManager!
     private var hotKey: HotKey?
 
@@ -18,8 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Set up notifications early so the delegate is registered before launch
         // fully settles (this also handles a tap that launched the app).
-        notificationManager = NotificationManager(store: store, onOpenOrganize: { [weak self] in
-            self?.openOrganize()
+        notificationManager = NotificationManager(store: store, onOpenOrganize: { [weak self] showSummary in
+            self?.openOrganize(showSummary: showSummary)
+        }, onOpenWeeklyReview: { [weak self] in
+            self?.openWeeklyReview()
         })
         notificationManager.configure()
 
@@ -31,6 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store: store,
             onLeftClick: { [weak self] in self?.togglePopover() },
             onOpenOrganize: { [weak self] in self?.openOrganize() },
+            onOpenSummary: { [weak self] in self?.openOrganize(showSummary: true) },
+            onOpenWeeklyReview: { [weak self] in self?.openWeeklyReview() },
             onOpenSettings: { [weak self] in self?.openSettings() },
             onQuit: { NSApp.terminate(nil) })
 
@@ -56,12 +61,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popoverController.toggle(relativeTo: statusItemController.button)
     }
 
-    private func openOrganize() {
+    /// RFC-0001 T2: `showSummary` expands the 今日小结 card on present — used by the
+    /// evening review notification tap and the 右键「今日小结」manual entry.
+    private func openOrganize(showSummary: Bool = false) {
         store.rolloverIfNeeded()
         if organizeWindowController == nil {
-            organizeWindowController = OrganizeWindowController(store: store, onClose: {})
+            organizeWindowController = OrganizeWindowController(
+                store: store,
+                onClose: {},
+                onOpenWeeklyReview: { [weak self] in self?.openWeeklyReview() })
         }
-        organizeWindowController?.present()
+        organizeWindowController?.present(showSummary: showSummary)
+    }
+
+    private func openWeeklyReview() {
+        store.rolloverIfNeeded()
+        if weeklyReviewWindowController == nil {
+            weeklyReviewWindowController = WeeklyReviewWindowController(store: store)
+        }
+        weeklyReviewWindowController?.present()
     }
 
     private func openSettings() {

@@ -122,25 +122,32 @@ public final class Store: ObservableObject {
     // MARK: - Organize (整理)
 
     /// Move an inbox item into a quadrant, turning it into a task.
+    ///
+    /// Organizing is an explicit "progress" action, so the new task starts its
+    /// staleness clock at `now` (both `createdAt` and `lastProgressAt`).
     @discardableResult
     public func organize(inboxID: UUID, to quadrant: Quadrant, addToToday: Bool = false,
-                         estimatedMinutes: Int? = nil) -> TaskItem? {
+                         estimatedMinutes: Int? = nil, now: Date = Date()) -> TaskItem? {
         guard let idx = inbox.firstIndex(where: { $0.id == inboxID }) else { return nil }
         let item = inbox.remove(at: idx)
-        let task = TaskItem(text: item.text, quadrant: quadrant,
-                            isToday: addToToday, estimatedMinutes: estimatedMinutes)
+        let task = TaskItem(text: item.text, quadrant: quadrant, createdAt: now,
+                            isToday: addToToday, estimatedMinutes: estimatedMinutes,
+                            lastProgressAt: now)
         tasks.append(task)
         save()
         return task
     }
 
     /// Add a brand-new task directly inside a quadrant.
+    ///
+    /// A freshly placed task has not been progressed yet, so `lastProgressAt`
+    /// stays `nil` and the review layer measures staleness from `createdAt`.
     @discardableResult
     public func addTask(_ text: String, to quadrant: Quadrant, addToToday: Bool = false,
-                        estimatedMinutes: Int? = nil) -> TaskItem? {
+                        estimatedMinutes: Int? = nil, now: Date = Date()) -> TaskItem? {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return nil }
-        let task = TaskItem(text: t, quadrant: quadrant,
+        let task = TaskItem(text: t, quadrant: quadrant, createdAt: now,
                             isToday: addToToday, estimatedMinutes: estimatedMinutes)
         tasks.append(task)
         save()
@@ -155,6 +162,17 @@ public final class Store: ObservableObject {
         save()
     }
 
+    /// Record (or clear, with `nil` / 0) a task's actual minutes. Recording the
+    /// actual time is an explicit progress action, so it also refreshes
+    /// `lastProgressAt`.
+    public func setActual(_ id: UUID, minutes: Int?, now: Date = Date()) {
+        guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
+        let clamped = minutes.map { max(0, $0) }
+        tasks[i].actualMinutes = (clamped == 0) ? nil : clamped
+        tasks[i].lastProgressAt = now
+        save()
+    }
+
     /// Set (or clear, with `nil`) a task's one-shot reminder time.
     public func setRemind(_ id: UUID, at date: Date?) {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
@@ -162,15 +180,17 @@ public final class Store: ObservableObject {
         save()
     }
 
-    public func setToday(_ id: UUID, _ value: Bool) {
+    public func setToday(_ id: UUID, _ value: Bool, now: Date = Date()) {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[i].isToday = value
+        tasks[i].lastProgressAt = now
         save()
     }
 
-    public func toggleToday(_ id: UUID) {
+    public func toggleToday(_ id: UUID, now: Date = Date()) {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[i].isToday.toggle()
+        tasks[i].lastProgressAt = now
         save()
     }
 
@@ -178,6 +198,7 @@ public final class Store: ObservableObject {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[i].completed = value
         tasks[i].completedAt = value ? now : nil
+        tasks[i].lastProgressAt = now
         save()
     }
 
@@ -186,15 +207,31 @@ public final class Store: ObservableObject {
         setCompleted(id, !tasks[i].completed, now: now)
     }
 
-    public func changeQuadrant(_ id: UUID, to quadrant: Quadrant) {
+    public func changeQuadrant(_ id: UUID, to quadrant: Quadrant, now: Date = Date()) {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[i].quadrant = quadrant
+        tasks[i].lastProgressAt = now
         save()
     }
 
     public func deleteTask(_ id: UUID) {
         tasks.removeAll { $0.id == id }
         save()
+    }
+
+    /// Clear a whole quadrant in one gesture — the "做减法" action for the
+    /// Quadrant-IV junk drawer. Only ever removes tasks in `quadrant`; tasks in
+    /// every other quadrant are untouched. By default it leaves *completed*
+    /// tasks alone so they still flow into today's summary and the normal
+    /// archive at rollover; pass `includingCompleted: true` to wipe everything.
+    /// Returns how many tasks were removed.
+    @discardableResult
+    public func clearQuadrant(_ quadrant: Quadrant, includingCompleted: Bool = false) -> Int {
+        let before = tasks.count
+        tasks.removeAll { $0.quadrant == quadrant && (includingCompleted || !$0.completed) }
+        let removed = before - tasks.count
+        if removed > 0 { save() }
+        return removed
     }
 
     // MARK: - Settings

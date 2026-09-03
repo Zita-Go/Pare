@@ -8,8 +8,12 @@ import PareCore
 /// being a menu-bar-only accessory.
 final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
     private let onClose: () -> Void
+    /// RFC-0001 T2: shared with `OrganizeView` so an evening-`review` tap (or the
+    /// 右键「今日小结」入口) can force the 今日小结 card open on present.
+    private let summaryState = TodaySummaryState()
 
-    init(store: Store, onClose: @escaping () -> Void) {
+    init(store: Store, onClose: @escaping () -> Void,
+         onOpenWeeklyReview: @escaping () -> Void = {}) {
         self.onClose = onClose
 
         let window = NSWindow(
@@ -26,7 +30,7 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 780, height: 540)
 
-        let hosting = NSHostingController(rootView: OrganizeView(store: store))
+        let hosting = NSHostingController(rootView: OrganizeView(store: store, summaryState: summaryState, onOpenWeeklyReview: onOpenWeeklyReview))
         window.contentViewController = hosting
         window.center()
 
@@ -36,7 +40,11 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func present() {
+    /// Present the window. `showSummary` expands the 今日小结 card (used by the
+    /// evening-`review` notification and the manual「今日小结」entry); a normal
+    /// open leaves the card in whatever state the user last left it.
+    func present(showSummary: Bool = false) {
+        if showSummary { summaryState.expanded = true }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)

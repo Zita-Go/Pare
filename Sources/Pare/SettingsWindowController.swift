@@ -75,7 +75,11 @@ private struct SettingsView: View {
                 permissionCard
                 planCard
                 reviewCard
+                weeklyCard
                 pileupCard
+                focusStalenessCard
+                overloadCard
+                quadrantCleanupCard
 
                 Text("单个任务的定时提醒：在「整理」窗口点任务右侧的 🔔 设置。到点会单独提醒你，可选「完成 / 稍后」。")
                     .font(Theme.font(11))
@@ -149,6 +153,36 @@ private struct SettingsView: View {
         }
     }
 
+    // RFC-0001 T3: 每周回顾提醒 —— 周日晚提醒点开「本周回顾」，可开关、改星期与时间。
+    private var weeklyCard: some View {
+        card {
+            sectionToggle("每周回顾提醒", isOn: settingsBinding(\.weeklyReviewEnabled))
+            Text("每周挑一个晚上回看整周：完成了多少、集中在哪个象限、什么总被拖，可一键复制成 Markdown。")
+                .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+            if store.settings.weeklyReviewEnabled {
+                weekdayRow
+                timeRow(weeklyTime)
+            }
+        }
+    }
+
+    private var weekdayRow: some View {
+        HStack {
+            Text("每周").font(Theme.font(13)).foregroundColor(Theme.textDim)
+            Spacer()
+            Picker("", selection: settingsBinding(\.weeklyReviewWeekday)) {
+                ForEach(Self.weekdayOptions, id: \.value) { opt in
+                    Text(opt.label).tag(opt.value)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .tint(Theme.amber)
+            .fixedSize()
+        }
+    }
+
     private var pileupCard: some View {
         card {
             sectionToggle("待整理堆积提醒", isOn: settingsBinding(\.inboxPileupEnabled))
@@ -157,6 +191,61 @@ private struct SettingsView: View {
             if store.settings.inboxPileupEnabled {
                 Stepper(value: settingsBinding(\.inboxPileupThreshold), in: 3...50) {
                     Text("超过 \(store.settings.inboxPileupThreshold) 条时提醒")
+                        .font(Theme.font(13))
+                        .foregroundColor(Theme.text)
+                }
+            }
+        }
+    }
+
+    // RFC-0001 T4: 三组「主动但克制」的整理纪律信号，均可在此关闭 / 调阈值。
+
+    private var focusStalenessCard: some View {
+        card {
+            sectionToggle("象限二停滞提醒", isOn: settingsBinding(\.focusStalenessEnabled))
+            Text("「重要 · 不紧急」里的事搁太久，就在早晨规划提醒里带一句，别让深度的事被一直拖着。")
+                .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+            if store.settings.focusStalenessEnabled {
+                Stepper(value: settingsBinding(\.focusStalenessDays), in: 1...30) {
+                    Text("超过 \(store.settings.focusStalenessDays) 天没推进时提醒")
+                        .font(Theme.font(13))
+                        .foregroundColor(Theme.text)
+                }
+            }
+        }
+    }
+
+    private var overloadCard: some View {
+        card {
+            sectionToggle("今日超载提示", isOn: settingsBinding(\.todayOverloadEnabled))
+            Text("今天挑的事太多或排得太满时，在整理窗顶部轻声提示一句 —— 只提示，不阻止你继续添加。")
+                .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+            if store.settings.todayOverloadEnabled {
+                Stepper(value: settingsBinding(\.todayMaxCount), in: 1...20) {
+                    Text("超过 \(store.settings.todayMaxCount) 件时提示")
+                        .font(Theme.font(13))
+                        .foregroundColor(Theme.text)
+                }
+                Stepper(value: settingsBinding(\.todayCapacityMinutes), in: 30...600, step: 30) {
+                    Text("或预估超过 \(DurationLabel.short(store.settings.todayCapacityMinutes)) 时提示")
+                        .font(Theme.font(13))
+                        .foregroundColor(Theme.text)
+                }
+            }
+        }
+    }
+
+    private var quadrantCleanupCard: some View {
+        card {
+            sectionToggle("象限四清理引导", isOn: settingsBinding(\.quadrantCleanupEnabled))
+            Text("「不重要 · 不紧急」积压时，在那一格顶部给一句清理引导，并提供便捷清空。")
+                .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+            if store.settings.quadrantCleanupEnabled {
+                Stepper(value: settingsBinding(\.quadrantCleanupThreshold), in: 1...30) {
+                    Text("积到 \(store.settings.quadrantCleanupThreshold) 件时引导")
                         .font(Theme.font(13))
                         .foregroundColor(Theme.text)
                 }
@@ -240,6 +329,25 @@ private struct SettingsView: View {
                 store.updateSettings(s)
             })
     }
+
+    private var weeklyTime: Binding<Date> {
+        Binding(
+            get: { Self.time(hour: store.settings.weeklyReviewHour, minute: store.settings.weeklyReviewMinute) },
+            set: { d in
+                let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+                var s = store.settings
+                s.weeklyReviewHour = c.hour ?? 20
+                s.weeklyReviewMinute = c.minute ?? 0
+                store.updateSettings(s)
+            })
+    }
+
+    /// Weekday choices for the weekly review, Monday-first for a natural-week
+    /// feel, but tagged with `Calendar`'s convention (1 = Sunday … 7 = Saturday)
+    /// so the selection maps straight onto `Settings.weeklyReviewWeekday`.
+    private static let weekdayOptions: [(label: String, value: Int)] = [
+        ("周一", 2), ("周二", 3), ("周三", 4), ("周四", 5), ("周五", 6), ("周六", 7), ("周日", 1)
+    ]
 
     private static func time(hour: Int, minute: Int) -> Date {
         Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) ?? Date()

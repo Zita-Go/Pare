@@ -12,3 +12,6 @@ dist/
 .swiftpm/
 *.xcuserstate
 *.xcuserdatad
+
+# RFC 设计文档 — 按用户要求不纳入 git（本地仍由 ncoder rfc 管理）
+docs/rfcs/

@@ -37,8 +37,26 @@ enum Theme {
     }
 
     // MARK: Type — PingFang SC for clean CJK + Latin mixed setting.
+    /// A themed font at `size`.
+    /// RFC-0001: 尊重系统动态字号 —— 用 `relativeTo:` 把自定义字体锚在一个语义文本
+    /// 样式上，让它随「系统设置 → 辅助功能 → 显示 → 文字大小」缩放，而不是钉死像素。
+    /// `size` 映射到最接近的文本样式，大字号下整体比例仍协调、不破版。
     static func font(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        Font.custom("PingFang SC", size: size).weight(weight)
+        Font.custom("PingFang SC", size: size, relativeTo: textStyle(for: size)).weight(weight)
+    }
+
+    /// 把像素字号映射到最接近的语义文本样式，作为动态缩放的锚点。
+    private static func textStyle(for size: CGFloat) -> Font.TextStyle {
+        switch size {
+        case ..<11.5: return .caption2
+        case ..<12.5: return .caption
+        case ..<13.5: return .footnote
+        case ..<15.5: return .subheadline
+        case ..<17.5: return .body
+        case ..<20.5: return .title3
+        case ..<24.5: return .title2
+        default:      return .title
+        }
     }
 }
 

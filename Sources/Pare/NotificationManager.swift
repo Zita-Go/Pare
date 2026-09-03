@@ -15,26 +15,39 @@ import PareCore
 final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     private let store: Store
-    private let onOpenOrganize: () -> Void
+    /// RFC-0001 T2: `Bool` = 是否展开今日小结（晚间 `daily.review` 通知点击时为 true）。
+    private let onOpenOrganize: (Bool) -> Void
+    /// RFC-0001 T3: opens the 本周回顾 window (tapping the weekly.review reminder).
+    private let onOpenWeeklyReview: () -> Void
     private let center = UNUserNotificationCenter.current()
     private var cancellable: AnyCancellable?
     private var pendingReschedule: DispatchWorkItem?
 
     // Category / action identifiers.
-    private static let taskCategory  = "PARE_TASK"
-    private static let dailyCategory = "PARE_DAILY"
+    private static let taskCategory   = "PARE_TASK"
+    private static let dailyCategory  = "PARE_DAILY"
+    private static let weeklyCategory = "PARE_WEEKLY"
     private static let actionComplete = "PARE_COMPLETE"
     private static let actionSnooze15 = "PARE_SNOOZE_15"
     private static let actionSnooze60 = "PARE_SNOOZE_60"
     private static let actionOpen     = "PARE_OPEN"
+    private static let actionOpenWeekly = "PARE_OPEN_WEEKLY"
     private static let testIdentifier = "pare.test"
+    /// The stable identifier of the weekly-review reminder (see `Reminders`).
+    private static let weeklyIdentifier = "weekly.review"
+    /// RFC-0001 T2: the evening review reminder's identifier — tapping it opens
+    /// 整理 with the 今日小结 card expanded.
+    private static let reviewIdentifier = "daily.review"
 
     private static let logger = Logger(subsystem: "com.zitago.Pare", category: "notify")
     private static func diag(_ message: String) { logger.notice("\(message, privacy: .public)") }
 
-    init(store: Store, onOpenOrganize: @escaping () -> Void) {
+    init(store: Store,
+         onOpenOrganize: @escaping (Bool) -> Void,
+         onOpenWeeklyReview: @escaping () -> Void) {
         self.store = store
         self.onOpenOrganize = onOpenOrganize
+        self.onOpenWeeklyReview = onOpenWeeklyReview
         super.init()
     }
 
@@ -70,7 +83,14 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let daily = UNNotificationCategory(identifier: Self.dailyCategory,
                                            actions: [open],
                                            intentIdentifiers: [], options: [])
-        center.setNotificationCategories([task, daily])
+
+        // RFC-0001 T3: the weekly review opens its own window, so it gets its own
+        // action label ("打开回顾") rather than reusing the daily "打开整理".
+        let openWeekly = UNNotificationAction(identifier: Self.actionOpenWeekly, title: "打开回顾", options: [.foreground])
+        let weekly = UNNotificationCategory(identifier: Self.weeklyCategory,
+                                            actions: [openWeekly],
+                                            intentIdentifiers: [], options: [])
+        center.setNotificationCategories([task, daily, weekly])
     }
 
     // MARK: - Scheduling
@@ -102,6 +122,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                 if let taskID = r.taskID {
                     content.categoryIdentifier = Self.taskCategory
                     content.userInfo = ["taskID": taskID.uuidString]
+                } else if case .weeklyReview = r.kind {
+                    content.categoryIdentifier = Self.weeklyCategory
                 } else {
                     content.categoryIdentifier = Self.dailyCategory
                 }
@@ -116,7 +138,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private func isOurs(_ id: String) -> Bool {
-        id == "daily.plan" || id == "daily.review" || id.hasPrefix("task.") || id == Self.testIdentifier
+        id == "daily.plan" || id == Self.reviewIdentifier || id == Self.weeklyIdentifier
+            || id.hasPrefix("task.") || id == Self.testIdentifier
     }
 
     // MARK: - Settings-panel helpers
@@ -193,6 +216,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo
+        let requestID = response.notification.request.identifier
         let taskID = (info["taskID"] as? String).flatMap { UUID(uuidString: $0) }
         let action = response.actionIdentifier
 
@@ -211,8 +235,15 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                     self.store.setRemind(id, at: Date().addingTimeInterval(60 * 60))
                     self.reschedule()
                 }
-            case Self.actionOpen, UNNotificationDefaultActionIdentifier:
-                self.onOpenOrganize()
+            case Self.actionOpen, Self.actionOpenWeekly, UNNotificationDefaultActionIdentifier:
+                // The weekly review has its own window; everything else opens 整理.
+                if requestID == Self.weeklyIdentifier {
+                    self.onOpenWeeklyReview()
+                } else {
+                    // RFC-0001 T2: the evening review tap opens 整理 *and* expands
+                    // the 今日小结 card; other opens leave the card as the user left it.
+                    self.onOpenOrganize(requestID == Self.reviewIdentifier)
+                }
             default:
                 break
             }

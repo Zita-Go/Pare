@@ -9,6 +9,7 @@ public struct PlannedReminder: Equatable {
     public enum Kind: Equatable {
         case plan          // morning "整理一下今天"
         case review        // evening "收尾"
+        case weeklyReview  // Sunday-evening "本周回顾"
         case task(UUID)    // a single task's one-shot reminder
     }
 
@@ -49,6 +50,17 @@ extension Store {
         return calendar.date(byAdding: .day, value: 1, to: candidate) ?? candidate.addingTimeInterval(86_400)
     }
 
+    /// The next `weekday`/`hour`/`minute` strictly after `now`. `weekday` uses
+    /// `Calendar`'s convention (1 = Sunday … 7 = Saturday).
+    public func nextWeeklyOccurrence(weekday: Int, hour: Int, minute: Int, after now: Date) -> Date {
+        var comps = DateComponents()
+        comps.weekday = weekday
+        comps.hour = hour
+        comps.minute = minute
+        comps.second = 0
+        return calendar.nextDate(after: now, matching: comps, matchingPolicy: .nextTime) ?? now
+    }
+
     /// Everything that should currently be scheduled, given `settings` + tasks.
     ///
     /// The app layer calls this whenever data changes; because the content is
@@ -61,11 +73,17 @@ extension Store {
 
         // Morning: plan the day.
         if settings.planReminderEnabled {
-            let body: String
+            var body: String
             if pileup {
                 body = "待整理已堆了 \(inbox) 条 · 花几分钟清一清，挑出今天要做的几件事。"
             } else {
                 body = "花几分钟把想法归位，挑出今天要做的几件事。"
+            }
+            // Gently mention Quadrant-II items that have stalled — no new
+            // notification, just an extra sentence on the existing nudge.
+            let stalled = stalledFocusTasks(now: now)
+            if !stalled.isEmpty {
+                body += "（象限二有 \(stalled.count) 件 ≥\(settings.focusStalenessDays) 天没推进）"
             }
             result.append(PlannedReminder(
                 kind: .plan,
@@ -99,6 +117,21 @@ extension Store {
                 fireDate: nextOccurrence(hour: settings.reviewHour, minute: settings.reviewMinute, after: now),
                 title: title,
                 body: body))
+        }
+
+        // Weekly: a Sunday-evening look back over the whole week. The body stays
+        // generic (no counts) because it fires days from now — the numbers live
+        // on the review panel itself.
+        if settings.weeklyReviewEnabled {
+            result.append(PlannedReminder(
+                kind: .weeklyReview,
+                identifier: "weekly.review",
+                fireDate: nextWeeklyOccurrence(weekday: settings.weeklyReviewWeekday,
+                                               hour: settings.weeklyReviewHour,
+                                               minute: settings.weeklyReviewMinute,
+                                               after: now),
+                title: "本周回顾",
+                body: "点开看看这周做成了哪些事，几分钟收束一整周。"))
         }
 
         // Per-task: only future, still-incomplete reminders.

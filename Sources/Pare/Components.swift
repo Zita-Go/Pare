@@ -19,6 +19,8 @@ enum PareFormat {
 /// ring burst — the only celebratory animation in the app, exactly once.
 struct TaskCheckbox: View {
     let completed: Bool
+    /// RFC-0001: 让 VoiceOver 读出这个勾选控件属于哪条任务。默认空串以兼容旧调用点。
+    var label: String = ""
     let onToggle: () -> Void
 
     @State private var ringScale: CGFloat = 1
@@ -55,6 +57,14 @@ struct TaskCheckbox: View {
         }
         .buttonStyle(.plain)
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: completed)
+        .accessibilityLabel(a11yLabel)
+        .accessibilityAddTraits(completed ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint(completed ? "连按取消完成" : "连按标记完成")
+    }
+
+    private var a11yLabel: String {
+        let state = completed ? "已完成" : "未完成"
+        return label.isEmpty ? state : "\(state)：\(label)"
     }
 
     private func fire() {
@@ -95,7 +105,7 @@ struct DurationPill: View {
             HStack(spacing: 3) {
                 Image(systemName: "clock").font(.system(size: 10))
                 if let m = minutes {
-                    Text(DurationLabel.short(m)).font(Theme.font(11, weight: .medium))
+                    Text(DurationLabel.short(m)).font(Theme.font(11, weight: .medium)).lineLimit(1)
                 }
             }
             .foregroundColor(minutes == nil ? Theme.textDim : Theme.amber)
@@ -114,6 +124,8 @@ struct DurationPill: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("预估时长")
+        .accessibilityLabel("预估时长")
+        .accessibilityValue(minutes.map { DurationLabel.short($0) } ?? "未设置")
     }
 }
 
@@ -178,7 +190,7 @@ struct ReminderPill: View {
             HStack(spacing: 3) {
                 Image(systemName: date == nil ? "bell" : "bell.fill").font(.system(size: 10))
                 if let d = date {
-                    Text(ReminderFormat.short(d)).font(Theme.font(11, weight: .medium))
+                    Text(ReminderFormat.short(d)).font(Theme.font(11, weight: .medium)).lineLimit(1)
                 }
             }
             .foregroundColor(date == nil ? Theme.textDim : Theme.amber)
@@ -197,6 +209,8 @@ struct ReminderPill: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("提醒时间")
+        .accessibilityLabel("提醒时间")
+        .accessibilityValue(date.map { ReminderFormat.short($0) } ?? "未设置")
     }
 }
 
@@ -217,5 +231,8 @@ struct ProgressBar: View {
             }
         }
         .frame(height: height)
+        .accessibilityElement()
+        .accessibilityLabel("今日进度")
+        .accessibilityValue("\(Int((max(0, min(1, fraction)) * 100).rounded()))%")
     }
 }

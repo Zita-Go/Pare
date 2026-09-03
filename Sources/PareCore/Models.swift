@@ -54,6 +54,17 @@ public struct TaskItem: Identifiable, Codable, Hashable {
     /// Optional one-shot reminder time for this task. `nil` means "no reminder".
     /// Optional so old store files (without this key) decode cleanly.
     public var remindAt: Date?
+    /// Actual effort in minutes, recorded on completion. `nil` means "not
+    /// recorded" — the review layer leaves the estimate-vs-actual comparison
+    /// blank rather than showing a misleading number. Optional so old store
+    /// files (without this key) decode cleanly.
+    public var actualMinutes: Int?
+    /// The last time this task was explicitly progressed (organized, flagged
+    /// for today, moved between quadrants, completed, or had its actual time
+    /// recorded). `nil` means "never progressed" — the review layer falls back
+    /// to `createdAt`. Optional so old store files (without this key) decode
+    /// cleanly.
+    public var lastProgressAt: Date?
 
     public init(id: UUID = UUID(),
                 text: String,
@@ -63,7 +74,9 @@ public struct TaskItem: Identifiable, Codable, Hashable {
                 completed: Bool = false,
                 completedAt: Date? = nil,
                 estimatedMinutes: Int? = nil,
-                remindAt: Date? = nil) {
+                remindAt: Date? = nil,
+                actualMinutes: Int? = nil,
+                lastProgressAt: Date? = nil) {
         self.id = id
         self.text = text
         self.quadrant = quadrant
@@ -73,6 +86,8 @@ public struct TaskItem: Identifiable, Codable, Hashable {
         self.completedAt = completedAt
         self.estimatedMinutes = estimatedMinutes
         self.remindAt = remindAt
+        self.actualMinutes = actualMinutes
+        self.lastProgressAt = lastProgressAt
     }
 }
 
