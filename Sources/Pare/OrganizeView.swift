@@ -24,17 +24,15 @@ struct OrganizeView: View {
     /// RFC-0001: 整理窗全键盘归位的当前"光标" —— 选中的待整理项或象限任务。
     @StateObject private var focus = OrganizeFocus()
     @State private var workspace: WorkspaceMode = .matrix
-    @State private var inboxManuallyExpanded = false
 
     var body: some View {
         HStack(spacing: 0) {
             if inboxVisible {
-                InboxColumn(store: store, focus: focus,
-                            onCollapse: { inboxManuallyExpanded = false })
+                InboxColumn(store: store, focus: focus)
                     .frame(width: 288)
                     .transition(.move(edge: .leading).combined(with: .opacity))
             } else {
-                CollapsedInboxRail(store: store) { inboxManuallyExpanded = true }
+                CollapsedInboxRail(store: store)
                     .frame(width: 64)
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
@@ -62,7 +60,7 @@ struct OrganizeView: View {
         .animation(.easeOut(duration: 0.2), value: inboxVisible)
     }
 
-    private var inboxVisible: Bool { !store.inbox.isEmpty || inboxManuallyExpanded }
+    private var inboxVisible: Bool { !store.inbox.isEmpty }
 
     private var shouldShowSummary: Bool {
         summaryState.expanded
@@ -338,31 +336,22 @@ private struct WorkspaceSwitcher: View {
 
 private struct CollapsedInboxRail: View {
     @ObservedObject var store: Store
-    let onExpand: () -> Void
 
     var body: some View {
-        Button(action: onExpand) {
-            VStack(spacing: 8) {
-                Image(systemName: "tray")
-                    .font(.system(size: 16, weight: .medium))
-                Text("待整理")
-                    .font(Theme.font(10, weight: .semibold))
-                    .fixedSize()
-                    .rotationEffect(.degrees(-90))
-                    .frame(height: 48)
-                Text("\(store.inboxCount)")
-                    .font(Theme.font(10, weight: .bold))
-                    .foregroundColor(Theme.amber)
-            }
-            .foregroundColor(Theme.textDim)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.top, 22)
-            .contentShape(Rectangle())
+        VStack(spacing: 10) {
+            Image(systemName: "tray")
+                .font(.system(size: 16, weight: .medium))
+            Text("\(store.inboxCount)")
+                .font(Theme.font(11, weight: .bold))
+                .foregroundColor(Theme.amber)
         }
-        .buttonStyle(.plain)
+        .foregroundColor(Theme.textDim)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 22)
         .background(Color.black.opacity(0.12))
-        .help("展开待整理")
-        .accessibilityLabel("展开待整理，当前 \(store.inboxCount) 条")
+        .help("暂无待整理")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("待整理为空")
     }
 }
 
@@ -371,7 +360,6 @@ private struct CollapsedInboxRail: View {
 private struct InboxColumn: View {
     @ObservedObject var store: Store
     @ObservedObject var focus: OrganizeFocus
-    let onCollapse: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -388,16 +376,6 @@ private struct InboxColumn: View {
                     .background(Capsule().fill(Theme.amberSoft))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("待整理 \(store.inboxCount) 条")
-                if store.inbox.isEmpty {
-                    Button(action: onCollapse) {
-                        Image(systemName: "sidebar.left")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Theme.textDim)
-                    }
-                    .buttonStyle(.plain)
-                    .help("收起空的待整理栏")
-                    .accessibilityLabel("收起待整理栏")
-                }
             }
             Text("拖进右边的象限，或选中后按 1–4 归位")
                 .font(Theme.font(11))

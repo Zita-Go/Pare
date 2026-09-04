@@ -24,10 +24,14 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(organize.contains("想法与历史"))
         XCTAssertTrue(organize.contains("CollapsedInboxRail"))
         XCTAssertTrue(organize.contains("quadrantRowHeights"))
+        XCTAssertFalse(organize.contains("inboxManuallyExpanded"))
+        XCTAssertFalse(organize.contains("rotationEffect(.degrees(-90))"))
         XCTAssertFalse(organize.contains("Text(quadrant.hint)"),
                        "行动提示应只保留在 help/VoiceOver，不再常驻象限标题")
         XCTAssertTrue(planning.contains("编辑任务详情"))
         XCTAssertTrue(planning.contains("放弃本次专注计时"))
+        XCTAssertFalse(planning.contains("showsLabel || isActive"),
+                       "紧凑计时按钮不应因运行中而强行展开文字")
         XCTAssertTrue(planning.contains("已逾期"))
         XCTAssertTrue(planning.contains("安排下次回看"))
         let settings = try source("Sources/Pare/SettingsWindowController.swift")

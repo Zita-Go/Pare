@@ -213,22 +213,24 @@ struct FocusTimerButton: View {
                     HStack(spacing: 4) {
                         Image(systemName: isActive ? "stop.fill" : "play.fill")
                             .font(.system(size: 9, weight: .bold))
-                        if showsLabel || isActive {
+                        if showsLabel {
                             Text(isActive ? DurationLabel.short(max(1, store.timerElapsedMinutes(now: context.date))) : "专注")
                                 .font(Theme.font(11, weight: .medium))
                         }
                     }
                     .foregroundColor(isActive ? Theme.bg : Theme.amber)
-                    .padding(.horizontal, showsLabel || isActive ? 8 : 5).padding(.vertical, 4)
+                    .padding(.horizontal, showsLabel ? 8 : 6).padding(.vertical, 4)
                     .background(Capsule().fill(isActive ? Theme.amber : Theme.amberSoft))
                     .overlay(Capsule().stroke(Theme.amber.opacity(0.45), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .disabled(task.completed)
-                .help(isActive ? "停止并记录实际用时" : "开始专注计时")
+                .help(isActive
+                      ? (showsLabel ? "停止并记录实际用时" : "停止并记录实际用时；右键可放弃")
+                      : "开始专注计时")
                 .accessibilityLabel(isActive ? "停止专注计时" : "开始专注计时")
             }
-            if isActive {
+            if isActive, showsLabel {
                 Button { store.cancelTimer() } label: {
                     Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
                         .foregroundColor(Theme.textDim).frame(width: 18, height: 18)
@@ -237,6 +239,11 @@ struct FocusTimerButton: View {
                 .buttonStyle(.plain)
                 .help("放弃本次计时，不记录用时")
                 .accessibilityLabel("放弃本次专注计时")
+            }
+        }
+        .contextMenu {
+            if isActive {
+                Button("放弃本次计时", role: .destructive) { store.cancelTimer() }
             }
         }
         .popover(isPresented: $askComplete, arrowEdge: .bottom) {
