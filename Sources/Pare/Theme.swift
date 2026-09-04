@@ -128,13 +128,13 @@ struct Panel: ViewModifier {
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .stroke(strokeColor, lineWidth: highlighted ? 1.6 : 1)
             )
-            .shadow(color: Color.black.opacity(highlighted ? 0.28 : 0.16),
-                    radius: highlighted ? 12 : 7, x: 0, y: highlighted ? 5 : 3)
+            .shadow(color: Color.black.opacity(highlighted ? 0.24 : 0.10),
+                    radius: highlighted ? 12 : 6, x: 0, y: highlighted ? 5 : 2)
     }
 
     private var strokeColor: Color {
         if highlighted { return (accent ?? Theme.amber).opacity(0.9) }
-        return Theme.border.opacity(0.9)
+        return Theme.border.opacity(0.52)
     }
 }
 

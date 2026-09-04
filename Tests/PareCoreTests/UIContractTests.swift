@@ -22,6 +22,10 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(organize.contains("四象限"))
         XCTAssertTrue(organize.contains("今日计划"))
         XCTAssertTrue(organize.contains("想法与历史"))
+        XCTAssertTrue(organize.contains("CollapsedInboxRail"))
+        XCTAssertTrue(organize.contains("quadrantRowHeights"))
+        XCTAssertFalse(organize.contains("Text(quadrant.hint)"),
+                       "行动提示应只保留在 help/VoiceOver，不再常驻象限标题")
         XCTAssertTrue(planning.contains("编辑任务详情"))
         XCTAssertTrue(planning.contains("放弃本次专注计时"))
         XCTAssertTrue(planning.contains("已逾期"))

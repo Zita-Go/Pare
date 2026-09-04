@@ -263,7 +263,7 @@ private struct TodayRow: View {
                     }
                     .foregroundColor(Theme.amber.opacity(0.85))
                 }
-                if !task.completed {
+                if !task.completed, hovering || store.activeTimer?.taskID == task.id {
                     FocusTimerButton(store: store, task: task)
                 }
                 TaskDetailsButton(store: store, task: task)

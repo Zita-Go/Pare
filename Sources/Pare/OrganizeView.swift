@@ -24,23 +24,34 @@ struct OrganizeView: View {
     /// RFC-0001: 整理窗全键盘归位的当前"光标" —— 选中的待整理项或象限任务。
     @StateObject private var focus = OrganizeFocus()
     @State private var workspace: WorkspaceMode = .matrix
+    @State private var inboxManuallyExpanded = false
 
     var body: some View {
         HStack(spacing: 0) {
-            InboxColumn(store: store, focus: focus)
-                .frame(width: 288)
+            if inboxVisible {
+                InboxColumn(store: store, focus: focus,
+                            onCollapse: { inboxManuallyExpanded = false })
+                    .frame(width: 288)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            } else {
+                CollapsedInboxRail(store: store) { inboxManuallyExpanded = true }
+                    .frame(width: 64)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            }
             Rectangle().fill(Theme.hairline).frame(width: 1)
             VStack(spacing: 14) {
-                // RFC-0001 T2: 顶部一张可展开 / 收起的「今日小结」收束卡片。
-                TodaySummaryCard(store: store, expanded: $summaryState.expanded)
                 topBar
+                if shouldShowSummary {
+                    TodaySummaryCard(store: store, expanded: $summaryState.expanded)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 workspaceContent
             }
             .padding(18)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 880, minHeight: 580, alignment: .top)
-        .padding(.top, 28)
+        .padding(.top, 10)
         .background(FrostBackground(tint: 0.66))
         // RFC-0001: 透明的按键捕获层，成为第一响应者后处理 ↑↓ / 1–4 / 空格 / esc。
         .background(KeyCaptureView { handleKey($0) })
@@ -48,37 +59,34 @@ struct OrganizeView: View {
             UndoToast(store: store).padding(22)
         }
         .animation(.easeOut(duration: 0.18), value: store.undoMessage)
+        .animation(.easeOut(duration: 0.2), value: inboxVisible)
+    }
+
+    private var inboxVisible: Bool { !store.inbox.isEmpty || inboxManuallyExpanded }
+
+    private var shouldShowSummary: Bool {
+        summaryState.expanded
+            || (workspace == .today && Calendar.current.component(.hour, from: Date()) >= 17)
     }
 
     private var topBar: some View {
         VStack(spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("整理")
-                    .font(Theme.font(22, weight: .semibold))
-                    .foregroundColor(Theme.text)
-                Text(PareFormat.today())
-                    .font(Theme.font(13))
-                    .foregroundColor(Theme.textDim)
-                    .lineLimit(1)
-                Spacer()
-                weeklyReviewButton
-                // RFC-0001: 有今日任务时才用琥珀金强调进度数据（今天 X/Y · 约 Zm）；
-                // 没排任务时这行只是引导语，退成低对比暗灰小字，不与标题 / 本周回顾抢戏。
-                Text(progressString)
-                    .font(Theme.font(store.todayTotal > 0 ? 14 : 12, weight: store.todayTotal > 0 ? .medium : .regular))
-                    .foregroundColor(store.todayTotal > 0 ? Theme.amber : Theme.textDim)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            HStack {
-                Picker("工作区", selection: $workspace) {
-                    ForEach(WorkspaceMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 10) {
+                    topTitle
+                    WorkspaceSwitcher(selection: $workspace).frame(width: 270)
+                    Spacer(minLength: 8)
+                    topActions
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 320)
-                Spacer()
-                if workspace == .matrix { keyboardHint }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        topTitle
+                        Spacer(minLength: 8)
+                        topActions
+                    }
+                    WorkspaceSwitcher(selection: $workspace)
+                        .frame(maxWidth: 300)
+                }
             }
             if store.todayTotal > 0 {
                 ProgressBar(fraction: Double(store.todayCompleted) / Double(max(1, store.todayTotal)))
@@ -88,6 +96,31 @@ struct OrganizeView: View {
             if let overload = store.todayOverload() {
                 overloadHint(overload)
             }
+        }
+    }
+
+    private var topTitle: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 9) {
+            Text("整理")
+                .font(Theme.font(22, weight: .semibold))
+                .foregroundColor(Theme.text)
+            Text(PareFormat.today())
+                .font(Theme.font(13))
+                .foregroundColor(Theme.textDim)
+                .lineLimit(1)
+        }
+        .fixedSize()
+    }
+
+    private var topActions: some View {
+        HStack(spacing: 10) {
+            weeklyReviewButton
+            Text(progressString)
+                .font(Theme.font(store.todayTotal > 0 ? 14 : 12,
+                                 weight: store.todayTotal > 0 ? .medium : .regular))
+                .foregroundColor(store.todayTotal > 0 ? Theme.amber : Theme.textDim)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 
@@ -106,6 +139,11 @@ struct OrganizeView: View {
             Text(overload.message)
                 .font(Theme.font(11))
                 .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button("去精简") { workspace = .today }
+                .buttonStyle(.plain)
+                .font(Theme.font(11, weight: .semibold))
+                .foregroundColor(Theme.amber)
         }
         .foregroundColor(Theme.amber.opacity(0.9))
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -150,22 +188,50 @@ struct OrganizeView: View {
     }
 
     private var quadrantGrid: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                QuadrantCard(store: store, quadrant: .importantUrgent, focus: focus)
-                QuadrantCard(store: store, quadrant: .importantNotUrgent, focus: focus)
-            }
-            HStack(spacing: 12) {
-                QuadrantCard(store: store, quadrant: .urgentNotImportant, focus: focus)
-                QuadrantCard(store: store, quadrant: .neither, focus: focus)
+        GeometryReader { geo in
+            let heights = quadrantRowHeights(total: geo.size.height)
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    QuadrantCard(store: store, quadrant: .importantUrgent, focus: focus)
+                    QuadrantCard(store: store, quadrant: .importantNotUrgent, focus: focus)
+                }
+                .frame(height: heights.top)
+                HStack(spacing: 12) {
+                    QuadrantCard(store: store, quadrant: .urgentNotImportant, focus: focus)
+                    QuadrantCard(store: store, quadrant: .neither, focus: focus)
+                }
+                .frame(height: heights.bottom)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func quadrantRowHeights(total: CGFloat) -> (top: CGFloat, bottom: CGFloat) {
+        let available = max(240, total - 12)
+        let topCount = store.tasks(in: .importantUrgent).filter { !$0.completed }.count
+            + store.tasks(in: .importantNotUrgent).filter { !$0.completed }.count
+        let bottomCount = store.tasks(in: .urgentNotImportant).filter { !$0.completed }.count
+            + store.tasks(in: .neither).filter { !$0.completed }.count
+        if bottomCount == 0, topCount > 0 {
+            let bottom = min(120, available * 0.28)
+            return (available - bottom, bottom)
+        }
+        if topCount == 0, bottomCount > 0 {
+            let top = min(120, available * 0.28)
+            return (top, available - top)
+        }
+        if topCount >= max(2, bottomCount * 2) {
+            return (available * 0.64, available * 0.36)
+        }
+        if bottomCount >= max(2, topCount * 2) {
+            return (available * 0.36, available * 0.64)
+        }
+        return (available * 0.5, available * 0.5)
+    }
+
     private var progressString: String {
         if store.todayTotal > 0 {
-            var s = "今天 \(store.todayCompleted) / \(store.todayTotal)"
+            var s = "完成 \(store.todayCompleted) / \(store.todayTotal)"
             if store.todayEstimatedMinutes > 0 {
                 s += " · 约 " + DurationLabel.short(store.todayEstimatedMinutes)
             }
@@ -242,11 +308,70 @@ struct OrganizeView: View {
     }
 }
 
+private struct WorkspaceSwitcher: View {
+    @Binding var selection: WorkspaceMode
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(WorkspaceMode.allCases, id: \.self) { mode in
+                Button { selection = mode } label: {
+                    Text(mode.rawValue)
+                        .font(Theme.font(12, weight: .semibold))
+                        .foregroundColor(selection == mode ? Theme.bg : Theme.textDim)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(selection == mode ? Theme.amber : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == mode ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Theme.panel.opacity(0.65)))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border.opacity(0.45), lineWidth: 1))
+        .help("四象限支持 ↑↓ 选择、1–4 归位、空格完成、esc 取消")
+    }
+}
+
+private struct CollapsedInboxRail: View {
+    @ObservedObject var store: Store
+    let onExpand: () -> Void
+
+    var body: some View {
+        Button(action: onExpand) {
+            VStack(spacing: 8) {
+                Image(systemName: "tray")
+                    .font(.system(size: 16, weight: .medium))
+                Text("待整理")
+                    .font(Theme.font(10, weight: .semibold))
+                    .fixedSize()
+                    .rotationEffect(.degrees(-90))
+                    .frame(height: 48)
+                Text("\(store.inboxCount)")
+                    .font(Theme.font(10, weight: .bold))
+                    .foregroundColor(Theme.amber)
+            }
+            .foregroundColor(Theme.textDim)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.top, 22)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Color.black.opacity(0.12))
+        .help("展开待整理")
+        .accessibilityLabel("展开待整理，当前 \(store.inboxCount) 条")
+    }
+}
+
 // MARK: - Inbox column
 
 private struct InboxColumn: View {
     @ObservedObject var store: Store
     @ObservedObject var focus: OrganizeFocus
+    let onCollapse: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -263,6 +388,16 @@ private struct InboxColumn: View {
                     .background(Capsule().fill(Theme.amberSoft))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("待整理 \(store.inboxCount) 条")
+                if store.inbox.isEmpty {
+                    Button(action: onCollapse) {
+                        Image(systemName: "sidebar.left")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Theme.textDim)
+                    }
+                    .buttonStyle(.plain)
+                    .help("收起空的待整理栏")
+                    .accessibilityLabel("收起待整理栏")
+                }
             }
             Text("拖进右边的象限，或选中后按 1–4 归位")
                 .font(Theme.font(11))
@@ -377,6 +512,7 @@ private struct QuadrantCard: View {
     @ObservedObject var focus: OrganizeFocus
     @State private var targeted = false
     @State private var newText = ""
+    @FocusState private var addFocused: Bool
     /// RFC-0001 T4: 象限四「清空」的二次确认开关（只有 .neither 卡片会置真）。
     @State private var confirmingClear = false
 
@@ -412,7 +548,7 @@ private struct QuadrantCard: View {
             Button("取消", role: .cancel) {}
             Button("清空", role: .destructive) { store.clearQuadrant(.neither) }
         } message: {
-            Text("会删掉这一格里 \(store.tasks(in: .neither).filter { !$0.completed }.count) 件未完成的任务，其它三个象限不受影响。此操作不可撤销。")
+            Text("会删掉这一格里 \(store.tasks(in: .neither).filter { !$0.completed }.count) 件未完成的任务，其它三个象限不受影响。清空后可在 10 秒内撤销。")
         }
     }
 
@@ -461,12 +597,8 @@ private struct QuadrantCard: View {
                     // 不再被提示语 / 估时标签挤断（此前会被截成「重要 ·…」）。
                     .fixedSize(horizontal: true, vertical: false)
                     .layoutPriority(2)
-                Text(quadrant.hint)
-                    .font(Theme.font(11))
-                    .foregroundColor(Theme.textDim)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .layoutPriority(0)
+                    .help(quadrant.hint)
+                    .accessibilityLabel("\(quadrant.title)，\(quadrant.hint)")
                 Spacer(minLength: 6)
                 if quadrantEstimatedMinutes > 0 {
                     Text("约 " + DurationLabel.short(quadrantEstimatedMinutes))
@@ -487,11 +619,12 @@ private struct QuadrantCard: View {
             Image(systemName: "plus")
                 .font(.system(size: 11))
                 .foregroundColor(accent.opacity(0.75))
-            TextField("加到此象限", text: $newText)
+            TextField("添加任务", text: $newText)
                 .textFieldStyle(.plain)
                 .font(Theme.font(12))
                 .foregroundColor(Theme.text)
                 .tint(accent)
+                .focused($addFocused)
                 .onSubmit {
                     store.addTask(newText, to: quadrant)
                     newText = ""
@@ -499,8 +632,16 @@ private struct QuadrantCard: View {
                 .accessibilityLabel("加到「\(quadrant.title)」")
         }
         .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.2)))
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.black.opacity(addFocused ? 0.18 : 0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(addFocused ? accent.opacity(0.55) : Color.clear, lineWidth: 1)
+        )
+        .animation(.easeOut(duration: 0.12), value: addFocused)
     }
 
     private var quadrantEstimatedMinutes: Int {

@@ -10,16 +10,21 @@ struct TaskDetailsButton: View {
     @ObservedObject var store: Store
     let task: TaskItem
     @State private var presented = false
+    @State private var hovering = false
 
     var body: some View {
         Button { presented = true } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Theme.textDim)
+                .foregroundColor(hovering ? Theme.text : Theme.textFaint)
                 .frame(width: 24, height: 22)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.panel.opacity(0.45)))
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(hovering ? Theme.panelHi.opacity(0.7) : Color.clear)
+                )
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
         .help("编辑任务详情")
         .accessibilityLabel("编辑任务详情")
         .popover(isPresented: $presented, arrowEdge: .trailing) {
