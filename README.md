@@ -161,6 +161,7 @@ Sources/
 Tests/PareCoreTests/              数据逻辑单元测试（swift test）
 Tests/UI_SMOKE_CHECKLIST.md       发布前原生 UI 验收清单
 build_app.sh                      一键构建打包脚本
+Resources/AppIcon.png             Pare macOS 图标母版（构建时生成 AppIcon.icns）
 ```
 
 跑测试：

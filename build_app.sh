@@ -8,8 +8,9 @@ cd "$(dirname "$0")"
 
 APP_NAME="Pare"
 BUNDLE_ID="com.zitago.Pare"
-VERSION="2.0.0"
-BUILD="2"
+VERSION="2.0.1"
+BUILD="3"
+ICON_MASTER="Resources/AppIcon.png"
 
 echo "==> swift build -c release"
 swift build -c release
@@ -27,6 +28,33 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$EXE" "$APP/Contents/MacOS/$APP_NAME"
 
+if [[ ! -f "$ICON_MASTER" ]]; then
+  echo "error: app icon master not found at $ICON_MASTER" >&2
+  exit 1
+fi
+
+echo "==> generating AppIcon.icns"
+ICON_TMP="$(mktemp -d)"
+trap 'rm -rf "$ICON_TMP"' EXIT
+ICONSET="$ICON_TMP/AppIcon.iconset"
+mkdir -p "$ICONSET"
+make_icon() {
+  local pixels="$1"
+  local filename="$2"
+  sips -z "$pixels" "$pixels" "$ICON_MASTER" --out "$ICONSET/$filename" >/dev/null
+}
+make_icon 16   icon_16x16.png
+make_icon 32   icon_16x16@2x.png
+make_icon 32   icon_32x32.png
+make_icon 64   icon_32x32@2x.png
+make_icon 128  icon_128x128.png
+make_icon 256  icon_128x128@2x.png
+make_icon 256  icon_256x256.png
+make_icon 512  icon_256x256@2x.png
+make_icon 512  icon_512x512.png
+make_icon 1024 icon_512x512@2x.png
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -36,6 +64,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
     <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
     <key>CFBundleExecutable</key><string>${APP_NAME}</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>${BUILD}</string>
