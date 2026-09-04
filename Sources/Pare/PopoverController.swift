@@ -242,12 +242,11 @@ private struct CapturePanelContainer<Content: View>: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(Theme.border.opacity(0.85), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.42), radius: 26, x: 0, y: 13)
-            .scaleEffect(chrome.visible ? 1 : 0.90, anchor: .top)
-            .offset(y: chrome.visible ? 0 : -16)
+            .shadow(color: .black.opacity(0.30), radius: 14, x: 0, y: 7)
+            .scaleEffect(chrome.visible ? 1 : 0.97, anchor: .top)
+            .offset(y: chrome.visible ? 0 : -8)
             .opacity(chrome.visible ? 1 : 0)
-            .blur(radius: chrome.visible ? 0 : 6)
             .padding(margin)
-            .animation(.spring(response: 0.42, dampingFraction: 0.70), value: chrome.visible)
+            .animation(.easeOut(duration: 0.16), value: chrome.visible)
     }
 }

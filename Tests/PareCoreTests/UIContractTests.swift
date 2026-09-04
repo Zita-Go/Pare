@@ -55,8 +55,15 @@ final class UIContractTests: XCTestCase {
         let capture = try source("Sources/Pare/CaptureView.swift")
         XCTAssertFalse(capture.contains(".onHover"),
                        "随手记悬停不能再触发列表结构重绘")
+        XCTAssertTrue(capture.contains("CaptureBackground"))
+        XCTAssertFalse(capture.contains("FrostBackground"),
+                       "高频随手记窗口不应使用实时毛玻璃合成")
+        XCTAssertFalse(popover.contains(".blur(radius:"),
+                       "随手记入场不应触发整窗模糊重绘")
         let store = try source("Sources/PareCore/Store.swift")
         XCTAssertTrue(store.contains("lastSavedData"),
                       "点击保存应复用内存中的上一代数据，不应反复解码磁盘备份")
+        XCTAssertTrue(store.contains("persistenceQueue"),
+                      "生产环境持久化必须离开主线程")
     }
 }
