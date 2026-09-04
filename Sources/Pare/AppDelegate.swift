@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var weeklyReviewWindowController: WeeklyReviewWindowController?
     private var onboardingWindowController: OnboardingWindowController?
     private var notificationManager: NotificationManager!
+    private var attentionDetector: AttentionDriftDetector!
     private var hotKey: HotKey?
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
@@ -21,19 +22,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         store.rolloverIfNeeded()
 
+        popoverController = PopoverController(store: store, onOpenOrganize: { [weak self] in
+            self?.openOrganize()
+        })
+
         // Set up notifications early so the delegate is registered before launch
         // fully settles (this also handles a tap that launched the app).
         notificationManager = NotificationManager(store: store, onOpenOrganize: { [weak self] showSummary in
             self?.openOrganize(showSummary: showSummary)
         }, onOpenWeeklyReview: { [weak self] in
             self?.openWeeklyReview()
+        }, onOpenCapture: { [weak self] draft in
+            self?.openCapture(prefill: draft)
+        }, onSnoozeAttention: { [weak self] in
+            self?.attentionDetector?.snooze()
         })
         notificationManager.configure()
         installSleepObservers()
 
-        popoverController = PopoverController(store: store, onOpenOrganize: { [weak self] in
-            self?.openOrganize()
-        })
+        attentionDetector = AttentionDriftDetector(store: store) { [weak self] task, decision in
+            self?.notificationManager.sendAttentionDriftNotice(task: task, decision: decision)
+        }
+        attentionDetector.start()
 
         statusItemController = StatusItemController(
             store: store,
@@ -73,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let center = NSWorkspace.shared.notificationCenter
         if let sleepObserver { center.removeObserver(sleepObserver) }
         if let wakeObserver { center.removeObserver(wakeObserver) }
+        attentionDetector?.stop()
     }
 
     private func installSleepObservers() {
@@ -94,6 +105,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func togglePopover() {
         store.rolloverIfNeeded()
         popoverController.toggle(relativeTo: statusItemController.button)
+    }
+
+    private func openCapture(prefill: String? = nil) {
+        store.rolloverIfNeeded()
+        popoverController.show(relativeTo: statusItemController?.button, prefill: prefill)
     }
 
     /// RFC-0001 T2: `showSummary` expands the 今日小结 card on present — used by the
@@ -119,7 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func openSettings() {
         if settingsWindowController == nil {
-            settingsWindowController = SettingsWindowController(store: store, manager: notificationManager)
+            settingsWindowController = SettingsWindowController(
+                store: store, manager: notificationManager, attentionDetector: attentionDetector)
         }
         settingsWindowController?.present()
     }

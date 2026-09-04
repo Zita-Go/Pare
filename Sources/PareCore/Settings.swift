@@ -48,6 +48,15 @@ public struct Settings: Codable, Equatable {
     public var quadrantCleanupEnabled: Bool
     public var quadrantCleanupThreshold: Int
 
+    /// Privacy-first attention drift detection. Base mode counts only frontmost
+    /// app switches; browser enhancement is a separate, explicit AX permission.
+    public var attentionDriftEnabled: Bool
+    public var attentionDriftBrowserEnabled: Bool
+    public var attentionDriftWindowMinutes: Int
+    public var attentionDriftSwitchThreshold: Int
+    public var attentionDriftCooldownMinutes: Int
+    public var attentionDriftDailyLimit: Int
+
     public init(planReminderEnabled: Bool = true,
                 planHour: Int = 9,
                 planMinute: Int = 0,
@@ -66,7 +75,13 @@ public struct Settings: Codable, Equatable {
                 todayMaxCount: Int = 5,
                 todayCapacityMinutes: Int = 240,
                 quadrantCleanupEnabled: Bool = true,
-                quadrantCleanupThreshold: Int = 5) {
+                quadrantCleanupThreshold: Int = 5,
+                attentionDriftEnabled: Bool = false,
+                attentionDriftBrowserEnabled: Bool = false,
+                attentionDriftWindowMinutes: Int = 4,
+                attentionDriftSwitchThreshold: Int = 8,
+                attentionDriftCooldownMinutes: Int = 120,
+                attentionDriftDailyLimit: Int = 2) {
         self.planReminderEnabled = planReminderEnabled
         self.planHour = planHour
         self.planMinute = planMinute
@@ -86,6 +101,12 @@ public struct Settings: Codable, Equatable {
         self.todayCapacityMinutes = todayCapacityMinutes
         self.quadrantCleanupEnabled = quadrantCleanupEnabled
         self.quadrantCleanupThreshold = quadrantCleanupThreshold
+        self.attentionDriftEnabled = attentionDriftEnabled
+        self.attentionDriftBrowserEnabled = attentionDriftBrowserEnabled
+        self.attentionDriftWindowMinutes = attentionDriftWindowMinutes
+        self.attentionDriftSwitchThreshold = attentionDriftSwitchThreshold
+        self.attentionDriftCooldownMinutes = attentionDriftCooldownMinutes
+        self.attentionDriftDailyLimit = attentionDriftDailyLimit
     }
 
     public static let `default` = Settings()
@@ -122,6 +143,12 @@ public struct Settings: Codable, Equatable {
             todayMaxCount: try c.decodeIfPresent(Int.self, forKey: .todayMaxCount) ?? d.todayMaxCount,
             todayCapacityMinutes: try c.decodeIfPresent(Int.self, forKey: .todayCapacityMinutes) ?? d.todayCapacityMinutes,
             quadrantCleanupEnabled: try c.decodeIfPresent(Bool.self, forKey: .quadrantCleanupEnabled) ?? d.quadrantCleanupEnabled,
-            quadrantCleanupThreshold: try c.decodeIfPresent(Int.self, forKey: .quadrantCleanupThreshold) ?? d.quadrantCleanupThreshold)
+            quadrantCleanupThreshold: try c.decodeIfPresent(Int.self, forKey: .quadrantCleanupThreshold) ?? d.quadrantCleanupThreshold,
+            attentionDriftEnabled: try c.decodeIfPresent(Bool.self, forKey: .attentionDriftEnabled) ?? d.attentionDriftEnabled,
+            attentionDriftBrowserEnabled: try c.decodeIfPresent(Bool.self, forKey: .attentionDriftBrowserEnabled) ?? d.attentionDriftBrowserEnabled,
+            attentionDriftWindowMinutes: try c.decodeIfPresent(Int.self, forKey: .attentionDriftWindowMinutes) ?? d.attentionDriftWindowMinutes,
+            attentionDriftSwitchThreshold: try c.decodeIfPresent(Int.self, forKey: .attentionDriftSwitchThreshold) ?? d.attentionDriftSwitchThreshold,
+            attentionDriftCooldownMinutes: try c.decodeIfPresent(Int.self, forKey: .attentionDriftCooldownMinutes) ?? d.attentionDriftCooldownMinutes,
+            attentionDriftDailyLimit: try c.decodeIfPresent(Int.self, forKey: .attentionDriftDailyLimit) ?? d.attentionDriftDailyLimit)
     }
 }

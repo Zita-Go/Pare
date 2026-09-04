@@ -19,6 +19,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private let onOpenOrganize: (Bool) -> Void
     /// RFC-0001 T3: opens the 本周回顾 window (tapping the weekly.review reminder).
     private let onOpenWeeklyReview: () -> Void
+    private let onOpenCapture: (String?) -> Void
+    private let onSnoozeAttention: () -> Void
     private let center = UNUserNotificationCenter.current()
     private var cancellable: AnyCancellable?
     private var refreshCancellable: AnyCancellable?
@@ -28,11 +30,15 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private static let taskCategory   = "PARE_TASK"
     private static let dailyCategory  = "PARE_DAILY"
     private static let weeklyCategory = "PARE_WEEKLY"
+    private static let attentionCategory = "PARE_ATTENTION"
     private static let actionComplete = "PARE_COMPLETE"
     private static let actionSnooze15 = "PARE_SNOOZE_15"
     private static let actionSnooze60 = "PARE_SNOOZE_60"
     private static let actionOpen     = "PARE_OPEN"
     private static let actionOpenWeekly = "PARE_OPEN_WEEKLY"
+    private static let actionAttentionFocus = "PARE_ATTENTION_FOCUS"
+    private static let actionAttentionBlocker = "PARE_ATTENTION_BLOCKER"
+    private static let actionAttentionSnooze = "PARE_ATTENTION_SNOOZE"
     private static let testIdentifier = "pare.test"
     /// The stable identifier of the weekly-review reminder (see `Reminders`).
     private static let weeklyIdentifier = "weekly.review"
@@ -45,10 +51,14 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     init(store: Store,
          onOpenOrganize: @escaping (Bool) -> Void,
-         onOpenWeeklyReview: @escaping () -> Void) {
+         onOpenWeeklyReview: @escaping () -> Void,
+         onOpenCapture: @escaping (String?) -> Void,
+         onSnoozeAttention: @escaping () -> Void) {
         self.store = store
         self.onOpenOrganize = onOpenOrganize
         self.onOpenWeeklyReview = onOpenWeeklyReview
+        self.onOpenCapture = onOpenCapture
+        self.onSnoozeAttention = onSnoozeAttention
         super.init()
     }
 
@@ -92,7 +102,16 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let weekly = UNNotificationCategory(identifier: Self.weeklyCategory,
                                             actions: [openWeekly],
                                             intentIdentifiers: [], options: [])
-        center.setNotificationCategories([task, daily, weekly])
+        let focus = UNNotificationAction(identifier: Self.actionAttentionFocus,
+                                         title: "开始专注", options: [.foreground])
+        let blocker = UNNotificationAction(identifier: Self.actionAttentionBlocker,
+                                           title: "记录卡点", options: [.foreground])
+        let attentionSnooze = UNNotificationAction(identifier: Self.actionAttentionSnooze,
+                                                   title: "忽略 1 小时", options: [])
+        let attention = UNNotificationCategory(identifier: Self.attentionCategory,
+                                               actions: [focus, blocker, attentionSnooze],
+                                               intentIdentifiers: [], options: [])
+        center.setNotificationCategories([task, daily, weekly, attention])
     }
 
     // MARK: - Scheduling
@@ -142,6 +161,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private func isOurs(_ id: String) -> Bool {
         id == "daily.plan" || id == Self.reviewIdentifier || id == Self.weeklyIdentifier
             || id.hasPrefix("task.") || id == Self.testIdentifier || id == "timer.sleep"
+            || id.hasPrefix("attention.drift")
     }
 
     // MARK: - Settings-panel helpers
@@ -171,6 +191,22 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.categoryIdentifier = Self.dailyCategory
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)
         center.add(UNNotificationRequest(identifier: "timer.sleep", content: content, trigger: trigger))
+    }
+
+    func sendAttentionDriftNotice(task: TaskItem, decision: AttentionDriftDecision) {
+        let content = UNMutableNotificationContent()
+        content.title = "要不要先停一下？"
+        if decision.browserPageChanges > 0 {
+            content.body = "好像在几个页面间快速切换。先推进“\(task.text)”一小段？"
+        } else {
+            content.body = "刚才在几个应用间切换了 \(decision.switchCount) 次。先推进“\(task.text)”一小段？"
+        }
+        content.categoryIdentifier = Self.attentionCategory
+        content.interruptionLevel = .active
+        content.userInfo = ["taskID": task.id.uuidString]
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let id = "attention.drift.\(Int(Date().timeIntervalSince1970))"
+        center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
     }
 
     func requestAuthorizationAgain() {
@@ -220,7 +256,11 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         // Show even when Pare happens to be the active app; then re-arm daily.
-        completionHandler([.banner, .list, .sound])
+        if notification.request.identifier.hasPrefix("attention.drift") {
+            completionHandler([.banner, .list])
+        } else {
+            completionHandler([.banner, .list, .sound])
+        }
         DispatchQueue.main.async { [weak self] in self?.reschedule() }
     }
 
@@ -235,6 +275,12 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self else { completionHandler(); return }
             switch action {
+            case Self.actionAttentionFocus:
+                if let id = taskID { _ = self.store.startTimer(id) }
+            case Self.actionAttentionBlocker:
+                self.onOpenCapture("我现在卡在：")
+            case Self.actionAttentionSnooze:
+                self.onSnoozeAttention()
             case Self.actionComplete:
                 if let id = taskID { self.store.setCompleted(id, true) }
             case Self.actionSnooze15:
@@ -251,6 +297,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                 // The weekly review has its own window; everything else opens 整理.
                 if requestID == Self.weeklyIdentifier {
                     self.onOpenWeeklyReview()
+                } else if requestID.hasPrefix("attention.drift") {
+                    self.onOpenOrganize(false)
                 } else {
                     // RFC-0001 T2: the evening review tap opens 整理 *and* expands
                     // the 今日小结 card; other opens leave the card as the user left it.

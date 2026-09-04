@@ -48,6 +48,10 @@ Pare 每 6 小时补排一次滚动提醒。建议在设置的「启动与数据
 
 随手记支持几种本地自然语言提醒，例如 `30分钟后提醒我喝水`、`明天下午3点提醒我写报告`。解析完全在本机完成，整理成任务后自动带上提醒。
 
+**注意力漂移提醒（可选）**：在设置里开启后，Pare 会在内存中分析短时间的前台应用切换；检测到在少数应用间快速往返、且没有推进 Pare 任务时，温和建议先做今日第一件事。每天次数、分析窗口、切换阈值和冷却时间均可调整。
+
+**浏览器页面增强检测（可选）**：需要用户主动授予 macOS 辅助功能权限。Pare 只读取当前浏览器窗口标题并立即转换成进程内临时散列，用它判断页面是否反复切换；不保存标题、网址或浏览历史。支持 Safari、Chrome、Edge、Arc、Brave、Firefox、Vivaldi 和 Opera。提醒可直接选择「开始专注 / 记录卡点 / 忽略 1 小时」。
+
 **待整理堆积**：随手记攒过阈值（默认 8 条）时，会在每日提醒里捎一句，提醒你抽空归位。
 
 **在哪设置**：右键菜单栏图标选「提醒设置…」（或按 `⌘,`）。面板里能开关早/晚提醒、改时间、调堆积阈值，还有一个「发送测试提醒」按钮当场验证。
@@ -139,6 +143,7 @@ Sources/
   PareCore/                       纯数据层（可无头测试，无 UI 依赖）
     Models.swift                  Quadrant / InboxItem / ThoughtItem / TaskItem / ActiveTimer
     CaptureParser.swift           完全本地的自然语言提醒解析
+    AttentionDrift.swift          可单测的注意力漂移判断策略
     Settings.swift                提醒偏好（早/晚提醒开关与时间、堆积阈值）
     Reminders.swift               纯函数 plannedReminders(now:)：算出该发哪些提醒、文案与时间
     Trends.swift                  最近 8 周的只读趋势投影
@@ -151,6 +156,7 @@ Sources/
     PopoverController.swift       随手记弹窗（transient，点别处自动收）
     OrganizeWindowController.swift 整理窗口
     NotificationManager.swift     把 plannedReminders 翻译成系统通知 + 处理点击动作
+    AttentionDriftDetector.swift  应用切换循环 + 浏览器 AX 页面切换检测（仅内存）
     LoginItemManager.swift        macOS 登录项状态与开关
     SettingsWindowController.swift 提醒设置面板（权限 / 早晚提醒 / 堆积阈值 / 测试）
     OnboardingWindowController.swift 首次引导与上下文通知授权

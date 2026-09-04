@@ -26,6 +26,10 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(planning.contains("放弃本次专注计时"))
         XCTAssertTrue(planning.contains("已逾期"))
         XCTAssertTrue(planning.contains("安排下次回看"))
+        let settings = try source("Sources/Pare/SettingsWindowController.swift")
+        XCTAssertTrue(settings.contains("检测应用来回切换"))
+        XCTAssertTrue(settings.contains("浏览器页面增强检测"))
+        XCTAssertTrue(settings.contains("请求辅助功能权限"))
     }
 
     func testOnboardingAndDataSafetyControlsRemainVisible() throws {

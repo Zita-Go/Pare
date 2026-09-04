@@ -19,7 +19,7 @@ enum AppWindows {
 /// Per-task reminders are set on the tasks themselves in the 整理 window.
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
-    init(store: Store, manager: NotificationManager) {
+    init(store: Store, manager: NotificationManager, attentionDetector: AttentionDriftDetector) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 560),
             styleMask: [.titled, .closable, .fullSizeContentView],
@@ -33,7 +33,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.appearance = NSAppearance(named: .darkAqua)
         window.isReleasedWhenClosed = false
 
-        let hosting = NSHostingController(rootView: SettingsView(store: store, manager: manager))
+        let hosting = NSHostingController(rootView: SettingsView(
+            store: store, manager: manager, attentionDetector: attentionDetector))
         window.contentViewController = hosting
         window.center()
 
@@ -62,11 +63,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 private struct SettingsView: View {
     @ObservedObject var store: Store
     let manager: NotificationManager
+    @ObservedObject var attentionDetector: AttentionDriftDetector
     @StateObject private var loginItem = LoginItemManager()
 
     @State private var authText = "检查中…"
     @State private var testSent = false
     @State private var dataMessage: String?
+    @State private var attentionMessage: String?
 
     var body: some View {
         ScrollView {
@@ -87,6 +90,9 @@ private struct SettingsView: View {
                     weeklyCard
                     groupDivider
                     pileupCard
+                }
+                settingsGroup("注意力漂移") {
+                    attentionDriftCard
                 }
                 settingsGroup("规划边界") {
                     overloadCard
@@ -115,6 +121,7 @@ private struct SettingsView: View {
             // reflect a freshly granted permission without extra taps.
             refreshAuth()
             loginItem.refresh()
+            attentionDetector.refreshConfiguration()
         }
     }
 
@@ -194,6 +201,80 @@ private struct SettingsView: View {
                 timeRow(planTime)
             }
         }
+    }
+
+    private var attentionDriftCard: some View {
+        sectionContent {
+            sectionToggle("检测应用来回切换", isOn: settingsBinding(\.attentionDriftEnabled))
+            Text("只在内存中统计短时间内的前台应用切换，不记录窗口标题、页面内容或历史。")
+                .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if store.settings.attentionDriftEnabled {
+                Stepper(value: settingsBinding(\.attentionDriftWindowMinutes), in: 2...10) {
+                    Text("在 \(store.settings.attentionDriftWindowMinutes) 分钟窗口内分析")
+                        .font(Theme.font(13)).foregroundColor(Theme.text)
+                }
+                Stepper(value: settingsBinding(\.attentionDriftSwitchThreshold), in: 5...20) {
+                    Text("快速切换达到 \(store.settings.attentionDriftSwitchThreshold) 次时判断")
+                        .font(Theme.font(13)).foregroundColor(Theme.text)
+                }
+                Stepper(value: settingsBinding(\.attentionDriftCooldownMinutes), in: 30...240, step: 30) {
+                    Text("提醒后冷却 \(store.settings.attentionDriftCooldownMinutes) 分钟")
+                        .font(Theme.font(13)).foregroundColor(Theme.text)
+                }
+                Stepper(value: settingsBinding(\.attentionDriftDailyLimit), in: 1...6) {
+                    Text("每天最多提醒 \(store.settings.attentionDriftDailyLimit) 次")
+                        .font(Theme.font(13)).foregroundColor(Theme.text)
+                }
+
+                groupDivider
+
+                Toggle(isOn: browserDriftBinding) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("浏览器页面增强检测")
+                            .font(Theme.font(15, weight: .medium)).foregroundColor(Theme.text)
+                        Text("窗口标题会立即变成进程内临时散列；不保存标题、网址或浏览记录。")
+                            .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                    }
+                }
+                .toggleStyle(.switch).tint(Theme.amber)
+
+                if store.settings.attentionDriftBrowserEnabled {
+                    Text(attentionDetector.accessibilityText)
+                        .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                    HStack(spacing: 8) {
+                        actionButton("请求辅助功能权限") { attentionDetector.requestAccessibilityPermission() }
+                        actionButton("系统设置") { attentionDetector.openAccessibilitySettings() }
+                    }
+                }
+                if let last = attentionDetector.lastDetectionText {
+                    Text(last).font(Theme.font(11)).foregroundColor(Theme.amber)
+                }
+                HStack(spacing: 8) {
+                    actionButton("发送测试漂移提醒") { sendAttentionTest() }
+                    actionButton("忽略 1 小时") { attentionDetector.snooze() }
+                }
+                if let attentionMessage {
+                    Text(attentionMessage).font(Theme.font(11)).foregroundColor(Theme.amber)
+                }
+            }
+        }
+    }
+
+    private func sendAttentionTest() {
+        let task = store.todayTasks.first(where: { !$0.completed })
+            ?? store.tasks.first(where: { !$0.completed })
+        guard let task else {
+            attentionMessage = "先添加一件未完成任务，提醒才有推荐目标。"
+            return
+        }
+        manager.sendAttentionDriftNotice(
+            task: task,
+            decision: AttentionDriftDecision(switchCount: 9, uniqueContextCount: 2,
+                                              medianDwellSeconds: 12, returnRatio: 0.8,
+                                              browserPageChanges: 4))
+        attentionMessage = "测试提醒已发送 ✓"
     }
 
     private var reviewCard: some View {
@@ -419,6 +500,18 @@ private struct SettingsView: View {
                 var s = store.settings
                 s[keyPath: keyPath] = newValue
                 store.updateSettings(s)
+            })
+    }
+
+    private var browserDriftBinding: Binding<Bool> {
+        Binding(
+            get: { store.settings.attentionDriftBrowserEnabled },
+            set: { enabled in
+                var settings = store.settings
+                settings.attentionDriftBrowserEnabled = enabled
+                store.updateSettings(settings)
+                if enabled { attentionDetector.requestAccessibilityPermission() }
+                else { attentionDetector.refreshConfiguration() }
             })
     }
 

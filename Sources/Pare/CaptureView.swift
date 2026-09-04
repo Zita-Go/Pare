@@ -36,6 +36,12 @@ struct CaptureView: View {
         .background(FrostBackground(tint: 0.55))
         // 每次唤出面板都聚焦输入框：focusTick 首次订阅即发一次、之后每次 show 递增。
         .onReceive(chrome.$focusTick) { _ in focused = true }
+        .onReceive(chrome.$suggestedDraft) { value in
+            guard let value else { return }
+            draft = value
+            focused = true
+            DispatchQueue.main.async { chrome.suggestedDraft = nil }
+        }
     }
 
     // MARK: Pieces

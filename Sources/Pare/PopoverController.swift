@@ -26,6 +26,7 @@ final class PopoverController {
         /// lifetime, so `onAppear` fires only once — without this, "打开即写"
         /// (cursor already waiting) would only hold on the very first open.
         @Published var focusTick = 0
+        @Published var suggestedDraft: String?
     }
 
     private let store: Store
@@ -67,10 +68,11 @@ final class PopoverController {
         if showing { close() } else { show(relativeTo: button) }
     }
 
-    func show(relativeTo button: NSStatusBarButton?) {
+    func show(relativeTo button: NSStatusBarButton?, prefill: String? = nil) {
         // Swallow the re-open that a click-on-icon close would otherwise trigger.
         if Date().timeIntervalSince(lastCloseAt) < 0.2 { return }
         showing = true
+        if let prefill { chrome.suggestedDraft = prefill }
 
         // Size to the current content (today's list length changes the height).
         hosting.layoutSubtreeIfNeeded()
