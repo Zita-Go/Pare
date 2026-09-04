@@ -176,19 +176,4 @@ final class ProductivityTests: XCTestCase {
             .first { if case .plan = $0.kind { return true }; return false }
         XCTAssertTrue(plan?.body.contains("1 个想法") == true)
     }
-
-    func testAsyncProductionPersistenceFlushesInOrder() {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pare-async-\(UUID().uuidString).json")
-        let store = Store(fileURL: url, calendar: calendar(), synchronousPersistence: false)
-        store.capture("第一条")
-        store.capture("第二条")
-        store.addTask("任务", to: .importantNotUrgent, addToToday: true)
-        store.flushPersistence()
-
-        let loaded = Store(fileURL: url, calendar: calendar())
-        XCTAssertEqual(loaded.inbox.map(\.text), ["第二条", "第一条"])
-        XCTAssertEqual(loaded.todayTasks.map(\.text), ["任务"])
-        XCTAssertTrue(FileManager.default.fileExists(atPath: url.appendingPathExtension("bak").path))
-    }
 }

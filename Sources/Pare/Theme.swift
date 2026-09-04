@@ -104,21 +104,6 @@ struct FrostBackground: View {
     }
 }
 
-/// Performance-oriented background for the frequently opened capture panel.
-/// Unlike `FrostBackground`, this does not continuously sample/composite the
-/// app behind the panel, so pointer movement and scrolling stay cheap.
-struct CaptureBackground: View {
-    var body: some View {
-        Theme.bg
-            .overlay(
-                LinearGradient(
-                    colors: [Theme.panel.opacity(0.42), Theme.bg.opacity(0.96), Color.black.opacity(0.16)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing)
-            )
-            .ignoresSafeArea()
-    }
-}
-
 // MARK: - Reusable surfaces
 
 /// A raised, rounded panel used for cards and wells. Optionally tinted by a

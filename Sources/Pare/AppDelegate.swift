@@ -4,7 +4,7 @@ import PareCore
 
 /// Wires everything together and owns the single shared `Store`.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let store = Store(fileURL: Store.defaultFileURL(), synchronousPersistence: false)
+    let store = Store(fileURL: Store.defaultFileURL())
 
     private var statusItemController: StatusItemController!
     private var popoverController: PopoverController!
@@ -80,7 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        store.flushPersistence()
         let center = NSWorkspace.shared.notificationCenter
         if let sleepObserver { center.removeObserver(sleepObserver) }
         if let wakeObserver { center.removeObserver(wakeObserver) }

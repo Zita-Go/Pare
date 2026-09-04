@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 import PareCore
 
@@ -28,7 +27,6 @@ final class PopoverController {
         /// (cursor already waiting) would only hold on the very first open.
         @Published var focusTick = 0
         @Published var suggestedDraft: String?
-        @Published var taskDetailID: UUID?
     }
 
     private let store: Store
@@ -45,8 +43,6 @@ final class PopoverController {
     /// monitor may fire for the same click that also drives the toggle action.
     private var lastCloseAt = Date.distantPast
     private var monitors: [Any] = []
-    private var detailCancellable: AnyCancellable?
-    private weak var anchorButton: NSStatusBarButton?
 
     var isShown: Bool { showing }
 
@@ -62,14 +58,10 @@ final class PopoverController {
                 self?.close()
                 onOpenOrganize()
             })
-            .environment(\.openTaskDetails, { [weak chrome] id in chrome?.taskDetailID = id })
         }
         hosting.rootView = AnyView(container)
         hosting.translatesAutoresizingMaskIntoConstraints = true
         panel.contentView = hosting
-        detailCancellable = chrome.$taskDetailID.dropFirst().sink { [weak self] _ in
-            DispatchQueue.main.async { self?.resizeForCurrentContent() }
-        }
     }
 
     func toggle(relativeTo button: NSStatusBarButton?) {
@@ -80,7 +72,6 @@ final class PopoverController {
         // Swallow the re-open that a click-on-icon close would otherwise trigger.
         if Date().timeIntervalSince(lastCloseAt) < 0.2 { return }
         showing = true
-        anchorButton = button
         if let prefill { chrome.suggestedDraft = prefill }
 
         // Size to the current content (today's list length changes the height).
@@ -120,15 +111,7 @@ final class PopoverController {
         }, completionHandler: { [weak self] in
             guard let self = self, !self.showing else { return }
             self.panel.orderOut(nil)
-            self.chrome.taskDetailID = nil
         })
-    }
-
-    private func resizeForCurrentContent() {
-        guard showing else { return }
-        hosting.layoutSubtreeIfNeeded()
-        panel.setContentSize(hosting.fittingSize)
-        position(relativeTo: anchorButton)
     }
 
     // MARK: Positioning
@@ -259,11 +242,12 @@ private struct CapturePanelContainer<Content: View>: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(Theme.border.opacity(0.85), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.30), radius: 14, x: 0, y: 7)
-            .scaleEffect(chrome.visible ? 1 : 0.97, anchor: .top)
-            .offset(y: chrome.visible ? 0 : -8)
+            .shadow(color: .black.opacity(0.42), radius: 26, x: 0, y: 13)
+            .scaleEffect(chrome.visible ? 1 : 0.90, anchor: .top)
+            .offset(y: chrome.visible ? 0 : -16)
             .opacity(chrome.visible ? 1 : 0)
+            .blur(radius: chrome.visible ? 0 : 6)
             .padding(margin)
-            .animation(.easeOut(duration: 0.16), value: chrome.visible)
+            .animation(.spring(response: 0.42, dampingFraction: 0.70), value: chrome.visible)
     }
 }

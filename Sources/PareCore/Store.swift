@@ -32,8 +32,6 @@ public final class Store: ObservableObject {
     public var dataFileURL: URL { fileURL }
     /// Internal (not private) so the reminder planner extension can reuse it.
     let calendar: Calendar
-    private let synchronousPersistence: Bool
-    private let persistenceQueue = DispatchQueue(label: "com.zitago.Pare.persistence", qos: .utility)
     private var loading = false
     private var persistenceLocked = false
     /// Last successfully decoded/encoded generation. Reusing it for `.bak`
@@ -50,11 +48,9 @@ public final class Store: ObservableObject {
 
     // MARK: - Init
 
-    public init(fileURL: URL, calendar: Calendar = .current,
-                synchronousPersistence: Bool = true) {
+    public init(fileURL: URL, calendar: Calendar = .current) {
         self.fileURL = fileURL
         self.calendar = calendar
-        self.synchronousPersistence = synchronousPersistence
         load()
     }
 
@@ -164,48 +160,17 @@ public final class Store: ObservableObject {
 
     private func save(createBackup: Bool = true) {
         guard !loading, !persistenceLocked else { return }
-        let snapshot = currentSnapshot()
-        if synchronousPersistence {
-            persist(snapshot, createBackup: createBackup)
-        } else {
-            persistenceQueue.async { [self] in
-                persist(snapshot, createBackup: createBackup)
-            }
-        }
-    }
-
-    private func persist(_ snapshot: Snapshot, createBackup: Bool) {
         do {
-            let data = try encoder().encode(snapshot)
+            let data = try encoder().encode(currentSnapshot())
             if createBackup, let previous = lastSavedData {
                 try previous.write(to: backupURL, options: .atomic)
             }
             try data.write(to: fileURL, options: .atomic)
             lastSavedData = data
-            if synchronousPersistence {
-                if persistenceIssue?.contains("无法保存") == true { persistenceIssue = nil }
-            } else {
-                DispatchQueue.main.async { [weak self] in
-                    if self?.persistenceIssue?.contains("无法保存") == true {
-                        self?.persistenceIssue = nil
-                    }
-                }
-            }
+            if persistenceIssue?.contains("无法保存") == true { persistenceIssue = nil }
         } catch {
-            let message = "无法保存数据：\(error.localizedDescription)"
-            if synchronousPersistence {
-                persistenceIssue = message
-            } else {
-                DispatchQueue.main.async { [weak self] in self?.persistenceIssue = message }
-            }
+            persistenceIssue = "无法保存数据：\(error.localizedDescription)"
         }
-    }
-
-    /// Wait for queued production writes at lifecycle boundaries and before a
-    /// destructive import. Unit tests use synchronous persistence by default.
-    public func flushPersistence() {
-        guard !synchronousPersistence else { return }
-        persistenceQueue.sync {}
     }
 
     /// Keep only a decodable previous generation. A corrupted primary file must
@@ -232,7 +197,6 @@ public final class Store: ObservableObject {
     }
 
     public func importData(from source: URL) throws {
-        flushPersistence()
         let data = try Data(contentsOf: source)
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         let snapshot: Snapshot
@@ -246,7 +210,6 @@ public final class Store: ObservableObject {
         persistenceLocked = false
         persistenceIssue = nil
         save(createBackup: false)
-        flushPersistence()
     }
 
     @discardableResult

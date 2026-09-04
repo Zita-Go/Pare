@@ -30,9 +30,7 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 880, height: 580)
 
-        let hosting = NSHostingController(rootView: OrganizeView(
-            store: store, summaryState: summaryState,
-            onOpenWeeklyReview: onOpenWeeklyReview))
+        let hosting = NSHostingController(rootView: OrganizeView(store: store, summaryState: summaryState, onOpenWeeklyReview: onOpenWeeklyReview))
         window.contentViewController = hosting
         window.center()
 

@@ -32,8 +32,6 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(planning.contains("放弃本次专注计时"))
         XCTAssertFalse(planning.contains("showsLabel || isActive"),
                        "紧凑计时按钮不应因运行中而强行展开文字")
-        XCTAssertTrue(planning.contains("openTaskDetails(task.id)"),
-                      "随手记应能把任务详情切换到当前面板内")
         XCTAssertTrue(planning.contains("已逾期"))
         XCTAssertTrue(planning.contains("安排下次回看"))
         let settings = try source("Sources/Pare/SettingsWindowController.swift")
@@ -57,18 +55,8 @@ final class UIContractTests: XCTestCase {
         let capture = try source("Sources/Pare/CaptureView.swift")
         XCTAssertFalse(capture.contains(".onHover"),
                        "随手记悬停不能再触发列表结构重绘")
-        XCTAssertTrue(capture.contains("CaptureBackground"))
-        XCTAssertFalse(capture.contains("FrostBackground"),
-                       "高频随手记窗口不应使用实时毛玻璃合成")
-        XCTAssertTrue(capture.contains("inlineTaskDetail"))
-        XCTAssertTrue(capture.contains("返回今日任务"),
-                      "内嵌详情必须始终提供立即可见的关闭路径")
-        XCTAssertFalse(popover.contains(".blur(radius:"),
-                       "随手记入场不应触发整窗模糊重绘")
         let store = try source("Sources/PareCore/Store.swift")
         XCTAssertTrue(store.contains("lastSavedData"),
                       "点击保存应复用内存中的上一代数据，不应反复解码磁盘备份")
-        XCTAssertTrue(store.contains("persistenceQueue"),
-                      "生产环境持久化必须离开主线程")
     }
 }
