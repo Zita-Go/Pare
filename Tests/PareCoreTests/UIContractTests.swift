@@ -48,5 +48,9 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(settings.contains("登录时自动启动 Pare"))
         XCTAssertTrue(settings.contains("导出备份"))
         XCTAssertTrue(settings.contains("恢复自动备份"))
+        let popover = try source("Sources/Pare/PopoverController.swift")
+        XCTAssertTrue(popover.contains("isCaptureInteractionWindow"))
+        XCTAssertTrue(popover.contains("event.window === self?.panel"),
+                      "Esc 只能由随手记父面板吞掉，详情弹窗必须先处理")
     }
 }

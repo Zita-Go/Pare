@@ -150,18 +150,40 @@ final class PopoverController {
         // Click in our own space but outside the panel → dismiss (let it through).
         if let l = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] event in
             guard let self = self else { return event }
-            if event.window != self.panel { self.close() }
+            // SwiftUI popovers (task details, menus and date pickers) live in
+            // separate borderless windows. Treat those and true child windows
+            // as part of the capture interaction instead of closing their
+            // parent panel on the first click.
+            if !self.isCaptureInteractionWindow(event.window) { self.close() }
             return event
         }) {
             monitors.append(l)
         }
         // Esc → dismiss (swallow the key).
         if let k = NSEvent.addLocalMonitorForEvents(matching: [.keyDown], handler: { [weak self] event in
-            if event.keyCode == 53 { self?.close(); return nil }
+            // A detail popover gets first chance to handle Esc. Only swallow it
+            // when keyboard focus belongs to the capture panel itself.
+            if event.keyCode == 53, event.window === self?.panel {
+                self?.close()
+                return nil
+            }
             return event
         }) {
             monitors.append(k)
         }
+    }
+
+    private func isCaptureInteractionWindow(_ window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        if window === panel { return true }
+        var ancestor = window.parent
+        while let current = ancestor {
+            if current === panel { return true }
+            ancestor = current.parent
+        }
+        // Native SwiftUI popovers and menus are borderless auxiliary windows.
+        // Other real Pare windows are titled and should still dismiss capture.
+        return !window.styleMask.contains(.titled)
     }
 
     private func removeMonitors() {
