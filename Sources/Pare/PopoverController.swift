@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import PareCore
 
@@ -27,6 +28,7 @@ final class PopoverController {
         /// (cursor already waiting) would only hold on the very first open.
         @Published var focusTick = 0
         @Published var suggestedDraft: String?
+        @Published var resizeTick = 0
     }
 
     private let store: Store
@@ -43,6 +45,9 @@ final class PopoverController {
     /// monitor may fire for the same click that also drives the toggle action.
     private var lastCloseAt = Date.distantPast
     private var monitors: [Any] = []
+    private var resizeCancellable: AnyCancellable?
+    private var storeCancellable: AnyCancellable?
+    private weak var anchorButton: NSStatusBarButton?
 
     var isShown: Bool { showing }
 
@@ -62,6 +67,13 @@ final class PopoverController {
         hosting.rootView = AnyView(container)
         hosting.translatesAutoresizingMaskIntoConstraints = true
         panel.contentView = hosting
+
+        resizeCancellable = chrome.$resizeTick.dropFirst().sink { [weak self] _ in
+            self?.scheduleResize()
+        }
+        storeCancellable = store.objectWillChange.sink { [weak self] in
+            self?.scheduleResize()
+        }
     }
 
     func toggle(relativeTo button: NSStatusBarButton?) {
@@ -72,6 +84,7 @@ final class PopoverController {
         // Swallow the re-open that a click-on-icon close would otherwise trigger.
         if Date().timeIntervalSince(lastCloseAt) < 0.2 { return }
         showing = true
+        anchorButton = button
         if let prefill { chrome.suggestedDraft = prefill }
 
         // Size to the current content (today's list length changes the height).
@@ -95,6 +108,26 @@ final class PopoverController {
             self?.chrome.focusTick += 1
         }
         installMonitors()
+    }
+
+    private func scheduleResize() {
+        guard showing else { return }
+        resizeOnNextLayoutPass()
+        // Match the list's short expand/collapse transition, then settle on its
+        // final intrinsic size instead of measuring halfway through animation.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+            self?.resizeOnNextLayoutPass()
+        }
+    }
+
+    private func resizeOnNextLayoutPass() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.showing else { return }
+            self.hosting.invalidateIntrinsicContentSize()
+            self.hosting.layoutSubtreeIfNeeded()
+            self.panel.setContentSize(self.hosting.fittingSize)
+            self.position(relativeTo: self.anchorButton)
+        }
     }
 
     func close() {

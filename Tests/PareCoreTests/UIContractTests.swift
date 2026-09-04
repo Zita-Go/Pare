@@ -52,7 +52,11 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(popover.contains("isCaptureInteractionWindow"))
         XCTAssertTrue(popover.contains("event.window === self?.panel"),
                       "Esc 只能由随手记父面板吞掉，详情弹窗必须先处理")
+        XCTAssertTrue(popover.contains("scheduleResize"))
+        XCTAssertTrue(popover.contains("hosting.invalidateIntrinsicContentSize"),
+                      "收起/展开今日任务后必须重新计算 NSPanel 高度")
         let capture = try source("Sources/Pare/CaptureView.swift")
+        XCTAssertTrue(capture.contains("chrome.resizeTick += 1"))
         XCTAssertFalse(capture.contains(".onHover"),
                        "随手记悬停不能再触发列表结构重绘")
         let store = try source("Sources/PareCore/Store.swift")

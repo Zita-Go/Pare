@@ -99,6 +99,7 @@ struct CaptureView: View {
         VStack(alignment: .leading, spacing: 7) {
             Button {
                 withAnimation(.easeOut(duration: 0.18)) { pureMode.toggle() }
+                chrome.resizeTick += 1
             } label: {
                 HStack(spacing: 6) {
                     Text("今日任务")
