@@ -32,6 +32,11 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(planning.contains("放弃本次专注计时"))
         XCTAssertFalse(planning.contains("showsLabel || isActive"),
                        "紧凑计时按钮不应因运行中而强行展开文字")
+        XCTAssertTrue(planning.contains("openTaskDetails(task.id)"),
+                      "任务详情按钮应复用预创建面板，而不是逐次创建 SwiftUI popover")
+        let detailController = try source("Sources/Pare/TaskDetailWindowController.swift")
+        XCTAssertTrue(detailController.contains("One pre-created, reusable task-detail panel"))
+        XCTAssertTrue(detailController.contains("TaskDetailEditorView"))
         XCTAssertTrue(planning.contains("已逾期"))
         XCTAssertTrue(planning.contains("安排下次回看"))
         let settings = try source("Sources/Pare/SettingsWindowController.swift")

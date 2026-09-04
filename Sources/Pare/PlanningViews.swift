@@ -2,6 +2,17 @@ import SwiftUI
 import UniformTypeIdentifiers
 import PareCore
 
+private struct OpenTaskDetailsKey: EnvironmentKey {
+    static let defaultValue: (UUID) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    var openTaskDetails: (UUID) -> Void {
+        get { self[OpenTaskDetailsKey.self] }
+        set { self[OpenTaskDetailsKey.self] = newValue }
+    }
+}
+
 // MARK: - Task detail inspector
 
 /// A consistent, always-visible way into task details. The quadrant rows stay
@@ -9,10 +20,10 @@ import PareCore
 struct TaskDetailsButton: View {
     @ObservedObject var store: Store
     let task: TaskItem
-    @State private var presented = false
+    @Environment(\.openTaskDetails) private var openTaskDetails
 
     var body: some View {
-        Button { presented = true } label: {
+        Button { openTaskDetails(task.id) } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Theme.textFaint)
@@ -21,16 +32,13 @@ struct TaskDetailsButton: View {
         .buttonStyle(.plain)
         .help("编辑任务详情")
         .accessibilityLabel("编辑任务详情")
-        .popover(isPresented: $presented, arrowEdge: .trailing) {
-            TaskDetailView(store: store, task: task, isPresented: $presented)
-        }
     }
 }
 
-private struct TaskDetailView: View {
+struct TaskDetailEditorView: View {
     @ObservedObject var store: Store
     let task: TaskItem
-    @Binding var isPresented: Bool
+    let onDismiss: () -> Void
 
     @State private var title: String
     @State private var nextAction: String
@@ -44,10 +52,10 @@ private struct TaskDetailView: View {
     @State private var remindAt: Date
     @State private var recurrence: RecurrenceRule?
 
-    init(store: Store, task: TaskItem, isPresented: Binding<Bool>) {
+    init(store: Store, task: TaskItem, onDismiss: @escaping () -> Void) {
         self.store = store
         self.task = task
-        self._isPresented = isPresented
+        self.onDismiss = onDismiss
         _title = State(initialValue: task.text)
         _nextAction = State(initialValue: task.nextAction ?? "")
         _note = State(initialValue: task.note ?? "")
@@ -112,13 +120,13 @@ private struct TaskDetailView: View {
             Divider().overlay(Theme.hairline)
             HStack {
                 Button("删除", role: .destructive) {
-                    isPresented = false
+                    onDismiss()
                     store.deleteTask(task.id)
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(Theme.qUrgent)
                 Spacer()
-                Button("取消") { isPresented = false }.buttonStyle(.plain).foregroundColor(Theme.textDim)
+                Button("取消", action: onDismiss).buttonStyle(.plain).foregroundColor(Theme.textDim)
                 Button("保存") { save() }
                     .buttonStyle(.plain)
                     .foregroundColor(Theme.bg)
@@ -185,7 +193,7 @@ private struct TaskDetailView: View {
         if quadrant != task.quadrant { store.changeQuadrant(task.id, to: quadrant) }
         if isToday != task.isToday { store.setToday(task.id, isToday) }
         if estimate != task.estimatedMinutes { store.setEstimate(task.id, minutes: estimate) }
-        isPresented = false
+        onDismiss()
     }
 }
 

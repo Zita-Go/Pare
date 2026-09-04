@@ -46,7 +46,8 @@ final class PopoverController {
 
     var isShown: Bool { showing }
 
-    init(store: Store, onOpenOrganize: @escaping () -> Void) {
+    init(store: Store, onOpenOrganize: @escaping () -> Void,
+         onOpenTaskDetails: @escaping (UUID) -> Void) {
         self.store = store
         self.panel = CapturePanel()
         self.hosting = NSHostingView(rootView: AnyView(EmptyView()))
@@ -58,6 +59,7 @@ final class PopoverController {
                 self?.close()
                 onOpenOrganize()
             })
+            .environment(\.openTaskDetails, onOpenTaskDetails)
         }
         hosting.rootView = AnyView(container)
         hosting.translatesAutoresizingMaskIntoConstraints = true
