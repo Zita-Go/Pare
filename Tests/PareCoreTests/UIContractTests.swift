@@ -52,5 +52,11 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(popover.contains("isCaptureInteractionWindow"))
         XCTAssertTrue(popover.contains("event.window === self?.panel"),
                       "Esc 只能由随手记父面板吞掉，详情弹窗必须先处理")
+        let capture = try source("Sources/Pare/CaptureView.swift")
+        XCTAssertFalse(capture.contains(".onHover"),
+                       "随手记悬停不能再触发列表结构重绘")
+        let store = try source("Sources/PareCore/Store.swift")
+        XCTAssertTrue(store.contains("lastSavedData"),
+                      "点击保存应复用内存中的上一代数据，不应反复解码磁盘备份")
     }
 }

@@ -34,6 +34,9 @@ public final class Store: ObservableObject {
     let calendar: Calendar
     private var loading = false
     private var persistenceLocked = false
+    /// Last successfully decoded/encoded generation. Reusing it for `.bak`
+    /// avoids reading and decoding the whole JSON synchronously on every click.
+    private var lastSavedData: Data?
     private enum UndoPayload {
         case inbox(InboxItem, Int)
         case task(TaskItem, Int)
@@ -99,12 +102,16 @@ public final class Store: ObservableObject {
         dec.dateDecodingStrategy = .iso8601
         let snap: Snapshot
         do {
-            snap = try decodeSnapshot(Data(contentsOf: fileURL), using: dec)
+            let data = try Data(contentsOf: fileURL)
+            snap = try decodeSnapshot(data, using: dec)
+            lastSavedData = data
             persistenceLocked = false
             persistenceIssue = nil
         } catch {
             do {
-                snap = try decodeSnapshot(Data(contentsOf: backupURL), using: dec)
+                let data = try Data(contentsOf: backupURL)
+                snap = try decodeSnapshot(data, using: dec)
+                lastSavedData = data
                 persistenceLocked = false
                 persistenceIssue = "主数据文件无法读取，已从自动备份恢复。"
                 rewriteRecoveredData = true
@@ -154,9 +161,12 @@ public final class Store: ObservableObject {
     private func save(createBackup: Bool = true) {
         guard !loading, !persistenceLocked else { return }
         do {
-            if createBackup { try backupCurrentFileIfHealthy() }
             let data = try encoder().encode(currentSnapshot())
+            if createBackup, let previous = lastSavedData {
+                try previous.write(to: backupURL, options: .atomic)
+            }
             try data.write(to: fileURL, options: .atomic)
+            lastSavedData = data
             if persistenceIssue?.contains("无法保存") == true { persistenceIssue = nil }
         } catch {
             persistenceIssue = "无法保存数据：\(error.localizedDescription)"
@@ -166,10 +176,15 @@ public final class Store: ObservableObject {
     /// Keep only a decodable previous generation. A corrupted primary file must
     /// never be allowed to overwrite the last known-good backup.
     private func backupCurrentFileIfHealthy() throws {
+        if let data = lastSavedData {
+            try data.write(to: backupURL, options: .atomic)
+            return
+        }
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
         let data = try Data(contentsOf: fileURL)
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         guard (try? decodeSnapshot(data, using: dec)) != nil else { return }
+        lastSavedData = data
         try data.write(to: backupURL, options: .atomic)
     }
 

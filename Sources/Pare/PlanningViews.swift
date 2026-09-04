@@ -10,21 +10,15 @@ struct TaskDetailsButton: View {
     @ObservedObject var store: Store
     let task: TaskItem
     @State private var presented = false
-    @State private var hovering = false
 
     var body: some View {
         Button { presented = true } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(hovering ? Theme.text : Theme.textFaint)
+                .foregroundColor(Theme.textFaint)
                 .frame(width: 24, height: 22)
-                .background(
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(hovering ? Theme.panelHi.opacity(0.7) : Color.clear)
-                )
         }
         .buttonStyle(.plain)
-        .onHover { hovering = $0 }
         .help("编辑任务详情")
         .accessibilityLabel("编辑任务详情")
         .popover(isPresented: $presented, arrowEdge: .trailing) {
@@ -208,27 +202,12 @@ struct FocusTimerButton: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                Button { toggle(now: context.date) } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: isActive ? "stop.fill" : "play.fill")
-                            .font(.system(size: 9, weight: .bold))
-                        if showsLabel {
-                            Text(isActive ? DurationLabel.short(max(1, store.timerElapsedMinutes(now: context.date))) : "专注")
-                                .font(Theme.font(11, weight: .medium))
-                        }
-                    }
-                    .foregroundColor(isActive ? Theme.bg : Theme.amber)
-                    .padding(.horizontal, showsLabel ? 8 : 6).padding(.vertical, 4)
-                    .background(Capsule().fill(isActive ? Theme.amber : Theme.amberSoft))
-                    .overlay(Capsule().stroke(Theme.amber.opacity(0.45), lineWidth: 1))
+            if isActive, showsLabel {
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    timerButton(now: context.date)
                 }
-                .buttonStyle(.plain)
-                .disabled(task.completed)
-                .help(isActive
-                      ? (showsLabel ? "停止并记录实际用时" : "停止并记录实际用时；右键可放弃")
-                      : "开始专注计时")
-                .accessibilityLabel(isActive ? "停止专注计时" : "开始专注计时")
+            } else {
+                timerButton(now: Date())
             }
             if isActive, showsLabel {
                 Button { store.cancelTimer() } label: {
@@ -260,6 +239,29 @@ struct FocusTimerButton: View {
             }
             .padding(14).frame(width: 230).background(Theme.bg)
         }
+    }
+
+    private func timerButton(now: Date) -> some View {
+        Button { toggle(now: Date()) } label: {
+            HStack(spacing: 4) {
+                Image(systemName: isActive ? "stop.fill" : "play.fill")
+                    .font(.system(size: 9, weight: .bold))
+                if showsLabel {
+                    Text(isActive ? DurationLabel.short(max(1, store.timerElapsedMinutes(now: now))) : "专注")
+                        .font(Theme.font(11, weight: .medium))
+                }
+            }
+            .foregroundColor(isActive ? Theme.bg : Theme.amber)
+            .padding(.horizontal, showsLabel ? 8 : 6).padding(.vertical, 4)
+            .background(Capsule().fill(isActive ? Theme.amber : Theme.amberSoft))
+            .overlay(Capsule().stroke(Theme.amber.opacity(0.45), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(task.completed)
+        .help(isActive
+              ? (showsLabel ? "停止并记录实际用时" : "停止并记录实际用时；右键可放弃")
+              : "开始专注计时")
+        .accessibilityLabel(isActive ? "停止专注计时" : "开始专注计时")
     }
 
     private func toggle(now: Date) {

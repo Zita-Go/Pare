@@ -13,7 +13,6 @@ struct CaptureView: View {
 
     @State private var draft: String = ""
     @FocusState private var focused: Bool
-    @State private var hoverOrganize = false
     /// RFC-0001: 纯净模式 —— 收起「今日任务」列表，让弹窗回到"只管记下"的最聚焦形态。
     /// 用 @AppStorage 记住选择，跨弹窗开合与重启保持一致。
     @AppStorage("pareCapturePureMode") private var pureMode = false
@@ -163,17 +162,15 @@ struct CaptureView: View {
                 .padding(.horizontal, 13)
                 .padding(.vertical, 7)
                 .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(Theme.panel.opacity(hoverOrganize ? 0.9 : 0.55))
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Theme.panel.opacity(0.55))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .stroke(hoverOrganize ? Theme.amber.opacity(0.6) : Theme.border, lineWidth: 1)
+                        .stroke(Theme.border, lineWidth: 1)
                 )
             }
             .buttonStyle(.plain)
-            .onHover { hoverOrganize = $0 }
-            .animation(.easeOut(duration: 0.12), value: hoverOrganize)
             .accessibilityLabel("打开整理窗口")
 
             Spacer()
@@ -235,7 +232,6 @@ struct CaptureView: View {
 private struct TodayRow: View {
     @ObservedObject var store: Store
     let task: TaskItem
-    @State private var hovering = false
     /// RFC-0001 T5: 刚完成、等待记录实际用时时展开的就地 chip 提示。
     @State private var showActualPrompt = false
 
@@ -263,7 +259,7 @@ private struct TodayRow: View {
                     }
                     .foregroundColor(Theme.amber.opacity(0.85))
                 }
-                if !task.completed, hovering || store.activeTimer?.taskID == task.id {
+                if !task.completed {
                     FocusTimerButton(store: store, task: task)
                 }
                 TaskDetailsButton(store: store, task: task)
@@ -290,9 +286,8 @@ private struct TodayRow: View {
         .padding(.horizontal, 8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(hovering ? Theme.panel.opacity(0.5) : Color.clear)
+                .fill(Color.clear)
         )
-        .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: showActualPrompt)
     }
 
