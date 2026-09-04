@@ -11,6 +11,7 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
     /// RFC-0001 T2: shared with `OrganizeView` so an evening-`review` tap (or the
     /// 右键「今日小结」入口) can force the 今日小结 card open on present.
     private let summaryState = TodaySummaryState()
+    private let presentationState = OrganizePresentationState()
 
     init(store: Store, onClose: @escaping () -> Void,
          onOpenWeeklyReview: @escaping () -> Void = {}) {
@@ -30,7 +31,10 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 880, height: 580)
 
-        let hosting = NSHostingController(rootView: OrganizeView(store: store, summaryState: summaryState, onOpenWeeklyReview: onOpenWeeklyReview))
+        let hosting = NSHostingController(rootView: OrganizeView(
+            store: store, summaryState: summaryState,
+            presentationState: presentationState,
+            onOpenWeeklyReview: onOpenWeeklyReview))
         window.contentViewController = hosting
         window.center()
 
@@ -43,12 +47,17 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
     /// Present the window. `showSummary` expands the 今日小结 card (used by the
     /// evening-`review` notification and the manual「今日小结」entry); a normal
     /// open leaves the card in whatever state the user last left it.
-    func present(showSummary: Bool = false) {
+    func present(showSummary: Bool = false, taskID: UUID? = nil) {
         if showSummary { summaryState.expanded = true }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        if let taskID {
+            DispatchQueue.main.async { [weak self] in
+                self?.presentationState.taskDetailID = taskID
+            }
+        }
     }
 
     func windowWillClose(_ notification: Notification) {

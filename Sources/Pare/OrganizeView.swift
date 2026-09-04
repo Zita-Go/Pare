@@ -9,6 +9,10 @@ private enum WorkspaceMode: String, CaseIterable {
     case library = "想法与历史"
 }
 
+final class OrganizePresentationState: ObservableObject {
+    @Published var taskDetailID: UUID?
+}
+
 /// The "整理状态" — the four quadrants are the main act, each with its own quiet
 /// color so you can read the map at a glance. Unprocessed captures sit in a
 /// recessed tray on the left; drag each into a quadrant (or use its context
@@ -19,6 +23,7 @@ struct OrganizeView: View {
     /// RFC-0001 T2: 今日小结卡片的展开 / 收起状态，由整理窗控制器持有，好让晚间
     /// `review` 通知点击（或右键「今日小结」入口）把它强制展开。
     @ObservedObject var summaryState: TodaySummaryState
+    @ObservedObject var presentationState: OrganizePresentationState
     /// RFC-0001 T3: 打开「本周回顾」窗口的整理窗入口回调（默认空操作，兼容其它调用点）。
     var onOpenWeeklyReview: () -> Void = {}
     /// RFC-0001: 整理窗全键盘归位的当前"光标" —— 选中的待整理项或象限任务。
@@ -58,6 +63,33 @@ struct OrganizeView: View {
         }
         .animation(.easeOut(duration: 0.18), value: store.undoMessage)
         .animation(.easeOut(duration: 0.2), value: inboxVisible)
+        .onReceive(presentationState.$taskDetailID) { id in
+            guard let id else { return }
+            workspace = .matrix
+            focus.selection = .task(id)
+        }
+        .sheet(isPresented: detailSheetPresented) {
+            detailSheet
+        }
+    }
+
+    private var detailSheetPresented: Binding<Bool> {
+        Binding(
+            get: { presentationState.taskDetailID != nil },
+            set: { visible in if !visible { presentationState.taskDetailID = nil } })
+    }
+
+    @ViewBuilder private var detailSheet: some View {
+        if let id = presentationState.taskDetailID,
+           let task = store.tasks.first(where: { $0.id == id }) {
+            TaskDetailView(store: store, task: task,
+                           isPresented: detailSheetPresented)
+        } else {
+            Text("任务已不存在")
+                .font(Theme.font(13))
+                .foregroundColor(Theme.textDim)
+                .padding(30)
+        }
     }
 
     private var inboxVisible: Bool { !store.inbox.isEmpty }

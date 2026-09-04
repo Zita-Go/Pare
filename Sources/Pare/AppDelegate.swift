@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         popoverController = PopoverController(store: store, onOpenOrganize: { [weak self] in
             self?.openOrganize()
+        }, onOpenTaskDetails: { [weak self] id in
+            self?.openOrganize(taskID: id)
         })
 
         // Set up notifications early so the delegate is registered before launch
@@ -114,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// RFC-0001 T2: `showSummary` expands the 今日小结 card on present — used by the
     /// evening review notification tap and the 右键「今日小结」manual entry.
-    private func openOrganize(showSummary: Bool = false) {
+    private func openOrganize(showSummary: Bool = false, taskID: UUID? = nil) {
         store.rolloverIfNeeded()
         if organizeWindowController == nil {
             organizeWindowController = OrganizeWindowController(
@@ -122,7 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onClose: {},
                 onOpenWeeklyReview: { [weak self] in self?.openWeeklyReview() })
         }
-        organizeWindowController?.present(showSummary: showSummary)
+        organizeWindowController?.present(showSummary: showSummary, taskID: taskID)
     }
 
     private func openWeeklyReview() {
