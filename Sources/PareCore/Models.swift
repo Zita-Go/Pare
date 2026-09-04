@@ -43,6 +43,90 @@ public enum RecurrenceRule: String, Codable, CaseIterable, Hashable {
     }
 }
 
+public enum BlockerReason: String, Codable, CaseIterable, Hashable {
+    case unclear
+    case tooLarge
+    case lowEnergy
+    case resistance
+
+    public var title: String {
+        switch self {
+        case .unclear: return "不知道下一步"
+        case .tooLarge: return "任务太大"
+        case .lowEnergy: return "没有精力"
+        case .resistance: return "有压力或抗拒"
+        }
+    }
+}
+
+public struct BlockerEntry: Identifiable, Codable, Hashable {
+    public var id: UUID
+    public var reason: BlockerReason
+    public var at: Date
+
+    public init(id: UUID = UUID(), reason: BlockerReason, at: Date = Date()) {
+        self.id = id; self.reason = reason; self.at = at
+    }
+}
+
+public struct ProgressSession: Identifiable, Codable, Hashable {
+    public var id: UUID
+    public var startedAt: Date
+    public var endedAt: Date
+    public var minutes: Int
+    public var targetMinutes: Int?
+
+    public init(id: UUID = UUID(), startedAt: Date, endedAt: Date,
+                minutes: Int, targetMinutes: Int? = nil) {
+        self.id = id; self.startedAt = startedAt; self.endedAt = endedAt
+        self.minutes = minutes; self.targetMinutes = targetMinutes
+    }
+}
+
+public enum ImplementationCueKind: String, Codable, CaseIterable, Hashable {
+    case time
+    case returnToComputer
+    case openApplication
+
+    public var title: String {
+        switch self {
+        case .time: return "到指定时间"
+        case .returnToComputer: return "回到电脑时"
+        case .openApplication: return "打开应用时"
+        }
+    }
+}
+
+public struct ImplementationPlan: Codable, Hashable {
+    public var kind: ImplementationCueKind
+    public var action: String
+    public var hour: Int?
+    public var minute: Int?
+    public var applicationBundleID: String?
+    public var applicationName: String?
+
+    public init(kind: ImplementationCueKind, action: String,
+                hour: Int? = nil, minute: Int? = nil,
+                applicationBundleID: String? = nil,
+                applicationName: String? = nil) {
+        self.kind = kind; self.action = action
+        self.hour = hour; self.minute = minute
+        self.applicationBundleID = applicationBundleID
+        self.applicationName = applicationName
+    }
+
+    public var summary: String {
+        switch kind {
+        case .time:
+            return String(format: "如果到了 %02d:%02d，那么%@", hour ?? 9, minute ?? 0, action)
+        case .returnToComputer:
+            return "如果回到电脑旁，那么\(action)"
+        case .openApplication:
+            return "如果打开\(applicationName ?? "指定应用")，那么\(action)"
+        }
+    }
+}
+
 /// A raw, unprocessed capture written in "随手记" mode.
 public struct InboxItem: Identifiable, Codable, Hashable {
     public var id: UUID
@@ -89,10 +173,12 @@ public struct ThoughtItem: Identifiable, Codable, Hashable {
 public struct ActiveTimer: Codable, Equatable {
     public var taskID: UUID
     public var startedAt: Date
+    public var targetMinutes: Int?
 
-    public init(taskID: UUID, startedAt: Date) {
+    public init(taskID: UUID, startedAt: Date, targetMinutes: Int? = nil) {
         self.taskID = taskID
         self.startedAt = startedAt
+        self.targetMinutes = targetMinutes
     }
 }
 
@@ -131,6 +217,12 @@ public struct TaskItem: Identifiable, Codable, Hashable {
     public var recurrence: RecurrenceRule?
     /// Stable user-defined order inside the Today planner.
     public var todayOrder: Int?
+    public var definitionOfDone: String?
+    public var isDailyWin: Bool?
+    public var implementationPlan: ImplementationPlan?
+    public var lastImplementationTriggeredAt: Date?
+    public var progressSessions: [ProgressSession]?
+    public var blockerEntries: [BlockerEntry]?
 
     public init(id: UUID = UUID(),
                 text: String,
@@ -147,7 +239,13 @@ public struct TaskItem: Identifiable, Codable, Hashable {
                 nextAction: String? = nil,
                 dueAt: Date? = nil,
                 recurrence: RecurrenceRule? = nil,
-                todayOrder: Int? = nil) {
+                todayOrder: Int? = nil,
+                definitionOfDone: String? = nil,
+                isDailyWin: Bool? = nil,
+                implementationPlan: ImplementationPlan? = nil,
+                lastImplementationTriggeredAt: Date? = nil,
+                progressSessions: [ProgressSession]? = nil,
+                blockerEntries: [BlockerEntry]? = nil) {
         self.id = id
         self.text = text
         self.quadrant = quadrant
@@ -164,6 +262,12 @@ public struct TaskItem: Identifiable, Codable, Hashable {
         self.dueAt = dueAt
         self.recurrence = recurrence
         self.todayOrder = todayOrder
+        self.definitionOfDone = definitionOfDone
+        self.isDailyWin = isDailyWin
+        self.implementationPlan = implementationPlan
+        self.lastImplementationTriggeredAt = lastImplementationTriggeredAt
+        self.progressSessions = progressSessions
+        self.blockerEntries = blockerEntries
     }
 }
 

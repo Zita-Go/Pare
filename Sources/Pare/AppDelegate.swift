@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindowController: OnboardingWindowController?
     private var notificationManager: NotificationManager!
     private var attentionDetector: AttentionDriftDetector!
+    private var momentumManager: MomentumManager!
     private var hotKey: HotKey?
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
@@ -39,6 +40,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         })
         notificationManager.configure()
         installSleepObservers()
+
+        momentumManager = MomentumManager(store: store) { [weak self] task, plan in
+            self?.notificationManager.sendImplementationCue(task: task, plan: plan)
+        }
+        momentumManager.start()
 
         attentionDetector = AttentionDriftDetector(store: store) { [weak self] task, decision in
             self?.notificationManager.sendAttentionDriftNotice(task: task, decision: decision)
@@ -84,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let sleepObserver { center.removeObserver(sleepObserver) }
         if let wakeObserver { center.removeObserver(wakeObserver) }
         attentionDetector?.stop()
+        momentumManager?.stop()
     }
 
     private func installSleepObservers() {

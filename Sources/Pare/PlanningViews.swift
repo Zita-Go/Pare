@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import PareCore
@@ -34,15 +35,23 @@ private struct TaskDetailView: View {
 
     @State private var title: String
     @State private var nextAction: String
+    @State private var definitionOfDone: String
     @State private var note: String
     @State private var quadrant: Quadrant
     @State private var isToday: Bool
+    @State private var isDailyWin: Bool
     @State private var estimate: Int?
     @State private var hasDue: Bool
     @State private var dueAt: Date
     @State private var hasReminder: Bool
     @State private var remindAt: Date
     @State private var recurrence: RecurrenceRule?
+    @State private var hasImplementationPlan: Bool
+    @State private var implementationKind: ImplementationCueKind
+    @State private var implementationAction: String
+    @State private var cueTime: Date
+    @State private var applicationBundleID: String
+    @State private var applicationName: String
 
     init(store: Store, task: TaskItem, isPresented: Binding<Bool>) {
         self.store = store
@@ -50,85 +59,106 @@ private struct TaskDetailView: View {
         self._isPresented = isPresented
         _title = State(initialValue: task.text)
         _nextAction = State(initialValue: task.nextAction ?? "")
+        _definitionOfDone = State(initialValue: task.definitionOfDone ?? "")
         _note = State(initialValue: task.note ?? "")
         _quadrant = State(initialValue: task.quadrant)
         _isToday = State(initialValue: task.isToday)
+        _isDailyWin = State(initialValue: task.isDailyWin == true)
         _estimate = State(initialValue: task.estimatedMinutes)
         _hasDue = State(initialValue: task.dueAt != nil)
         _dueAt = State(initialValue: task.dueAt ?? Date().addingTimeInterval(3600))
         _hasReminder = State(initialValue: task.remindAt != nil)
         _remindAt = State(initialValue: task.remindAt ?? Date().addingTimeInterval(3600))
         _recurrence = State(initialValue: task.recurrence)
+        let plan = task.implementationPlan
+        _hasImplementationPlan = State(initialValue: plan != nil)
+        _implementationKind = State(initialValue: plan?.kind ?? .time)
+        _implementationAction = State(initialValue: plan?.action ?? task.nextAction ?? "")
+        _cueTime = State(initialValue: Calendar.current.date(
+            bySettingHour: plan?.hour ?? 9, minute: plan?.minute ?? 0,
+            second: 0, of: Date()) ?? Date())
+        _applicationBundleID = State(initialValue: plan?.applicationBundleID ?? "")
+        _applicationName = State(initialValue: plan?.applicationName ?? "")
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack {
-                Text("任务详情")
-                    .font(Theme.font(16, weight: .semibold))
-                    .foregroundColor(Theme.text)
-                Spacer()
-                FocusTimerButton(store: store, task: task, showsLabel: true)
-            }
-
-            field("任务", text: $title, prompt: "要完成什么？")
-            field("下一步", text: $nextAction, prompt: "最小、具体的下一步动作")
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("思考与备注").font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
-                TextEditor(text: $note)
-                    .font(Theme.font(13))
-                    .foregroundColor(Theme.text)
-                    .scrollContentBackground(.hidden)
-                    .padding(7)
-                    .frame(height: 82)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.18)))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
-            }
-
-            HStack {
-                Text("象限").font(Theme.font(12)).foregroundColor(Theme.textDim)
-                Spacer()
-                Picker("", selection: $quadrant) {
-                    ForEach(Quadrant.allCases, id: \.self) { Text($0.title).tag($0) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack {
+                    Text("任务详情")
+                        .font(Theme.font(16, weight: .semibold))
+                        .foregroundColor(Theme.text)
+                    Spacer()
+                    FocusTimerButton(store: store, task: task, showsLabel: true)
                 }
-                .labelsHidden().pickerStyle(.menu).fixedSize()
-            }
 
-            Toggle("加入今日计划", isOn: $isToday)
-                .toggleStyle(.switch).tint(Theme.amber).font(Theme.font(12))
+                field("任务", text: $title, prompt: "要完成什么？")
+                field("下一步", text: $nextAction, prompt: "最小、具体的下一步动作")
+                field("完成标准", text: $definitionOfDone, prompt: "做到什么程度就可以结束？")
 
-            HStack {
-                Text("预估").font(Theme.font(12)).foregroundColor(Theme.textDim)
-                Spacer()
-                DurationPill(minutes: estimate) { estimate = $0 }
-                if task.actualMinutes != nil {
-                    ActualTimePill(minutes: task.actualMinutes ?? 0) { store.setActual(task.id, minutes: $0) }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("思考与备注").font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
+                    TextEditor(text: $note)
+                        .font(Theme.font(13))
+                        .foregroundColor(Theme.text)
+                        .scrollContentBackground(.hidden)
+                        .padding(7)
+                        .frame(height: 82)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.18)))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
                 }
-            }
 
-            dateSection
-
-            Divider().overlay(Theme.hairline)
-            HStack {
-                Button("删除", role: .destructive) {
-                    isPresented = false
-                    store.deleteTask(task.id)
+                HStack {
+                    Text("象限").font(Theme.font(12)).foregroundColor(Theme.textDim)
+                    Spacer()
+                    Picker("", selection: $quadrant) {
+                        ForEach(Quadrant.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .labelsHidden().pickerStyle(.menu).fixedSize()
                 }
-                .buttonStyle(.plain)
-                .foregroundColor(Theme.qUrgent)
-                Spacer()
-                Button("取消") { isPresented = false }.buttonStyle(.plain).foregroundColor(Theme.textDim)
-                Button("保存") { save() }
+
+                Toggle("加入今日计划", isOn: $isToday)
+                    .toggleStyle(.switch).tint(Theme.amber).font(Theme.font(12))
+                    .onChange(of: isToday) { value in if !value { isDailyWin = false } }
+                Toggle("今天只赢这一件", isOn: $isDailyWin)
+                    .toggleStyle(.switch).tint(Theme.amber).font(Theme.font(12))
+                    .onChange(of: isDailyWin) { value in if value { isToday = true } }
+
+                HStack {
+                    Text("预估").font(Theme.font(12)).foregroundColor(Theme.textDim)
+                    Spacer()
+                    DurationPill(minutes: estimate) { estimate = $0 }
+                    if task.actualMinutes != nil {
+                        ActualTimePill(minutes: task.actualMinutes ?? 0) { store.setActual(task.id, minutes: $0) }
+                    }
+                }
+
+                dateSection
+                implementationSection
+
+                Divider().overlay(Theme.hairline)
+                HStack {
+                    Button("删除", role: .destructive) {
+                        isPresented = false
+                        store.deleteTask(task.id)
+                    }
                     .buttonStyle(.plain)
-                    .foregroundColor(Theme.bg)
-                    .padding(.horizontal, 14).padding(.vertical, 7)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.amber))
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .foregroundColor(Theme.qUrgent)
+                    Spacer()
+                    Button("取消") { isPresented = false }.buttonStyle(.plain).foregroundColor(Theme.textDim)
+                    Button("保存") { save() }
+                        .buttonStyle(.plain)
+                        .foregroundColor(Theme.bg)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.amber))
+                        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                  || !implementationPlanIsValid)
+                }
             }
+            .padding(16)
         }
-        .padding(16)
         .frame(width: 380)
+        .frame(maxHeight: 720)
         .background(Theme.bg)
     }
 
@@ -166,6 +196,51 @@ private struct TaskDetailView: View {
         }
     }
 
+    private var implementationSection: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Toggle("如果—那么启动计划", isOn: $hasImplementationPlan)
+                .toggleStyle(.switch).tint(Theme.amber).font(Theme.font(12))
+            if hasImplementationPlan {
+                HStack {
+                    Text("如果").font(Theme.font(12)).foregroundColor(Theme.textDim)
+                    Spacer()
+                    Picker("", selection: $implementationKind) {
+                        ForEach(ImplementationCueKind.allCases, id: \.self) { kind in
+                            Text(kind.title).tag(kind)
+                        }
+                    }
+                    .labelsHidden().pickerStyle(.menu).fixedSize()
+                }
+                if implementationKind == .time {
+                    DatePicker("", selection: $cueTime, displayedComponents: .hourAndMinute)
+                        .labelsHidden().datePickerStyle(.stepperField)
+                } else if implementationKind == .openApplication {
+                    Picker("选择当前运行的应用", selection: $applicationBundleID) {
+                        Text("请选择").tag("")
+                        ForEach(runningApplications, id: \.bundleID) { app in
+                            Text(app.name).tag(app.bundleID)
+                        }
+                    }
+                    .onChange(of: applicationBundleID) { id in
+                        applicationName = runningApplications.first { $0.bundleID == id }?.name ?? applicationName
+                    }
+                }
+                field("那么", text: $implementationAction,
+                      prompt: "例如：打开脚本，先运行 10 个样本")
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private var runningApplications: [(bundleID: String, name: String)] {
+        var seen = Set<String>()
+        return NSWorkspace.shared.runningApplications.compactMap { app in
+            guard let id = app.bundleIdentifier, let name = app.localizedName,
+                  id != Bundle.main.bundleIdentifier, seen.insert(id).inserted else { return nil }
+            return (id, name)
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     private func field(_ label: String, text: Binding<String>, prompt: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(label).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
@@ -178,14 +253,34 @@ private struct TaskDetailView: View {
     }
 
     private func save() {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: cueTime)
+        let plan: ImplementationPlan? = hasImplementationPlan
+            ? ImplementationPlan(kind: implementationKind,
+                                 action: implementationAction.trimmingCharacters(in: .whitespacesAndNewlines),
+                                 hour: implementationKind == .time ? comps.hour : nil,
+                                 minute: implementationKind == .time ? comps.minute : nil,
+                                 applicationBundleID: implementationKind == .openApplication ? applicationBundleID : nil,
+                                 applicationName: implementationKind == .openApplication ? applicationName : nil)
+            : nil
         store.updateTaskDetails(task.id, text: title, note: note, nextAction: nextAction,
                                 dueAt: hasDue ? dueAt : nil,
                                 remindAt: hasReminder ? remindAt : nil,
-                                recurrence: hasReminder ? recurrence : nil)
+                                recurrence: hasReminder ? recurrence : nil,
+                                definitionOfDone: definitionOfDone,
+                                implementationPlan: plan,
+                                isDailyWin: isDailyWin)
         if quadrant != task.quadrant { store.changeQuadrant(task.id, to: quadrant) }
         if isToday != task.isToday { store.setToday(task.id, isToday) }
         if estimate != task.estimatedMinutes { store.setEstimate(task.id, minutes: estimate) }
         isPresented = false
+    }
+
+    private var implementationPlanIsValid: Bool {
+        guard hasImplementationPlan else { return true }
+        guard !implementationAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        return implementationKind != .openApplication || !applicationBundleID.isEmpty
     }
 }
 
@@ -279,9 +374,12 @@ struct FocusTimerButton: View {
 struct TodayPlannerView: View {
     @ObservedObject var store: Store
     @State private var quickTask = ""
+    @State private var rescueTaskID: UUID?
+    @State private var rescuePreset: BlockerReason?
 
     private var incomplete: [TaskItem] { store.todayTasks.filter { !$0.completed } }
     private var completed: [TaskItem] { store.todayTasks.filter(\.completed) }
+    private var keyTask: TaskItem? { store.dailyWinTask ?? incomplete.first }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -305,29 +403,81 @@ struct TodayPlannerView: View {
             quickAdd
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .sheet(isPresented: rescuePresented) {
+            if let id = rescueTaskID, let task = store.tasks.first(where: { $0.id == id }) {
+                MomentumRescueView(store: store, task: task, preset: rescuePreset,
+                                   isPresented: rescuePresented)
+            }
+        }
+    }
+
+    private var rescuePresented: Binding<Bool> {
+        Binding(get: { rescueTaskID != nil }, set: { visible in
+            if !visible { rescueTaskID = nil; rescuePreset = nil }
+        })
     }
 
     private var plannerHeader: some View {
-        HStack(alignment: .top, spacing: 18) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("下一件").font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.textDim)
-                Text(incomplete.first?.text ?? "今天已经收完了")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 18) {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 5) {
+                        Image(systemName: store.dailyWinTask == nil ? "star" : "star.fill")
+                        Text("今天只赢一件")
+                    }
+                    .font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.amber)
+                    Text(keyTask?.text ?? "今天已经收完了")
                     .font(Theme.font(18, weight: .semibold))
                     .foregroundColor(incomplete.isEmpty ? Theme.textDim : Theme.text)
                     .lineLimit(2)
-                if let next = incomplete.first, let action = next.nextAction {
-                    Text("下一步：\(action)").font(Theme.font(12)).foregroundColor(Theme.amber)
+                    if let task = keyTask, let action = task.nextAction {
+                        Text("下一步：\(action)").font(Theme.font(12)).foregroundColor(Theme.textDim)
+                    }
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(remainingText)
+                        .font(Theme.font(13, weight: .medium)).foregroundColor(Theme.amber)
+                    Text("容量 \(DurationLabel.short(store.settings.todayCapacityMinutes))")
+                        .font(Theme.font(11)).foregroundColor(Theme.textDim)
                 }
             }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(remainingText)
-                    .font(Theme.font(13, weight: .medium)).foregroundColor(Theme.amber)
-                Text("容量 \(DurationLabel.short(store.settings.todayCapacityMinutes))")
-                    .font(Theme.font(11)).foregroundColor(Theme.textDim)
+            if let task = keyTask, !task.completed {
+                HStack(spacing: 8) {
+                    momentumButton("开始 5 分钟", icon: "play.fill") {
+                        store.setDailyWin(task.id)
+                        _ = store.startTimer(task.id, targetMinutes: 5)
+                    }
+                    momentumButton("拆小一步", icon: "arrow.down.right.and.arrow.up.left") {
+                        rescuePreset = .tooLarge; rescueTaskID = task.id
+                    }
+                    momentumButton("我卡住了", icon: "questionmark.bubble") {
+                        rescuePreset = nil; rescueTaskID = task.id
+                    }
+                    if store.dailyWinTask == nil {
+                        Button("设为今日关键") { store.setDailyWin(task.id) }
+                            .buttonStyle(.plain).font(Theme.font(11, weight: .medium))
+                            .foregroundColor(Theme.textDim)
+                    }
+                }
             }
         }
         .padding(16).panel(corner: 14, accent: Theme.amber)
+    }
+
+    private func momentumButton(_ title: String, icon: String,
+                                action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 10, weight: .semibold))
+                Text(title).font(Theme.font(11, weight: .semibold))
+            }
+            .foregroundColor(Theme.amber)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(Capsule().fill(Theme.amberSoft))
+            .overlay(Capsule().stroke(Theme.amber.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private var remainingText: String {
@@ -385,6 +535,16 @@ private struct TodayPlannerRow: View {
                     .frame(width: 18)
             }
             TaskCheckbox(completed: task.completed, label: task.text) { store.toggleComplete(task.id) }
+            if !task.completed {
+                Button { store.setDailyWin(task.isDailyWin == true ? nil : task.id) } label: {
+                    Image(systemName: task.isDailyWin == true ? "star.fill" : "star")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(task.isDailyWin == true ? Theme.amber : Theme.textFaint)
+                }
+                .buttonStyle(.plain)
+                .help(task.isDailyWin == true ? "取消今日关键任务" : "设为今日关键任务")
+                .accessibilityLabel(task.isDailyWin == true ? "取消今日关键任务" : "设为今日关键任务")
+            }
             VStack(alignment: .leading, spacing: 3) {
                 Text(task.text).font(Theme.font(14, weight: .medium))
                     .foregroundColor(task.completed ? Theme.textDim : Theme.text)
@@ -415,6 +575,128 @@ private struct TodayPlannerRow: View {
             }
             return true
         }
+    }
+}
+
+private struct MomentumRescueView: View {
+    @ObservedObject var store: Store
+    let task: TaskItem
+    let preset: BlockerReason?
+    @Binding var isPresented: Bool
+    @State private var reason: BlockerReason?
+    @State private var nextAction: String
+    @State private var definitionOfDone: String
+
+    init(store: Store, task: TaskItem, preset: BlockerReason?, isPresented: Binding<Bool>) {
+        self.store = store; self.task = task; self.preset = preset; self._isPresented = isPresented
+        _reason = State(initialValue: preset)
+        _nextAction = State(initialValue: task.nextAction ?? "")
+        _definitionOfDone = State(initialValue: task.definitionOfDone ?? "")
+    }
+
+    private let columns = [GridItem(.flexible()), GridItem(.flexible())]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(preset == .tooLarge ? "拆小一步" : "现在为什么不想推进？")
+                .font(Theme.font(18, weight: .semibold)).foregroundColor(Theme.text)
+            Text(task.text).font(Theme.font(13)).foregroundColor(Theme.amber).lineLimit(2)
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(BlockerReason.allCases, id: \.self) { item in
+                    Button { choose(item) } label: {
+                        Text(item.title).font(Theme.font(12, weight: .medium))
+                            .foregroundColor(reason == item ? Theme.bg : Theme.text)
+                            .frame(maxWidth: .infinity).padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8)
+                                .fill(reason == item ? Theme.amber : Theme.panel))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if let reason {
+                Text(helpText(reason)).font(Theme.font(11)).foregroundColor(Theme.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            compactField("最小下一步", text: $nextAction,
+                         prompt: "一个 5–15 分钟内能直接做的动作")
+            compactField("最低完成版本", text: $definitionOfDone,
+                         prompt: "做到什么程度，今天就算有进展？")
+
+            if reason == .lowEnergy, let suggestion = lowEnergySuggestion {
+                Button("改做较轻的：\(suggestion.text)") {
+                    store.recordBlocker(task.id, reason: .lowEnergy)
+                    store.setDailyWin(suggestion.id)
+                    isPresented = false
+                }
+                .buttonStyle(.plain).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.amber)
+            }
+
+            HStack {
+                Button("取消") { isPresented = false }
+                    .buttonStyle(.plain).foregroundColor(Theme.textDim)
+                Spacer()
+                Button("只保存") { save(start: false) }
+                    .buttonStyle(.plain).foregroundColor(Theme.text)
+                Button("保存并开始 5 分钟") { save(start: true) }
+                    .buttonStyle(.plain).foregroundColor(Theme.bg)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 9).fill(Theme.amber))
+            }
+        }
+        .padding(18).frame(width: 430).background(Theme.bg)
+        .onAppear { if let preset { choose(preset) } }
+    }
+
+    private func compactField(_ label: String, text: Binding<String>, prompt: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label).font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.textDim)
+            TextField(prompt, text: text).textFieldStyle(.plain).font(Theme.font(13))
+                .foregroundColor(Theme.text).padding(.horizontal, 9).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel.opacity(0.55)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border.opacity(0.6)))
+        }
+    }
+
+    private func choose(_ value: BlockerReason) {
+        reason = value
+        if nextAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            switch value {
+            case .unclear: nextAction = "打开相关文件，写下第一个需要回答的问题"
+            case .tooLarge: nextAction = "先完成一个 5–15 分钟的小步骤"
+            case .lowEnergy: nextAction = "只做最轻的一步，不要求完成全部"
+            case .resistance: nextAction = "先尝试 5 分钟，允许做得不完美"
+            }
+        }
+        if value == .resistance,
+           definitionOfDone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            definitionOfDone = "完成一个可以交付的最低版本"
+        }
+    }
+
+    private func helpText(_ value: BlockerReason) -> String {
+        switch value {
+        case .unclear: return "先把模糊任务变成一个可以点击、打开或写下的动作。"
+        case .tooLarge: return "不拆完整计划，只找出现在能推进的一小步。"
+        case .lowEnergy: return "降低任务强度，或换做今日列表中更短的一件。"
+        case .resistance: return "把标准降到最低可接受版本，只承诺尝试五分钟。"
+        }
+    }
+
+    private var lowEnergySuggestion: TaskItem? {
+        store.todayTasks.filter { !$0.completed && $0.id != task.id }
+            .sorted { ($0.estimatedMinutes ?? Int.max) < ($1.estimatedMinutes ?? Int.max) }
+            .first
+    }
+
+    private func save(start: Bool) {
+        store.setMomentumDetails(task.id, nextAction: nextAction, definitionOfDone: definitionOfDone)
+        if let reason { store.recordBlocker(task.id, reason: reason) }
+        store.setDailyWin(task.id)
+        if start { _ = store.startTimer(task.id, targetMinutes: 5) }
+        isPresented = false
     }
 }
 

@@ -31,6 +31,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private static let dailyCategory  = "PARE_DAILY"
     private static let weeklyCategory = "PARE_WEEKLY"
     private static let attentionCategory = "PARE_ATTENTION"
+    private static let momentumCategory = "PARE_MOMENTUM"
+    private static let timerCategory = "PARE_TIMER_CHECKPOINT"
     private static let actionComplete = "PARE_COMPLETE"
     private static let actionSnooze15 = "PARE_SNOOZE_15"
     private static let actionSnooze60 = "PARE_SNOOZE_60"
@@ -39,6 +41,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private static let actionAttentionFocus = "PARE_ATTENTION_FOCUS"
     private static let actionAttentionBlocker = "PARE_ATTENTION_BLOCKER"
     private static let actionAttentionSnooze = "PARE_ATTENTION_SNOOZE"
+    private static let actionQuickStart = "PARE_QUICK_START"
+    private static let actionTimerContinue = "PARE_TIMER_CONTINUE"
+    private static let actionTimerPause = "PARE_TIMER_PAUSE"
     private static let testIdentifier = "pare.test"
     /// The stable identifier of the weekly-review reminder (see `Reminders`).
     private static let weeklyIdentifier = "weekly.review"
@@ -103,7 +108,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                                             actions: [openWeekly],
                                             intentIdentifiers: [], options: [])
         let focus = UNNotificationAction(identifier: Self.actionAttentionFocus,
-                                         title: "开始专注", options: [.foreground])
+                                         title: "开始 5 分钟", options: [])
         let blocker = UNNotificationAction(identifier: Self.actionAttentionBlocker,
                                            title: "记录卡点", options: [.foreground])
         let attentionSnooze = UNNotificationAction(identifier: Self.actionAttentionSnooze,
@@ -111,7 +116,19 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let attention = UNNotificationCategory(identifier: Self.attentionCategory,
                                                actions: [focus, blocker, attentionSnooze],
                                                intentIdentifiers: [], options: [])
-        center.setNotificationCategories([task, daily, weekly, attention])
+        let quickStart = UNNotificationAction(identifier: Self.actionQuickStart,
+                                              title: "开始 5 分钟", options: [])
+        let momentum = UNNotificationCategory(identifier: Self.momentumCategory,
+                                              actions: [quickStart, open],
+                                              intentIdentifiers: [], options: [])
+        let timerContinue = UNNotificationAction(identifier: Self.actionTimerContinue,
+                                                 title: "继续", options: [])
+        let timerPause = UNNotificationAction(identifier: Self.actionTimerPause,
+                                              title: "暂停", options: [])
+        let timer = UNNotificationCategory(identifier: Self.timerCategory,
+                                           actions: [timerContinue, timerPause, complete],
+                                           intentIdentifiers: [], options: [])
+        center.setNotificationCategories([task, daily, weekly, attention, momentum, timer])
     }
 
     // MARK: - Scheduling
@@ -141,11 +158,18 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                 content.body = r.body
                 content.sound = .default
                 if let taskID = r.taskID {
-                    content.categoryIdentifier = Self.taskCategory
                     content.userInfo = ["taskID": taskID.uuidString]
-                } else if case .weeklyReview = r.kind {
+                }
+                switch r.kind {
+                case .task:
+                    content.categoryIdentifier = Self.taskCategory
+                case .implementation:
+                    content.categoryIdentifier = Self.momentumCategory
+                case .timerCheckpoint:
+                    content.categoryIdentifier = Self.timerCategory
+                case .weeklyReview:
                     content.categoryIdentifier = Self.weeklyCategory
-                } else {
+                case .plan, .review:
                     content.categoryIdentifier = Self.dailyCategory
                 }
                 let request = UNNotificationRequest(identifier: r.identifier, content: content, trigger: trigger)
@@ -161,7 +185,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private func isOurs(_ id: String) -> Bool {
         id == "daily.plan" || id == Self.reviewIdentifier || id == Self.weeklyIdentifier
             || id.hasPrefix("task.") || id == Self.testIdentifier || id == "timer.sleep"
-            || id.hasPrefix("attention.drift")
+            || id.hasPrefix("attention.drift") || id.hasPrefix("implementation.")
+            || id == "timer.checkpoint"
     }
 
     // MARK: - Settings-panel helpers
@@ -206,6 +231,20 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.userInfo = ["taskID": task.id.uuidString]
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let id = "attention.drift.\(Int(Date().timeIntervalSince1970))"
+        center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+    }
+
+    func sendImplementationCue(task: TaskItem, plan: ImplementationPlan) {
+        let content = UNMutableNotificationContent()
+        content.title = "现在是个好起点"
+        content.body = plan.summary
+        content.categoryIdentifier = Self.momentumCategory
+        content.interruptionLevel = .active
+        content.userInfo = ["taskID": task.id.uuidString]
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        // Keep live cues outside `isOurs`: marking the plan as triggered also
+        // schedules a reminder refresh, which must not remove this 1s request.
+        let id = "momentum.live.\(task.id.uuidString).\(Int(Date().timeIntervalSince1970))"
         center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
     }
 
@@ -276,11 +315,23 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             guard let self else { completionHandler(); return }
             switch action {
             case Self.actionAttentionFocus:
-                if let id = taskID { _ = self.store.startTimer(id) }
+                if let id = taskID {
+                    self.store.setDailyWin(id)
+                    _ = self.store.startTimer(id, targetMinutes: 5)
+                }
             case Self.actionAttentionBlocker:
                 self.onOpenCapture("我现在卡在：")
             case Self.actionAttentionSnooze:
                 self.onSnoozeAttention()
+            case Self.actionQuickStart:
+                if let id = taskID {
+                    self.store.setDailyWin(id)
+                    _ = self.store.startTimer(id, targetMinutes: 5)
+                }
+            case Self.actionTimerContinue:
+                self.store.continueTimerWithoutTarget()
+            case Self.actionTimerPause:
+                _ = self.store.stopTimer()
             case Self.actionComplete:
                 if let id = taskID { self.store.setCompleted(id, true) }
             case Self.actionSnooze15:

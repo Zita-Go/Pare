@@ -11,6 +11,8 @@ public struct PlannedReminder: Equatable {
         case review        // evening "收尾"
         case weeklyReview  // Sunday-evening "本周回顾"
         case task(UUID)    // a single task's one-shot reminder
+        case implementation(UUID)
+        case timerCheckpoint(UUID)
     }
 
     public let kind: Kind
@@ -32,8 +34,10 @@ public struct PlannedReminder: Equatable {
 
     /// The task this reminder belongs to, if any.
     public var taskID: UUID? {
-        if case let .task(id) = kind { return id }
-        return nil
+        switch kind {
+        case .task(let id), .implementation(let id), .timerCheckpoint(let id): return id
+        default: return nil
+        }
     }
 
     /// Whether a "完成" action makes sense (task reminders only).
@@ -163,6 +167,33 @@ extension Store {
                     fireDate: at,
                     title: "该做这件事了",
                     body: task.text))
+            }
+        }
+
+        // “If–then” plans with a clock cue reuse the notification planner;
+        // return/app cues are emitted live by MomentumManager.
+        for task in tasks where !task.completed {
+            guard let plan = task.implementationPlan, plan.kind == .time else { continue }
+            result.append(PlannedReminder(
+                kind: .implementation(task.id),
+                identifier: "implementation.\(task.id.uuidString)",
+                fireDate: nextOccurrence(hour: plan.hour ?? 9, minute: plan.minute ?? 0, after: now),
+                title: "如果—那么计划",
+                body: plan.summary))
+        }
+
+        if let timer = activeTimer, let target = timer.targetMinutes {
+            let intended = timer.startedAt.addingTimeInterval(Double(target) * 60)
+            // Do not re-arm after delivery. `willPresent` reschedules the rest
+            // of Pare's reminders; emitting a new +1s checkpoint here would
+            // otherwise create a notification loop until the user responded.
+            if intended > now {
+                result.append(PlannedReminder(
+                    kind: .timerCheckpoint(timer.taskID),
+                    identifier: "timer.checkpoint",
+                    fireDate: intended,
+                    title: "已经开始 \(target) 分钟了",
+                    body: "要继续、暂停，还是完成这件事？"))
             }
         }
 

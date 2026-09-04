@@ -257,6 +257,7 @@ final class AttentionDriftDetector: ObservableObject {
     }
 
     private func suggestedTask() -> TaskItem? {
+        if let dailyWin = store.dailyWinTask, !dailyWin.completed { return dailyWin }
         if let today = store.todayTasks.first(where: { !$0.completed }) { return today }
         if let due = store.tasks.filter({ !$0.completed && $0.dueAt != nil })
             .sorted(by: { ($0.dueAt ?? .distantFuture) < ($1.dueAt ?? .distantFuture) }).first {

@@ -25,15 +25,23 @@ public struct TodaySummary: Equatable {
     /// e.g. the actual-time recording (T5) hasn't landed or was skipped — in
     /// which case the summary's bias area hides itself rather than mislead.
     public let bias: EstimateBias
+    public let progressSessionCount: Int
+    public let progressedTaskCount: Int
+    public let blockerCounts: [BlockerReason: Int]
 
     public init(date: Date, completedCount: Int, completedTasks: [TaskItem],
-                focusMinutes: Int, carryOver: [TaskItem], bias: EstimateBias) {
+                focusMinutes: Int, carryOver: [TaskItem], bias: EstimateBias,
+                progressSessionCount: Int = 0, progressedTaskCount: Int = 0,
+                blockerCounts: [BlockerReason: Int] = [:]) {
         self.date = date
         self.completedCount = completedCount
         self.completedTasks = completedTasks
         self.focusMinutes = focusMinutes
         self.carryOver = carryOver
         self.bias = bias
+        self.progressSessionCount = progressSessionCount
+        self.progressedTaskCount = progressedTaskCount
+        self.blockerCounts = blockerCounts
     }
 
     /// Nothing finished today — the summary uses a gentle closing line.
@@ -162,15 +170,25 @@ extension Store {
     /// The evening summary of `now`'s day. Read-only; never mutates data.
     public func todaySummary(now: Date = Date()) -> TodaySummary {
         let dayStart = calendar.startOfDay(for: now)
+        let allTasks = tasks + archive
         // A task lives in `tasks` until the next-day rollover moves it to
         // `archive`; unioning both keeps the count correct across a rollover.
-        let completed = (tasks + archive)
+        let completed = allTasks
             .filter { t in
                 guard t.completed, let at = t.completedAt else { return false }
                 return calendar.isDate(at, inSameDayAs: now)
             }
             .sorted { ($0.completedAt ?? .distantPast) < ($1.completedAt ?? .distantPast) }
-        let focusMinutes = completed.reduce(0) { $0 + ($1.actualMinutes ?? $1.estimatedMinutes ?? 0) }
+        let sessions = allTasks.flatMap { task in
+            (task.progressSessions ?? []).filter { calendar.isDate($0.endedAt, inSameDayAs: now) }
+        }
+        let sessionTaskIDs = Set(allTasks.filter { task in
+            (task.progressSessions ?? []).contains { calendar.isDate($0.endedAt, inSameDayAs: now) }
+        }.map(\.id))
+        let sessionMinutes = sessions.reduce(0) { $0 + $1.minutes }
+        let completionFallback = completed.filter { !sessionTaskIDs.contains($0.id) }
+            .reduce(0) { $0 + ($1.actualMinutes ?? $1.estimatedMinutes ?? 0) }
+        let focusMinutes = sessionMinutes + completionFallback
         let carryOver = tasks
             .filter { $0.isToday && !$0.completed }
             .sorted { lhs, rhs in
@@ -180,12 +198,20 @@ extension Store {
                 return lhs.createdAt < rhs.createdAt
             }
         let bias = Self.estimateBias(for: completed)
+        var blockerCounts: [BlockerReason: Int] = [:]
+        for entry in allTasks.flatMap({ $0.blockerEntries ?? [] })
+            where calendar.isDate(entry.at, inSameDayAs: now) {
+            blockerCounts[entry.reason, default: 0] += 1
+        }
         return TodaySummary(date: dayStart,
                             completedCount: completed.count,
                             completedTasks: completed,
                             focusMinutes: focusMinutes,
                             carryOver: carryOver,
-                            bias: bias)
+                            bias: bias,
+                            progressSessionCount: sessions.count,
+                            progressedTaskCount: sessionTaskIDs.count,
+                            blockerCounts: blockerCounts)
     }
 
     /// The review of the natural week (Mon–Sun) containing `now`.

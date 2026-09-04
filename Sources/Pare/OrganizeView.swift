@@ -925,7 +925,7 @@ private struct TodaySummaryCard: View {
     private func details(_ summary: TodaySummary) -> some View {
         Rectangle().fill(Theme.hairline).frame(height: 1)
 
-        if summary.isZeroCompletion {
+        if summary.isZeroCompletion && summary.progressSessionCount == 0 {
             // 温和收场，不制造愧疚：零完成时只留一句话，不罗列未完成清单。
             Text("今天先这样，明天见。")
                 .font(Theme.font(14, weight: .medium))
@@ -934,11 +934,34 @@ private struct TodaySummaryCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             HStack(alignment: .top, spacing: 22) {
-                stat("\(summary.completedCount) 件", caption: "完成")
+                if summary.completedCount > 0 {
+                    stat("\(summary.completedCount) 件", caption: "完成")
+                }
+                if summary.progressSessionCount > 0 {
+                    stat("\(summary.progressSessionCount) 次", caption: "启动")
+                }
+                if summary.progressedTaskCount > 0 {
+                    stat("\(summary.progressedTaskCount) 件", caption: "有推进")
+                }
                 if summary.focusMinutes > 0 {
                     stat("约 " + DurationLabel.short(summary.focusMinutes), caption: "专注")
                 }
                 Spacer(minLength: 0)
+            }
+            if summary.isZeroCompletion && summary.progressSessionCount > 0 {
+                Text("今天还没收尾，但已经开始推进了。")
+                    .font(Theme.font(12, weight: .medium))
+                    .foregroundColor(Theme.text)
+            }
+            if let blocker = blockerHint(summary) {
+                HStack(alignment: .top, spacing: 5) {
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: 10))
+                    Text(blocker)
+                        .font(Theme.font(11))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundColor(Theme.textDim)
+                .accessibilityElement(children: .combine)
             }
             if let hint = summary.biasHint {
                 HStack(alignment: .top, spacing: 5) {
@@ -1008,9 +1031,28 @@ private struct TodaySummaryCard: View {
 
     /// The one-line teaser shown when collapsed. Gentle when nothing's done.
     private func teaser(_ summary: TodaySummary) -> String {
-        if summary.isZeroCompletion { return "今天先这样" }
+        if summary.isZeroCompletion {
+            if summary.progressSessionCount > 0 {
+                return "启动 \(summary.progressSessionCount) 次 · 推进 \(summary.progressedTaskCount) 件"
+            }
+            return "今天先这样"
+        }
         var s = "完成 \(summary.completedCount) 件"
+        if summary.progressSessionCount > 0 { s += " · 启动 \(summary.progressSessionCount) 次" }
         if summary.focusMinutes > 0 { s += " · 专注 约" + DurationLabel.short(summary.focusMinutes) }
         return s
+    }
+
+    private func blockerHint(_ summary: TodaySummary) -> String? {
+        let ranked = BlockerReason.allCases.compactMap { reason -> (BlockerReason, Int)? in
+            guard let count = summary.blockerCounts[reason], count > 0 else { return nil }
+            return (reason, count)
+        }.sorted { lhs, rhs in
+            lhs.1 == rhs.1
+                ? BlockerReason.allCases.firstIndex(of: lhs.0)! < BlockerReason.allCases.firstIndex(of: rhs.0)!
+                : lhs.1 > rhs.1
+        }
+        guard let top = ranked.first else { return nil }
+        return "今天最常见的卡点：\(top.0.title)（\(top.1) 次）"
     }
 }

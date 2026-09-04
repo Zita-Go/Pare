@@ -247,6 +247,7 @@ public final class Store: ObservableObject {
         for i in tasks.indices {
             tasks[i].isToday = false
             tasks[i].todayOrder = nil
+            tasks[i].isDailyWin = false
         }
         save()
         return true
@@ -410,6 +411,9 @@ public final class Store: ObservableObject {
     /// Save the fields edited in the task inspector as one atomic user action.
     public func updateTaskDetails(_ id: UUID, text: String, note: String?, nextAction: String?,
                                   dueAt: Date?, remindAt: Date?, recurrence: RecurrenceRule?,
+                                  definitionOfDone: String? = nil,
+                                  implementationPlan: ImplementationPlan? = nil,
+                                  isDailyWin: Bool? = nil,
                                   now: Date = Date()) {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -420,6 +424,16 @@ public final class Store: ObservableObject {
         tasks[i].dueAt = dueAt
         tasks[i].remindAt = remindAt
         tasks[i].recurrence = remindAt == nil ? nil : recurrence
+        tasks[i].definitionOfDone = Self.nonBlank(definitionOfDone)
+        tasks[i].implementationPlan = implementationPlan
+        if isDailyWin == true {
+            for index in tasks.indices { tasks[index].isDailyWin = false }
+            tasks[i].isDailyWin = true
+            tasks[i].isToday = true
+            tasks[i].todayOrder = tasks[i].todayOrder ?? nextTodayOrder()
+        } else if isDailyWin == false {
+            tasks[i].isDailyWin = false
+        }
         tasks[i].lastProgressAt = now
         save()
     }
@@ -428,6 +442,7 @@ public final class Store: ObservableObject {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[i].isToday = value
         tasks[i].todayOrder = value ? (tasks[i].todayOrder ?? nextTodayOrder()) : nil
+        if !value { tasks[i].isDailyWin = false }
         tasks[i].lastProgressAt = now
         save()
     }
@@ -436,6 +451,7 @@ public final class Store: ObservableObject {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[i].isToday.toggle()
         tasks[i].todayOrder = tasks[i].isToday ? nextTodayOrder() : nil
+        if !tasks[i].isToday { tasks[i].isDailyWin = false }
         tasks[i].lastProgressAt = now
         save()
     }
@@ -459,6 +475,39 @@ public final class Store: ObservableObject {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[i].quadrant = quadrant
         tasks[i].lastProgressAt = now
+        save()
+    }
+
+    public func setDailyWin(_ id: UUID?, now: Date = Date()) {
+        for index in tasks.indices { tasks[index].isDailyWin = false }
+        if let id, let index = tasks.firstIndex(where: { $0.id == id && !$0.completed }) {
+            tasks[index].isDailyWin = true
+            tasks[index].isToday = true
+            tasks[index].todayOrder = tasks[index].todayOrder ?? nextTodayOrder()
+            tasks[index].lastProgressAt = now
+        }
+        save()
+    }
+
+    public func setMomentumDetails(_ id: UUID, nextAction: String?, definitionOfDone: String?,
+                                   now: Date = Date()) {
+        guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
+        tasks[index].nextAction = Self.nonBlank(nextAction)
+        tasks[index].definitionOfDone = Self.nonBlank(definitionOfDone)
+        tasks[index].lastProgressAt = now
+        save()
+    }
+
+    public func recordBlocker(_ id: UUID, reason: BlockerReason, now: Date = Date()) {
+        guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
+        tasks[index].blockerEntries = (tasks[index].blockerEntries ?? [])
+            + [BlockerEntry(reason: reason, at: now)]
+        save()
+    }
+
+    public func markImplementationTriggered(_ id: UUID, now: Date = Date()) {
+        guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
+        tasks[index].lastImplementationTriggeredAt = now
         save()
     }
 
@@ -530,11 +579,12 @@ public final class Store: ObservableObject {
     // MARK: - Focus timer
 
     @discardableResult
-    public func startTimer(_ taskID: UUID, now: Date = Date()) -> Bool {
+    public func startTimer(_ taskID: UUID, now: Date = Date(), targetMinutes: Int? = nil) -> Bool {
         guard tasks.contains(where: { $0.id == taskID && !$0.completed }) else { return false }
         if activeTimer?.taskID == taskID { return true }
         if activeTimer != nil { _ = stopTimer(now: now) }
-        activeTimer = ActiveTimer(taskID: taskID, startedAt: now)
+        activeTimer = ActiveTimer(taskID: taskID, startedAt: now,
+                                  targetMinutes: targetMinutes.map { max(1, $0) })
         save()
         return true
     }
@@ -553,6 +603,9 @@ public final class Store: ObservableObject {
         let minutes = max(1, Int(ceil(seconds / 60)))
         activeTimer = nil
         tasks[index].actualMinutes = (tasks[index].actualMinutes ?? 0) + minutes
+        tasks[index].progressSessions = (tasks[index].progressSessions ?? [])
+            + [ProgressSession(startedAt: timer.startedAt, endedAt: now,
+                               minutes: minutes, targetMinutes: timer.targetMinutes)]
         tasks[index].lastProgressAt = now
         save()
         return minutes
@@ -561,6 +614,12 @@ public final class Store: ObservableObject {
     public func cancelTimer() {
         guard activeTimer != nil else { return }
         activeTimer = nil
+        save()
+    }
+
+    public func continueTimerWithoutTarget() {
+        guard activeTimer != nil else { return }
+        activeTimer?.targetMinutes = nil
         save()
     }
 
@@ -595,10 +654,28 @@ public final class Store: ObservableObject {
     public var todayTasks: [TaskItem] {
         tasks.filter { $0.isToday }
             .sorted {
-                let l = ($0.completed ? 1 : 0, $0.todayOrder ?? Int.max, $0.createdAt)
-                let r = ($1.completed ? 1 : 0, $1.todayOrder ?? Int.max, $1.createdAt)
+                let l = ($0.completed ? 1 : 0, $0.isDailyWin == true ? 0 : 1,
+                         $0.todayOrder ?? Int.max, $0.createdAt)
+                let r = ($1.completed ? 1 : 0, $1.isDailyWin == true ? 0 : 1,
+                         $1.todayOrder ?? Int.max, $1.createdAt)
                 return l < r
             }
+    }
+
+    public var dailyWinTask: TaskItem? {
+        tasks.first { $0.isDailyWin == true && $0.isToday && !$0.completed }
+    }
+
+    public func progressSessionsToday(now: Date = Date()) -> [ProgressSession] {
+        (tasks + archive).flatMap { $0.progressSessions ?? [] }
+            .filter { calendar.isDate($0.endedAt, inSameDayAs: now) }
+            .sorted { $0.endedAt < $1.endedAt }
+    }
+
+    public func progressedTaskCountToday(now: Date = Date()) -> Int {
+        Set((tasks + archive).filter { task in
+            (task.progressSessions ?? []).contains { calendar.isDate($0.endedAt, inSameDayAs: now) }
+        }.map(\.id)).count
     }
 
     /// Reorder an item in the Today planner. Completed items remain at the end;
