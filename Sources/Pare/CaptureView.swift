@@ -20,6 +20,25 @@ struct CaptureView: View {
     @State private var justCaptured = false
 
     var body: some View {
+        Group {
+            if let id = chrome.taskDetailID,
+               let task = store.tasks.first(where: { $0.id == id }) {
+                inlineTaskDetail(task)
+            } else {
+                captureContent
+            }
+        }
+        // 每次唤出面板都聚焦输入框：focusTick 首次订阅即发一次、之后每次 show 递增。
+        .onReceive(chrome.$focusTick) { _ in focused = true }
+        .onReceive(chrome.$suggestedDraft) { value in
+            guard let value else { return }
+            draft = value
+            focused = true
+            DispatchQueue.main.async { chrome.suggestedDraft = nil }
+        }
+    }
+
+    private var captureContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
             inputField
@@ -33,14 +52,35 @@ struct CaptureView: View {
         .padding(18)
         .frame(width: 372)
         .background(CaptureBackground())
-        // 每次唤出面板都聚焦输入框：focusTick 首次订阅即发一次、之后每次 show 递增。
-        .onReceive(chrome.$focusTick) { _ in focused = true }
-        .onReceive(chrome.$suggestedDraft) { value in
-            guard let value else { return }
-            draft = value
-            focused = true
-            DispatchQueue.main.async { chrome.suggestedDraft = nil }
+    }
+
+    private func inlineTaskDetail(_ task: TaskItem) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button { chrome.taskDetailID = nil } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left")
+                        Text("返回今日任务")
+                    }
+                    .font(Theme.font(12, weight: .semibold))
+                    .foregroundColor(Theme.amber)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
+
+            Rectangle().fill(Theme.hairline).frame(height: 1)
+
+            ScrollView {
+                TaskDetailEditorView(store: store, task: task, compact: true,
+                                     onDismiss: { chrome.taskDetailID = nil })
+            }
         }
+        .frame(width: 372, height: 510)
+        .background(CaptureBackground())
     }
 
     // MARK: Pieces

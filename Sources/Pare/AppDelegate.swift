@@ -11,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var organizeWindowController: OrganizeWindowController?
     private var settingsWindowController: SettingsWindowController?
     private var weeklyReviewWindowController: WeeklyReviewWindowController?
-    private var taskDetailWindowController: TaskDetailWindowController!
     private var onboardingWindowController: OnboardingWindowController?
     private var notificationManager: NotificationManager!
     private var attentionDetector: AttentionDriftDetector!
@@ -23,12 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         store.rolloverIfNeeded()
 
-        taskDetailWindowController = TaskDetailWindowController(store: store)
-
         popoverController = PopoverController(store: store, onOpenOrganize: { [weak self] in
             self?.openOrganize()
-        }, onOpenTaskDetails: { [weak self] id in
-            self?.taskDetailWindowController.present(taskID: id)
         })
 
         // Set up notifications early so the delegate is registered before launch
@@ -126,10 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             organizeWindowController = OrganizeWindowController(
                 store: store,
                 onClose: {},
-                onOpenWeeklyReview: { [weak self] in self?.openWeeklyReview() },
-                onOpenTaskDetails: { [weak self] id in
-                    self?.taskDetailWindowController.present(taskID: id)
-                })
+                onOpenWeeklyReview: { [weak self] in self?.openWeeklyReview() })
         }
         organizeWindowController?.present(showSummary: showSummary)
     }

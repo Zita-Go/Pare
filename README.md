@@ -156,7 +156,6 @@ Sources/
     StatusItemController.swift    菜单栏图标 + 今日待办数字 + 右键菜单（含「提醒设置…」）
     PopoverController.swift       随手记弹窗（transient，点别处自动收）
     OrganizeWindowController.swift 整理窗口
-    TaskDetailWindowController.swift 预创建并复用的轻量任务详情面板
     NotificationManager.swift     把 plannedReminders 翻译成系统通知 + 处理点击动作
     AttentionDriftDetector.swift  应用切换循环 + 浏览器 AX 页面切换检测（仅内存）
     LoginItemManager.swift        macOS 登录项状态与开关

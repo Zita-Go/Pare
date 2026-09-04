@@ -13,8 +13,7 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
     private let summaryState = TodaySummaryState()
 
     init(store: Store, onClose: @escaping () -> Void,
-         onOpenWeeklyReview: @escaping () -> Void = {},
-         onOpenTaskDetails: @escaping (UUID) -> Void = { _ in }) {
+         onOpenWeeklyReview: @escaping () -> Void = {}) {
         self.onClose = onClose
 
         let window = NSWindow(
@@ -31,10 +30,9 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 880, height: 580)
 
-        let root = OrganizeView(store: store, summaryState: summaryState,
-                                onOpenWeeklyReview: onOpenWeeklyReview)
-            .environment(\.openTaskDetails, onOpenTaskDetails)
-        let hosting = NSHostingController(rootView: root)
+        let hosting = NSHostingController(rootView: OrganizeView(
+            store: store, summaryState: summaryState,
+            onOpenWeeklyReview: onOpenWeeklyReview))
         window.contentViewController = hosting
         window.center()
 

@@ -3,11 +3,11 @@ import UniformTypeIdentifiers
 import PareCore
 
 private struct OpenTaskDetailsKey: EnvironmentKey {
-    static let defaultValue: (UUID) -> Void = { _ in }
+    static let defaultValue: ((UUID) -> Void)? = nil
 }
 
 extension EnvironmentValues {
-    var openTaskDetails: (UUID) -> Void {
+    var openTaskDetails: ((UUID) -> Void)? {
         get { self[OpenTaskDetailsKey.self] }
         set { self[OpenTaskDetailsKey.self] = newValue }
     }
@@ -21,9 +21,13 @@ struct TaskDetailsButton: View {
     @ObservedObject var store: Store
     let task: TaskItem
     @Environment(\.openTaskDetails) private var openTaskDetails
+    @State private var presented = false
 
     var body: some View {
-        Button { openTaskDetails(task.id) } label: {
+        Button {
+            if let openTaskDetails { openTaskDetails(task.id) }
+            else { presented = true }
+        } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Theme.textFaint)
@@ -32,6 +36,10 @@ struct TaskDetailsButton: View {
         .buttonStyle(.plain)
         .help("编辑任务详情")
         .accessibilityLabel("编辑任务详情")
+        .popover(isPresented: $presented, arrowEdge: .trailing) {
+            TaskDetailEditorView(store: store, task: task,
+                                 onDismiss: { presented = false })
+        }
     }
 }
 
@@ -39,6 +47,7 @@ struct TaskDetailEditorView: View {
     @ObservedObject var store: Store
     let task: TaskItem
     let onDismiss: () -> Void
+    var compact = false
 
     @State private var title: String
     @State private var nextAction: String
@@ -52,10 +61,12 @@ struct TaskDetailEditorView: View {
     @State private var remindAt: Date
     @State private var recurrence: RecurrenceRule?
 
-    init(store: Store, task: TaskItem, onDismiss: @escaping () -> Void) {
+    init(store: Store, task: TaskItem, compact: Bool = false,
+         onDismiss: @escaping () -> Void) {
         self.store = store
         self.task = task
         self.onDismiss = onDismiss
+        self.compact = compact
         _title = State(initialValue: task.text)
         _nextAction = State(initialValue: task.nextAction ?? "")
         _note = State(initialValue: task.note ?? "")
@@ -136,7 +147,7 @@ struct TaskDetailEditorView: View {
             }
         }
         .padding(16)
-        .frame(width: 380)
+        .frame(width: compact ? 338 : 380)
         .background(Theme.bg)
     }
 
