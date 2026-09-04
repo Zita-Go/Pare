@@ -2,17 +2,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 import PareCore
 
-private struct OpenTaskDetailsKey: EnvironmentKey {
-    static let defaultValue: ((UUID) -> Void)? = nil
-}
-
-extension EnvironmentValues {
-    var openTaskDetails: ((UUID) -> Void)? {
-        get { self[OpenTaskDetailsKey.self] }
-        set { self[OpenTaskDetailsKey.self] = newValue }
-    }
-}
-
 // MARK: - Task detail inspector
 
 /// A consistent, always-visible way into task details. The quadrant rows stay
@@ -21,13 +10,9 @@ struct TaskDetailsButton: View {
     @ObservedObject var store: Store
     let task: TaskItem
     @State private var presented = false
-    @Environment(\.openTaskDetails) private var openTaskDetails
 
     var body: some View {
-        Button {
-            if let openTaskDetails { openTaskDetails(task.id) }
-            else { presented = true }
-        } label: {
+        Button { presented = true } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Theme.textFaint)
@@ -42,7 +27,7 @@ struct TaskDetailsButton: View {
     }
 }
 
-struct TaskDetailView: View {
+private struct TaskDetailView: View {
     @ObservedObject var store: Store
     let task: TaskItem
     @Binding var isPresented: Bool

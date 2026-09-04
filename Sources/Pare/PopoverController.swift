@@ -46,8 +46,7 @@ final class PopoverController {
 
     var isShown: Bool { showing }
 
-    init(store: Store, onOpenOrganize: @escaping () -> Void,
-         onOpenTaskDetails: @escaping (UUID) -> Void) {
+    init(store: Store, onOpenOrganize: @escaping () -> Void) {
         self.store = store
         self.panel = CapturePanel()
         self.hosting = NSHostingView(rootView: AnyView(EmptyView()))
@@ -58,12 +57,6 @@ final class PopoverController {
             CaptureView(store: store, chrome: chrome, onOpenOrganize: { [weak self] in
                 self?.close()
                 onOpenOrganize()
-            })
-            .environment(\.openTaskDetails, { [weak self] id in
-                self?.close()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                    onOpenTaskDetails(id)
-                }
             })
         }
         hosting.rootView = AnyView(container)

@@ -22,9 +22,6 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(organize.contains("四象限"))
         XCTAssertTrue(organize.contains("今日计划"))
         XCTAssertTrue(organize.contains("想法与历史"))
-        XCTAssertTrue(organize.contains("OrganizePresentationState"))
-        XCTAssertTrue(organize.contains(".sheet(isPresented: detailSheetPresented)"),
-                      "随手记的完整编辑应落在普通整理窗口的可靠 Sheet 中")
         XCTAssertTrue(organize.contains("CollapsedInboxRail"))
         XCTAssertTrue(organize.contains("quadrantRowHeights"))
         XCTAssertFalse(organize.contains("inboxManuallyExpanded"))
@@ -55,7 +52,6 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(popover.contains("isCaptureInteractionWindow"))
         XCTAssertTrue(popover.contains("event.window === self?.panel"),
                       "Esc 只能由随手记父面板吞掉，详情弹窗必须先处理")
-        XCTAssertTrue(popover.contains("onOpenTaskDetails"))
         let capture = try source("Sources/Pare/CaptureView.swift")
         XCTAssertFalse(capture.contains(".onHover"),
                        "随手记悬停不能再触发列表结构重绘")
