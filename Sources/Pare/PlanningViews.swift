@@ -376,7 +376,6 @@ struct TodayPlannerView: View {
     @State private var quickTask = ""
     @State private var rescueTaskID: UUID?
     @State private var rescuePreset: BlockerReason?
-    @State private var showAIPlan = false
 
     private var incomplete: [TaskItem] { store.todayTasks.filter { !$0.completed } }
     private var completed: [TaskItem] { store.todayTasks.filter(\.completed) }
@@ -384,11 +383,6 @@ struct TodayPlannerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Spacer()
-                Button("✦ 帮我安排今天") { showAIPlan = true }
-                    .buttonStyle(.plain).font(Theme.font(12, weight: .medium)).foregroundColor(Theme.amber)
-            }
             plannerHeader
             if store.todayTasks.isEmpty {
                 emptyState
@@ -409,9 +403,6 @@ struct TodayPlannerView: View {
             quickAdd
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .sheet(isPresented: $showAIPlan) {
-            AIAssistantView(store: store, workflow: .plan)
-        }
         .sheet(isPresented: rescuePresented) {
             if let id = rescueTaskID, let task = store.tasks.first(where: { $0.id == id }) {
                 MomentumRescueView(store: store, task: task, preset: rescuePreset,

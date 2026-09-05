@@ -42,6 +42,21 @@ final class AIService: ObservableObject {
         requestCount = defaults.integer(forKey: "pareAIRequestCount")
     }
 
+    func contextOptions() -> AIContextOptions? {
+        guard let endpoint = try? configuration.endpoint() else { return nil }
+        return AIContextOptions.load(endpoint: endpoint, defaults: defaults)
+    }
+
+    func rememberContext(_ options: AIContextOptions) {
+        guard let endpoint = try? configuration.endpoint() else { return }
+        options.save(endpoint: endpoint, defaults: defaults)
+    }
+
+    func forgetContext() {
+        guard let endpoint = try? configuration.endpoint() else { return }
+        AIContextOptions.forget(endpoint: endpoint, defaults: defaults)
+    }
+
     private func keyQuery(_ account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: keychainService, kSecAttrAccount as String: account]

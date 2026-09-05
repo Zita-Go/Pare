@@ -727,12 +727,13 @@ public final class Store: ObservableObject {
         planningRuns = Array(planningRuns.prefix(20)); save(); return run.id
     }
 
-    public func updatePlanningRun(_ id: UUID, phase: PlanningPhase, summaryID: UUID? = nil) {
+    public func updatePlanningRun(_ id: UUID, phase: PlanningPhase, summaryID: UUID? = nil, diagnosticCode: String? = nil) {
         guard let index = planningRuns.firstIndex(where: { $0.id == id }) else { return }
         planningRuns[index].phase = phase
         if phase == .applied { planningRuns[index].toolsUsed.append("经用户确认更新选中任务") }
         if phase == .draftFilled { planningRuns[index].toolsUsed.append("经用户确认填入草稿") }
         if let summaryID { planningRuns[index].summaryID = summaryID }
+        if let diagnosticCode { planningRuns[index].diagnosticCode = String(diagnosticCode.prefix(80)) }
         save()
     }
 

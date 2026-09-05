@@ -65,6 +65,7 @@ public struct PlanningRun: Codable, Equatable, Identifiable {
     public var phase: PlanningPhase = .gathering
     public var toolsUsed: [String]
     public var summaryID: UUID?
+    public var diagnosticCode: String?
     public init(date: Date = Date(), workflow: AIWorkflow, toolsUsed: [String]) {
         self.date = date; self.workflow = workflow; self.toolsUsed = toolsUsed
     }

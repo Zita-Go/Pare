@@ -34,6 +34,9 @@ struct GoalPlanningView: View {
                             Text(run.phase.title).font(Theme.font(12, weight: .medium)).foregroundColor(Theme.amber)
                             Text(run.toolsUsed.joined(separator: " · "))
                                 .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                            if let code = run.diagnosticCode {
+                                Text("诊断代号：\(code)").font(Theme.font(10)).foregroundColor(Theme.textDim)
+                            }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 7)
                     }
                     if store.planningRuns.isEmpty { Text("还没有分析记录。").font(Theme.font(12)) }

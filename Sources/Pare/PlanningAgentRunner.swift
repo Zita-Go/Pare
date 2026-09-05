@@ -17,7 +17,14 @@ enum PlanningAgentRunner {
                                      summaryID: summaryID)
             return (draft, summaryID)
         } catch {
-            store.updatePlanningRun(runID, phase: Task.isCancelled ? .cancelled : .failed)
+            let code: String
+            if let rejected = error as? AIRejectedDraft { code = rejected.issue.code }
+            else if let issue = error as? AIResponseIssue { code = issue.code }
+            else if let urlError = error as? URLError { code = "network_\(urlError.errorCode)" }
+            else if case AIError.http(let status) = error { code = "http_\(status)" }
+            else if case AIError.truncated = error { code = "truncated" }
+            else { code = "request_failed" }
+            store.updatePlanningRun(runID, phase: Task.isCancelled ? .cancelled : .failed, diagnosticCode: code)
             throw error
         }
     }

@@ -25,6 +25,9 @@ struct OrganizeView: View {
     /// RFC-0001: 整理窗全键盘归位的当前"光标" —— 选中的待整理项或象限任务。
     @StateObject private var focus = OrganizeFocus()
     @State private var workspace: WorkspaceMode = .matrix
+    @State private var showAssistant = false
+    @State private var assistantWorkflow: AIWorkflow = .plan
+    @State private var assistantTask: TaskItem?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -59,6 +62,9 @@ struct OrganizeView: View {
         }
         .animation(.easeOut(duration: 0.18), value: store.undoMessage)
         .animation(.easeOut(duration: 0.2), value: inboxVisible)
+        .sheet(isPresented: $showAssistant) {
+            AIAssistantView(store: store, workflow: assistantWorkflow, task: assistantTask)
+        }
     }
 
     private var inboxVisible: Bool { !store.inbox.isEmpty }
@@ -113,6 +119,21 @@ struct OrganizeView: View {
 
     private var topActions: some View {
         HStack(spacing: 10) {
+            Button {
+                assistantTask = nil; assistantWorkflow = .plan
+                if workspace == .matrix, case .task(let id)? = focus.selection,
+                   let task = store.tasks.first(where: { $0.id == id && !$0.completed }) {
+                    assistantTask = task; assistantWorkflow = .nextStep
+                } else if workspace == .matrix, case .inbox(_)? = focus.selection, !store.inbox.isEmpty {
+                    assistantWorkflow = .organize
+                }
+                showAssistant = true
+            } label: {
+                Label("AI 助手", systemImage: "sparkles")
+                    .font(Theme.font(12, weight: .semibold)).foregroundColor(Theme.bg)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.amber))
+            }.buttonStyle(.plain).help("按当前任务上下文打开 AI；未选中任务时帮助安排今天")
             weeklyReviewButton
             Text(progressString)
                 .font(Theme.font(store.todayTotal > 0 ? 14 : 12,
