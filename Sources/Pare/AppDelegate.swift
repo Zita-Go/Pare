@@ -1,5 +1,4 @@
 import AppKit
-import Carbon.HIToolbox
 import PareCore
 
 /// Wires everything together and owns the single shared `Store`.
@@ -15,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notificationManager: NotificationManager!
     private var attentionDetector: AttentionDriftDetector!
     private var momentumManager: MomentumManager!
-    private var hotKey: HotKey?
+    private var shortcutController: CaptureShortcutController!
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
     private var sleepStoppedTimer: (task: String, minutes: Int)?
@@ -51,22 +50,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         attentionDetector.start()
 
+        shortcutController = CaptureShortcutController { [weak self] shortcut in
+            HotKey(keyCode: shortcut.keyCode, modifiers: shortcut.modifiers) { [weak self] in
+                self?.togglePopover()
+            }
+        }
+        shortcutController.start()
+
         statusItemController = StatusItemController(
             store: store,
+            shortcutController: shortcutController,
             onLeftClick: { [weak self] in self?.togglePopover() },
             onOpenOrganize: { [weak self] in self?.openOrganize() },
             onOpenSummary: { [weak self] in self?.openOrganize(showSummary: true) },
             onOpenWeeklyReview: { [weak self] in self?.openWeeklyReview() },
             onOpenSettings: { [weak self] in self?.openSettings() },
             onQuit: { NSApp.terminate(nil) })
-
-        // Global hotkey: ⌥Space — summon capture from anywhere, no permission
-        // prompt required (Carbon RegisterEventHotKey). Also just click the menu
-        // bar icon; the hotkey is only a convenience.
-        hotKey = HotKey(keyCode: UInt32(kVK_Space),
-                        modifiers: UInt32(optionKey)) { [weak self] in
-            self?.togglePopover()
-        }
 
         if !UserDefaults.standard.bool(forKey: "pareDidCompleteOnboarding") {
             onboardingWindowController = OnboardingWindowController(
@@ -143,7 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func openSettings() {
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController(
-                store: store, manager: notificationManager, attentionDetector: attentionDetector)
+                store: store, manager: notificationManager, attentionDetector: attentionDetector,
+                shortcutController: shortcutController)
         }
         settingsWindowController?.present()
     }

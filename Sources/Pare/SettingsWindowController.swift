@@ -18,8 +18,11 @@ enum AppWindows {
 /// reminders (on/off + time), the inbox-pileup nudge, and a one-tap test.
 /// Per-task reminders are set on the tasks themselves in the 整理 window.
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    private let shortcutController: CaptureShortcutController
 
-    init(store: Store, manager: NotificationManager, attentionDetector: AttentionDriftDetector) {
+    init(store: Store, manager: NotificationManager, attentionDetector: AttentionDriftDetector,
+         shortcutController: CaptureShortcutController) {
+        self.shortcutController = shortcutController
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 560),
             styleMask: [.titled, .closable, .fullSizeContentView],
@@ -34,7 +37,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
 
         let hosting = NSHostingController(rootView: SettingsView(
-            store: store, manager: manager, attentionDetector: attentionDetector))
+            store: store, manager: manager, attentionDetector: attentionDetector,
+            shortcutController: shortcutController))
         window.contentViewController = hosting
         window.center()
 
@@ -52,9 +56,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        shortcutController.cancelRecording()
         if !AppWindows.anyTitledVisible(excluding: window) {
             NSApp.setActivationPolicy(.accessory)
         }
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        shortcutController.cancelRecording()
     }
 }
 
@@ -64,6 +73,7 @@ private struct SettingsView: View {
     @ObservedObject var store: Store
     let manager: NotificationManager
     @ObservedObject var attentionDetector: AttentionDriftDetector
+    @ObservedObject var shortcutController: CaptureShortcutController
     @StateObject private var loginItem = LoginItemManager()
 
     @State private var authText = "检查中…"
@@ -74,10 +84,13 @@ private struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("提醒设置")
+                Text("Pare 设置")
                     .font(Theme.font(20, weight: .semibold))
                     .foregroundColor(Theme.text)
 
+                settingsGroup("快捷键") {
+                    shortcutCard
+                }
                 permissionCard
                 settingsGroup("启动与数据") {
                     startupAndDataCard
@@ -126,6 +139,35 @@ private struct SettingsView: View {
     }
 
     // MARK: Cards
+
+    private var shortcutCard: some View {
+        sectionContent {
+            HStack {
+                Text("唤出 / 收起随手记")
+                    .font(Theme.font(13, weight: .medium)).foregroundColor(Theme.text)
+                Spacer()
+                ShortcutRecorder(controller: shortcutController)
+                    .frame(width: 186, height: 36)
+            }
+            Text(shortcutController.isRecording
+                 ? "请按组合键；Esc 或点别处取消。录入时原快捷键暂时停用。"
+                 : "点击右侧录入新组合，立即生效；至少包含 ⌘、⌥ 或 ⌃。")
+                .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Text("默认 ⌥Space · 仅保存在这台 Mac")
+                    .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                Spacer()
+                Button("恢复默认") { _ = shortcutController.apply(.default) }
+                    .buttonStyle(.plain).font(Theme.font(11, weight: .medium))
+                    .foregroundColor(Theme.amber)
+            }
+            if let message = shortcutController.message {
+                Text(message).font(Theme.font(11)).foregroundColor(Theme.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 
     private var startupAndDataCard: some View {
         sectionContent {

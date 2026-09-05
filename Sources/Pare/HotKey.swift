@@ -20,8 +20,9 @@ final class HotKey {
     init?(keyCode: UInt32, modifiers: UInt32, handler: @escaping () -> Void) {
         self.id = HotKey.nextID
         HotKey.nextID += 1
+        guard !Self.isSystemReserved(keyCode: keyCode, modifiers: modifiers) else { return nil }
+        guard HotKey.installHandlerIfNeeded() else { return nil }
         HotKey.handlers[id] = handler
-        HotKey.installHandlerIfNeeded()
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x50_41_52_45), id: id) // 'PARE'
         let status = RegisterEventHotKey(keyCode,
@@ -41,13 +42,24 @@ final class HotKey {
         HotKey.handlers[id] = nil
     }
 
-    private static func installHandlerIfNeeded() {
-        guard !handlerInstalled else { return }
-        handlerInstalled = true
+    private static func isSystemReserved(keyCode: UInt32, modifiers: UInt32) -> Bool {
+        var hotKeys: Unmanaged<CFArray>?
+        guard CopySymbolicHotKeys(&hotKeys) == noErr,
+              let entries = hotKeys?.takeRetainedValue() as? [[String: Any]] else { return false }
+        let mask = UInt32(cmdKey | shiftKey | optionKey | controlKey)
+        return entries.contains { entry in
+            (entry[kHISymbolicHotKeyEnabled as String] as? NSNumber)?.boolValue == true
+                && (entry[kHISymbolicHotKeyCode as String] as? NSNumber)?.uint32Value == keyCode
+                && ((entry[kHISymbolicHotKeyModifiers as String] as? NSNumber)?.uint32Value ?? 0) & mask == modifiers
+        }
+    }
+
+    private static func installHandlerIfNeeded() -> Bool {
+        guard !handlerInstalled else { return true }
 
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
                                  eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetEventDispatcherTarget(),
+        let status = InstallEventHandler(GetEventDispatcherTarget(),
                             { (_, event, _) -> OSStatus in
                                 guard let event = event else { return noErr }
                                 var hkID = EventHotKeyID()
@@ -67,5 +79,7 @@ final class HotKey {
                             &spec,
                             nil,
                             nil)
+        handlerInstalled = status == noErr
+        return handlerInstalled
     }
 }

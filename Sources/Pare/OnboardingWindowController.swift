@@ -74,7 +74,7 @@ private struct OnboardingView: View {
             }
 
             VStack(spacing: 12) {
-                step("bolt.fill", "随时记", "点击菜单栏清单，或按 ⌥Space；输入一句，回车即可。")
+                step("bolt.fill", "随时记", "点击菜单栏清单，或按默认快捷键 ⌥Space；组合可在设置中修改。")
                 step("square.grid.2x2", "每天整理", "把任务放进四象限，再按真实容量排入今日计划。")
                 step("bell.badge.fill", "克制提醒", "早晚节奏、单项提醒和每周回顾都可随时关闭。")
             }

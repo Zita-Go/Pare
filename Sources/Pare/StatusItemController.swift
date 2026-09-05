@@ -10,6 +10,7 @@ final class StatusItemController {
     var button: NSStatusBarButton? { statusItem.button }
 
     private let store: Store
+    private let shortcutController: CaptureShortcutController
     private let onLeftClick: () -> Void
     private let onOpenOrganize: () -> Void
     /// RFC-0001 T2: 右键菜单「今日小结…」手动入口 —— 打开整理窗并展开今日小结卡片。
@@ -21,6 +22,7 @@ final class StatusItemController {
     private var timerCancellable: AnyCancellable?
 
     init(store: Store,
+         shortcutController: CaptureShortcutController,
          onLeftClick: @escaping () -> Void,
          onOpenOrganize: @escaping () -> Void,
          onOpenSummary: @escaping () -> Void,
@@ -28,6 +30,7 @@ final class StatusItemController {
          onOpenSettings: @escaping () -> Void,
          onQuit: @escaping () -> Void) {
         self.store = store
+        self.shortcutController = shortcutController
         self.onLeftClick = onLeftClick
         self.onOpenOrganize = onOpenOrganize
         self.onOpenSummary = onOpenSummary
@@ -161,7 +164,9 @@ final class StatusItemController {
         clickHint.isEnabled = false
         menu.addItem(clickHint)
 
-        let info = NSMenuItem(title: "全局快捷键：⌥Space", action: nil, keyEquivalent: "")
+        let shortcutStatus = shortcutController.isRegistered ? "" : "（未启用）"
+        let info = NSMenuItem(title: "全局快捷键：\(shortcutController.shortcut.displayName)\(shortcutStatus)",
+                             action: nil, keyEquivalent: "")
         info.isEnabled = false
         menu.addItem(info)
 
