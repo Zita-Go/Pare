@@ -94,6 +94,9 @@ private struct SettingsView: View {
                 settingsGroup("AI 辅助（可选）") {
                     AIConfigurationView()
                 }
+                settingsGroup("AI 的本地历史与背景") {
+                    AIHistorySettingsView(store: store)
+                }
                 permissionCard
                 settingsGroup("启动与数据") {
                     startupAndDataCard

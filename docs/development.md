@@ -67,6 +67,9 @@ xcrun swiftc -target arm64-apple-macosx13.0 Scripts/capture-window.swift -o /tmp
 | `Sources/Pare/AttentionDriftDetector.swift` / `MomentumManager.swift` | 应用、浏览器与情境事件 |
 | `Sources/Pare/Theme.swift` / `Components.swift` | 配色、字体与公共控件 |
 | `Sources/PareCore/AIAssistance.swift` | AI 请求格式、网络客户端与建议校验 |
+| `Sources/PareCore/AIHistory.swift` / `Sources/Pare/AIHistoryViews.swift` | 本地历史摘要、长期背景与总结管理 |
+| `Sources/PareCore/PlanningAgent.swift` / `Sources/Pare/PlanningAgentRunner.swift` | 目标、偏好、反馈上下文与受控规划状态 |
+| `Sources/Pare/GoalPlanningView.swift` | 目标关联、偏好编辑和反馈界面 |
 | `Sources/Pare/AIService.swift` / `AIViews.swift` | 钥匙串、本机 AI 配置、发送预览与采纳界面 |
 | `Resources/AppIcon.png` | 图标母版 |
 | `Scripts/ReadmeDemo.swift` | 文档用演示入口与示例数据 |

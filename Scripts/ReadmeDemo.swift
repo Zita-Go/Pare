@@ -85,6 +85,21 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         store.setCompleted(done.id, true)
         store.setActual(done.id, minutes: 8)
         store.setDailyWin(report.id)
+        if let goalID = store.addGoal("本月完成一份结构清晰的报告"),
+           var goal = store.goals.first(where: { $0.id == goalID }) {
+            goal.motivation = "先理清结构，再逐步补全内容。"
+            goal.taskIDs = [report.id]
+            store.updateGoal(goal)
+        }
+        let demoRequest = AIRequest(workflow: .nextStep, inputs: [AIInput(task: report)])
+        let demoDraft = AIDraft(summary: "演示总结：先写提纲，不要求一次完成整份报告。", suggestions: [
+            AISuggestion(sourceID: report.id, title: report.text, nextAction: "写三个小标题",
+                         definitionOfDone: "留下一份粗提纲", estimatedMinutes: 5)
+        ])
+        if let summaryID = try? store.recordAISummary(demoDraft, request: demoRequest) {
+            store.updateAISummaryOutcome(summaryID, outcome: .filledDraft, adoptedCount: 1)
+            store.setAISummaryFeedback(summaryID, feedback: AIUserFeedback(helpful: false, comment: "演示反馈：希望再缩小一点，只先写一个标题。"))
+        }
         store.capture("找个时间整理书桌")
         store.capture("给旅行相册加一页手绘地图")
         _ = store.addThought("每周留一个不排计划的下午", notes: "散步、阅读，或者什么都不做。")

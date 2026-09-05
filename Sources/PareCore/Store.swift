@@ -14,6 +14,11 @@ public final class Store: ObservableObject {
     @Published public private(set) var tasks: [TaskItem] = []
     @Published public private(set) var archive: [TaskItem] = []
     @Published public private(set) var thoughts: [ThoughtItem] = []
+    @Published public private(set) var aiBackground = ""
+    @Published public private(set) var aiSummaries: [AISummaryRecord] = []
+    @Published public private(set) var goals: [LongTermGoal] = []
+    @Published public private(set) var agentPreferences = AgentPreferences()
+    @Published public private(set) var planningRuns: [PlanningRun] = []
     @Published public private(set) var activeTimer: ActiveTimer?
     /// A short-lived, UI-friendly description of the last destructive action.
     @Published public private(set) var undoMessage: String?
@@ -74,6 +79,11 @@ public final class Store: ObservableObject {
         var activeTimer: ActiveTimer?
         var lastActiveDay: Date?
         var settings: Settings?
+        var aiBackground: String?
+        var aiSummaries: [AISummaryRecord]?
+        var goals: [LongTermGoal]?
+        var agentPreferences: AgentPreferences?
+        var planningRuns: [PlanningRun]?
     }
 
     public enum DataTransferError: LocalizedError {
@@ -129,6 +139,15 @@ public final class Store: ObservableObject {
         tasks = snap.tasks
         archive = snap.archive ?? []
         thoughts = snap.thoughts ?? []
+        aiBackground = String((snap.aiBackground ?? "").prefix(1500))
+        aiSummaries = Array((snap.aiSummaries ?? []).sorted { $0.date > $1.date }.prefix(50))
+        goals = snap.goals ?? []
+        agentPreferences = snap.agentPreferences ?? AgentPreferences()
+        planningRuns = Array((snap.planningRuns ?? []).prefix(20)).map { run in
+            var value = run
+            if [.gathering, .thinking, .awaitingReview, .needsClarification].contains(value.phase) { value.phase = .interrupted }
+            return value
+        }
         activeTimer = snap.activeTimer
         lastActiveDay = snap.lastActiveDay
         settings = snap.settings ?? .default
@@ -148,7 +167,9 @@ public final class Store: ObservableObject {
     private func currentSnapshot() -> Snapshot {
         Snapshot(schemaVersion: 2, inbox: inbox, tasks: tasks,
                  archive: archive, thoughts: thoughts, activeTimer: activeTimer,
-                 lastActiveDay: lastActiveDay, settings: settings)
+                 lastActiveDay: lastActiveDay, settings: settings,
+                 aiBackground: aiBackground, aiSummaries: aiSummaries,
+                 goals: goals, agentPreferences: agentPreferences, planningRuns: planningRuns)
     }
 
     private func encoder() -> JSONEncoder {
@@ -635,6 +656,94 @@ public final class Store: ObservableObject {
 
     // MARK: - Settings
 
+    public func setAIBackground(_ text: String) {
+        aiBackground = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1500))
+        save()
+    }
+
+    @discardableResult
+    public func recordAISummary(_ draft: AIDraft, request: AIRequest, now: Date = Date()) throws -> UUID? {
+        try draft.validate(for: request)
+        let summary = draft.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard draft.question.isEmpty, !summary.isEmpty else { return nil }
+        let record = AISummaryRecord(date: now, workflow: request.workflow,
+                                     sourceIDs: request.inputs.map(\.id), summary: summary)
+        aiSummaries.insert(record, at: 0)
+        aiSummaries = Array(aiSummaries.prefix(50))
+        save()
+        return record.id
+    }
+
+    public func updateAISummaryOutcome(_ id: UUID, outcome: AISummaryOutcome, adoptedCount: Int = 0) {
+        guard let index = aiSummaries.firstIndex(where: { $0.id == id }) else { return }
+        aiSummaries[index].outcome = outcome
+        aiSummaries[index].adoptedCount = min(aiSummaries[index].sourceIDs.count, max(0, adoptedCount))
+        save()
+    }
+
+    public func deleteAISummary(_ id: UUID) {
+        aiSummaries.removeAll { $0.id == id }
+        save()
+    }
+
+    @discardableResult
+    public func addGoal(_ title: String, now: Date = Date()) -> UUID? {
+        guard let title = Self.nonBlank(title), title.count <= 150 else { return nil }
+        let goal = LongTermGoal(title: title, now: now)
+        goals.append(goal); save(); return goal.id
+    }
+
+    public func updateGoal(_ goal: LongTermGoal, now: Date = Date()) {
+        guard let index = goals.firstIndex(where: { $0.id == goal.id }),
+              let title = Self.nonBlank(goal.title), title.count <= 150 else { return }
+        var value = goal
+        value.title = title; value.motivation = String(value.motivation.prefix(600))
+        var seen = Set<UUID>()
+        value.taskIDs = Array(value.taskIDs.filter { seen.insert($0).inserted }.prefix(100))
+        value.updatedAt = now
+        goals[index] = value; save()
+    }
+
+    public func updateAgentPreferences(_ preferences: AgentPreferences) {
+        var value = preferences
+        value.planningMinutes = min(480, max(5, value.planningMinutes))
+        value.startingMinutes = min(15, max(1, value.startingMinutes))
+        value.notes = String(value.notes.prefix(600))
+        agentPreferences = value; save()
+    }
+
+    public func setAISummaryFeedback(_ id: UUID, feedback: AIUserFeedback?) {
+        guard let index = aiSummaries.firstIndex(where: { $0.id == id }) else { return }
+        aiSummaries[index].feedback = feedback; save()
+    }
+
+    @discardableResult
+    public func beginPlanningRun(_ request: AIRequest, now: Date = Date()) -> UUID {
+        var tools = ["读取已选内容"]
+        if request.history != nil { tools.append("读取获准的历史摘要") }
+        if request.agentContext != nil { tools.append(contentsOf: ["读取已选目标", "读取用户偏好", "读取相关反馈"]) }
+        let run = PlanningRun(date: now, workflow: request.workflow, toolsUsed: tools)
+        planningRuns.insert(run, at: 0)
+        planningRuns = Array(planningRuns.prefix(20)); save(); return run.id
+    }
+
+    public func updatePlanningRun(_ id: UUID, phase: PlanningPhase, summaryID: UUID? = nil) {
+        guard let index = planningRuns.firstIndex(where: { $0.id == id }) else { return }
+        planningRuns[index].phase = phase
+        if phase == .applied { planningRuns[index].toolsUsed.append("经用户确认更新选中任务") }
+        if phase == .draftFilled { planningRuns[index].toolsUsed.append("经用户确认填入草稿") }
+        if let summaryID { planningRuns[index].summaryID = summaryID }
+        save()
+    }
+
+    public func validatePlanningContext(_ request: AIRequest) throws {
+        guard let context = request.agentContext else { return }
+        guard context.preferences == agentPreferences,
+              context.goals.allSatisfy({ snapshot in goals.first { $0.id == snapshot.goal.id } == snapshot.goal }) else {
+            throw AIApplyError.stale
+        }
+    }
+
     /// One save, only after explicit adoption. Snapshots remain local and detect
     /// edits made while the model was generating its answer.
     public func applyAIDraft(_ draft: AIDraft, request: AIRequest, selectedIDs: Set<UUID>,
@@ -642,6 +751,7 @@ public final class Store: ObservableObject {
         try draft.validate(for: request)
         let chosen = draft.suggestions.filter { selectedIDs.contains($0.id) }
         guard !chosen.isEmpty else { return }
+        try validatePlanningContext(request)
         for item in chosen {
             if request.workflow == .organize {
                 guard let original = originalInbox.first(where: { $0.id == item.id }),

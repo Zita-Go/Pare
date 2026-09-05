@@ -88,6 +88,14 @@ struct AIAssistantView: View {
     @State private var available = 30
     @State private var energy = "一般"
     @State private var includeNotes = false
+    @State private var includeHistory = false
+    @State private var historyDays = 7
+    @State private var includeBackground = false
+    @State private var historySummaryIDs = Set<UUID>()
+    @State private var reviewID: UUID?
+    @State private var runID: UUID?
+    @State private var useAgentContext = false
+    @State private var goalIDs = Set<UUID>()
     @State private var clarification = ""
     @State private var suggestions: [AISuggestion] = []
     @State private var summary = ""
@@ -96,19 +104,25 @@ struct AIAssistantView: View {
     @State private var work: Task<Void, Never>?
     @State private var errorMessage: String?
     @State private var showSettings = false
-    private let snapshotTime = Date()
+    @State private var snapshotTime = Date()
 
-    init(store: Store, workflow: AIWorkflow, task: TaskItem? = nil, blocker: String = "",
+    init(store: Store, workflow: AIWorkflow, task: TaskItem? = nil, blocker: String = "", goal: LongTermGoal? = nil,
          onAdoptNextStep: ((AISuggestion) -> Void)? = nil) {
         self.store = store; self.workflow = workflow; self.blocker = blocker
         self.onAdoptNextStep = onAdoptNextStep
-        let tasks = task.map { [$0] } ?? Array(store.tasks.filter { !$0.completed }.sorted {
+        let tasks = task.map { [$0] } ?? Array(store.tasks.filter {
+            !$0.completed && (goal == nil || goal!.taskIDs.contains($0.id))
+        }.sorted {
             ($0.isToday ? 0 : 1, $0.quadrant.rawValue, $0.createdAt)
                 < ($1.isToday ? 0 : 1, $1.quadrant.rawValue, $1.createdAt)
         }.prefix(60))
         let inbox = Array(store.inbox.prefix(60))
         _tasks = State(initialValue: tasks); _inbox = State(initialValue: inbox)
         _inputIDs = State(initialValue: Set((workflow == .organize ? inbox.map(\.id) : tasks.map(\.id)).prefix(20)))
+        _available = State(initialValue: store.agentPreferences.planningMinutes)
+        _goalIDs = State(initialValue: goal.map { [$0.id] } ?? [])
+        _useAgentContext = State(initialValue: goal != nil)
+        _includeHistory = State(initialValue: goal != nil)
     }
 
     private var inputs: [AIInput] {
@@ -118,7 +132,11 @@ struct AIAssistantView: View {
 
     private func makeRequest() -> AIRequest {
         AIRequest(workflow: workflow, inputs: inputs, availableMinutes: available, energy: energy,
-                  blocker: blocker, clarification: clarification, now: snapshotTime)
+                  blocker: blocker, clarification: clarification, now: snapshotTime,
+                  history: includeHistory ? store.aiHistoryContext(selectedTaskIDs: inputIDs,
+                    days: historyDays, includeBackground: includeBackground,
+                    summaryIDs: historySummaryIDs, now: snapshotTime) : nil,
+                  agentContext: useAgentContext ? store.planningAgentContext(goalIDs: goalIDs, taskIDs: inputIDs) : nil)
     }
 
     var body: some View {
@@ -144,7 +162,7 @@ struct AIAssistantView: View {
                             Text(payload).font(.system(size: 10, design: .monospaced))
                                 .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        Text("仅发送上面的选中内容、时间、精力与说明，以及 Pare 的通用规划指令。不发送浏览器标题、历史或其它任务。")
+                        Text("发送预览中的选中内容和通用规划指令。历史、目标和偏好仅在勾选后附带。不会读取或发送浏览器历史。")
                             .font(Theme.font(11)).foregroundColor(Theme.textDim)
                         Button(work == nil ? "发送选中内容，生成建议" : "正在生成…") { generate() }
                             .disabled(work != nil || service.isRunning || !service.configuration.enabled
@@ -159,6 +177,9 @@ struct AIAssistantView: View {
                             suggestionCard($item)
                         }
                         Text(adoptionDescription).font(Theme.font(11)).foregroundColor(Theme.textDim)
+                        if let reviewID, let record = store.aiSummaries.first(where: { $0.id == reviewID }) {
+                            AISummaryFeedbackView(store: store, record: record)
+                        }
                     }
                 }.padding(.trailing, 6)
             }
@@ -169,11 +190,21 @@ struct AIAssistantView: View {
             HStack {
                 Button(work == nil ? "关闭" : "取消请求") {
                     work?.cancel()
-                    if work == nil { dismiss() } else { work = nil }
+                    if work == nil {
+                        if let runID, let phase = store.planningRuns.first(where: { $0.id == runID })?.phase,
+                           phase == .awaitingReview || phase == .needsClarification {
+                            store.updatePlanningRun(runID, phase: .reviewClosed)
+                        }
+                        dismiss()
+                    } else { work = nil }
                 }
                 Spacer()
                 if !suggestions.isEmpty {
-                    Button("丢弃建议") { suggestions = []; request = nil; errorMessage = nil }
+                    Button("丢弃建议") {
+                        if let reviewID { store.updateAISummaryOutcome(reviewID, outcome: .discarded) }
+                        if let runID { store.updatePlanningRun(runID, phase: .discarded) }
+                        reviewID = nil; suggestions = []; request = nil; errorMessage = nil
+                    }
                     Button("采纳选中建议") { adopt() }.disabled(selectedIDs.isEmpty)
                 }
             }
@@ -184,9 +215,26 @@ struct AIAssistantView: View {
         .onChange(of: service.configuration) { _ in
             work?.cancel(); work = nil; suggestions = []; question = ""; request = nil
         }
+        .onChange(of: store.aiBackground) { _ in
+            if work == nil && suggestions.isEmpty { request = nil }
+        }
+        .onChange(of: store.agentPreferences) { _ in
+            if work == nil && suggestions.isEmpty { request = nil }
+        }
+        .onChange(of: store.goals) { _ in
+            if work == nil && suggestions.isEmpty { request = nil }
+        }
         .sheet(isPresented: $showSettings) {
             VStack {
-                ScrollView { AIConfigurationView().padding(18) }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        AIConfigurationView()
+                        Divider()
+                        AIHistorySettingsView(store: store)
+                        Divider()
+                        AgentPreferencesView(store: store)
+                    }.padding(18)
+                }
                 Button("返回") { showSettings = false }.padding(.bottom, 12)
             }.frame(width: 480, height: 580).background(Theme.bg)
         }
@@ -223,7 +271,71 @@ struct AIAssistantView: View {
                     ForEach(["较低", "一般", "充足"], id: \.self) { Text($0).tag($0) }
                 }.onChange(of: energy) { _ in request = nil }
             }
+            historyControls
+            agentControls
         }.disabled(work != nil)
+    }
+
+    private var agentControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("附带长期目标、规划偏好和相关反馈", isOn: $useAgentContext)
+                .onChange(of: useAgentContext) { _ in request = nil }
+            if useAgentContext {
+                Text("发送已选目标、你保存的偏好，以及过去相关请求的最近五条用户反馈。反馈可能涉及其它任务，完整内容见发送预览。")
+                    .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                ForEach(store.goals) { goal in
+                    Toggle("\(goal.title) · \(goal.status.title)", isOn: Binding(
+                        get: { goalIDs.contains(goal.id) }, set: { value in
+                            if value { goalIDs.insert(goal.id) } else { goalIDs.remove(goal.id) }
+                            request = nil
+                        }))
+                        .disabled(goalIDs.count >= 3 && !goalIDs.contains(goal.id))
+                }
+                Text("最多附带三个目标；没有勾选的目标不会发送。")
+                    .font(Theme.font(10)).foregroundColor(Theme.textDim)
+            }
+        }
+    }
+
+    private var historyControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("附带本地历史参考", isOn: $includeHistory)
+                .onChange(of: includeHistory) { _ in request = nil }
+            if includeHistory {
+                Picker("统计范围", selection: $historyDays) {
+                    Text("近 7 天").tag(7)
+                    Text("近 30 天").tag(30)
+                }.onChange(of: historyDays) { _ in request = nil }
+                Text("包含所有任务的完成/计时/卡点统计，以及当前选中任务的历史；不含其它任务的标题和备注。没有记录不等于没有工作。")
+                    .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                Toggle("附带我保存的长期背景与手写总结", isOn: $includeBackground)
+                    .disabled(store.aiBackground.isEmpty)
+                    .onChange(of: includeBackground) { _ in request = nil }
+                if !store.aiSummaries.isEmpty {
+                    DisclosureGroup("选择以往 AI 总结（\(historySummaryIDs.count)/3）") {
+                        Text("以下为过去的模型分析，可能涉及其它任务；只发送你勾选的条目。")
+                            .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                        ForEach(store.aiSummaries) { record in
+                            Toggle(isOn: Binding(get: { historySummaryIDs.contains(record.id) }, set: { value in
+                                if value { historySummaryIDs.insert(record.id) } else { historySummaryIDs.remove(record.id) }
+                                request = nil
+                            })) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("\(record.date.formatted(date: .abbreviated, time: .omitted)) · \(record.workflow.title)")
+                                    Text(record.summary)
+                                    Text(record.outcome.title).foregroundColor(Theme.textDim)
+                                }.font(Theme.font(10))
+                            }
+                            .disabled(historySummaryIDs.count >= 3 && !historySummaryIDs.contains(record.id))
+                        }
+                    }
+                }
+                if store.aiBackground.isEmpty && store.aiSummaries.isEmpty {
+                    Text("可在「AI 设置」添加长期背景；以后的建议摘要会自动保存在本地供你选用。")
+                        .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                }
+            }
+        }
     }
 
     private func suggestionCard(_ binding: Binding<AISuggestion>) -> some View {
@@ -269,13 +381,17 @@ struct AIAssistantView: View {
     private func generate() {
         let input = makeRequest()
         request = input; errorMessage = nil; question = ""
+        let currentRunID = store.beginPlanningRun(input)
+        runID = currentRunID
         work = Task { @MainActor in
             defer { work = nil }
             do {
-                let draft = try await service.generate(input)
+                let (draft, summaryID) = try await PlanningAgentRunner.generate(input, runID: currentRunID,
+                                                                                store: store, service: service)
                 try Task.checkCancellation()
                 summary = draft.summary; question = draft.question; suggestions = draft.suggestions
                 selectedIDs = Set(draft.suggestions.map(\.id))
+                reviewID = summaryID
             } catch {
                 if !Task.isCancelled { errorMessage = error.localizedDescription }
             }
@@ -287,12 +403,20 @@ struct AIAssistantView: View {
         let draft = AIDraft(summary: summary, suggestions: suggestions)
         do {
             try draft.validate(for: request)
+            try store.validatePlanningContext(request)
             if workflow == .nextStep, let callback = onAdoptNextStep, let item = suggestions.first {
                 guard store.tasks.first(where: { $0.id == item.id }) == tasks.first else { throw AIApplyError.stale }
                 callback(item)
+                if let reviewID { store.updateAISummaryOutcome(reviewID, outcome: .filledDraft, adoptedCount: 1) }
+                if let runID { store.updatePlanningRun(runID, phase: .draftFilled) }
             } else {
                 try store.applyAIDraft(draft, request: request, selectedIDs: selectedIDs,
                                        originalTasks: tasks, originalInbox: inbox)
+                if let reviewID {
+                    store.updateAISummaryOutcome(reviewID, outcome: .applied,
+                        adoptedCount: suggestions.filter { selectedIDs.contains($0.id) }.count)
+                }
+                if let runID { store.updatePlanningRun(runID, phase: .applied) }
             }
             dismiss()
         } catch { errorMessage = error.localizedDescription }

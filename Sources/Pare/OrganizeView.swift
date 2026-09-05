@@ -7,6 +7,7 @@ private enum WorkspaceMode: String, CaseIterable {
     case matrix = "四象限"
     case today = "今日计划"
     case library = "想法与历史"
+    case goals = "目标与偏好"
 }
 
 /// The "整理状态" — the four quadrants are the main act, each with its own quiet
@@ -72,7 +73,7 @@ struct OrganizeView: View {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .center, spacing: 10) {
                     topTitle
-                    WorkspaceSwitcher(selection: $workspace).frame(width: 270)
+                    WorkspaceSwitcher(selection: $workspace).frame(width: 360)
                     Spacer(minLength: 8)
                     topActions
                 }
@@ -83,7 +84,7 @@ struct OrganizeView: View {
                         topActions
                     }
                     WorkspaceSwitcher(selection: $workspace)
-                        .frame(maxWidth: 300)
+                        .frame(maxWidth: 400)
                 }
             }
             if store.todayTotal > 0 {
@@ -127,6 +128,7 @@ struct OrganizeView: View {
         case .matrix: quadrantGrid
         case .today: TodayPlannerView(store: store)
         case .library: LibraryView(store: store)
+        case .goals: GoalPlanningView(store: store)
         }
     }
 
