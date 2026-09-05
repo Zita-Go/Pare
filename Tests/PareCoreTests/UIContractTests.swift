@@ -28,6 +28,10 @@ final class UIContractTests: XCTestCase {
         XCTAssertFalse(organize.contains("rotationEffect(.degrees(-90))"))
         XCTAssertFalse(organize.contains("Text(quadrant.hint)"),
                        "行动提示应只保留在 help/VoiceOver，不再常驻象限标题")
+        XCTAssertTrue(organize.contains("HStack(spacing: 0)"),
+                      "顶部工作区切换器不能在分页按钮之间留下点击死区")
+        XCTAssertTrue(organize.contains(".padding(.horizontal, 1.5)"),
+                      "分页按钮的视觉间隔必须属于按钮本身，而不是 HStack spacing")
         XCTAssertTrue(planning.contains("编辑任务详情"))
         XCTAssertTrue(planning.contains("放弃本次专注计时"))
         XCTAssertFalse(planning.contains("showsLabel || isActive"),

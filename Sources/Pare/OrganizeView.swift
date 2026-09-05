@@ -310,20 +310,27 @@ private struct WorkspaceSwitcher: View {
     @Binding var selection: WorkspaceMode
 
     var body: some View {
-        HStack(spacing: 3) {
+        // The three controls must form one continuous hit region. A real HStack
+        // spacing here creates a narrow dead strip between tabs: clicking the
+        // visual boundary changes nothing even though it looks like one control.
+        HStack(spacing: 0) {
             ForEach(WorkspaceMode.allCases, id: \.self) { mode in
                 Button { selection = mode } label: {
                     Text(mode.rawValue)
                         .font(Theme.font(12, weight: .semibold))
                         .foregroundColor(selection == mode ? Theme.bg : Theme.textDim)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, minHeight: 30)
                         .background(
                             RoundedRectangle(cornerRadius: 7, style: .continuous)
                                 .fill(selection == mode ? Theme.amber : Color.clear)
                         )
+                        // Keep a small visual seam while leaving the padded
+                        // area owned by one of the adjacent buttons.
+                        .padding(.horizontal, 1.5)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .accessibilityAddTraits(selection == mode ? .isSelected : [])
             }
         }
