@@ -66,7 +66,11 @@ xcrun swiftc -target arm64-apple-macosx13.0 Scripts/capture-window.swift -o /tmp
 | `Sources/Pare/NotificationManager.swift` | macOS 通知与通知动作 |
 | `Sources/Pare/AttentionDriftDetector.swift` / `MomentumManager.swift` | 应用、浏览器与情境事件 |
 | `Sources/Pare/Theme.swift` / `Components.swift` | 配色、字体与公共控件 |
+| `Sources/PareCore/AIAssistance.swift` | AI 请求格式、网络客户端与建议校验 |
+| `Sources/Pare/AIService.swift` / `AIViews.swift` | 钥匙串、本机 AI 配置、发送预览与采纳界面 |
 | `Resources/AppIcon.png` | 图标母版 |
 | `Scripts/ReadmeDemo.swift` | 文档用演示入口与示例数据 |
 
 用户可直接在 App 设置顶部修改随手记快捷键。`Sources/Pare/ShortcutRecorder.swift` 负责窗口内录入，`Sources/PareCore/CaptureShortcut.swift` 管理偏好与注册恢复，`Sources/Pare/HotKey.swift` 负责 Carbon 注册及系统保留组合检查。默认 `⌥Space`，无需为修改组合重新编译。
+
+AI 联调仅使用虚构内容。真实服务地址、模型配置和 API Key 不应放入源码、截图、测试 fixture 或 Git；分别通过 App 本机偏好和钥匙串保存。单元测试使用保留的示例域名与占位模型，不发送付费网络请求。

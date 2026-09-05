@@ -79,7 +79,7 @@ private struct OnboardingView: View {
                 step("bell.badge.fill", "克制提醒", "早晚节奏、单项提醒和每周回顾都可随时关闭。")
             }
 
-            Text("通知只用于你主动设置的提醒，数据始终留在这台 Mac。")
+            Text("任务保存在本机；可选 AI 仅在你确认后向所配置的服务发送选中内容。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
 
             HStack {

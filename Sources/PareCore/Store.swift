@@ -635,6 +635,54 @@ public final class Store: ObservableObject {
 
     // MARK: - Settings
 
+    /// One save, only after explicit adoption. Snapshots remain local and detect
+    /// edits made while the model was generating its answer.
+    public func applyAIDraft(_ draft: AIDraft, request: AIRequest, selectedIDs: Set<UUID>,
+                             originalTasks: [TaskItem], originalInbox: [InboxItem], now: Date = Date()) throws {
+        try draft.validate(for: request)
+        let chosen = draft.suggestions.filter { selectedIDs.contains($0.id) }
+        guard !chosen.isEmpty else { return }
+        for item in chosen {
+            if request.workflow == .organize {
+                guard let original = originalInbox.first(where: { $0.id == item.id }),
+                      inbox.first(where: { $0.id == item.id }) == original else { throw AIApplyError.stale }
+            } else {
+                guard let original = originalTasks.first(where: { $0.id == item.id }), !original.completed,
+                      tasks.first(where: { $0.id == item.id }) == original else { throw AIApplyError.stale }
+            }
+        }
+        for item in chosen {
+            if request.workflow == .organize {
+                guard let index = inbox.firstIndex(where: { $0.id == item.id }) else { continue }
+                let source = inbox.remove(at: index)
+                let note = "原始随手记：\(source.text)"
+                if item.kind == "thought" {
+                    thoughts.insert(ThoughtItem(text: item.title, notes: note,
+                                                createdAt: source.createdAt, updatedAt: now), at: 0)
+                } else {
+                    tasks.append(TaskItem(text: item.title, quadrant: Quadrant(rawValue: item.quadrant)!,
+                                          createdAt: now, estimatedMinutes: item.estimatedMinutes,
+                                          remindAt: source.suggestedRemindAt, lastProgressAt: now,
+                                          note: note, nextAction: Self.nonBlank(item.nextAction),
+                                          definitionOfDone: Self.nonBlank(item.definitionOfDone)))
+                }
+            } else if let index = tasks.firstIndex(where: { $0.id == item.id }) {
+                tasks[index].nextAction = Self.nonBlank(item.nextAction)
+                tasks[index].definitionOfDone = Self.nonBlank(item.definitionOfDone)
+                tasks[index].lastProgressAt = now
+                if request.workflow == .plan {
+                    let order = tasks[index].todayOrder ?? nextTodayOrder()
+                    tasks[index].isToday = true
+                    tasks[index].todayOrder = order
+                }
+            }
+        }
+        if request.workflow == .plan, let key = chosen.first(where: \.isKeyTask) {
+            for index in tasks.indices { tasks[index].isDailyWin = tasks[index].id == key.id }
+        }
+        save()
+    }
+
     /// Replace the reminder settings and persist. Publishing the change lets the
     /// app layer reschedule notifications to match.
     public func updateSettings(_ new: Settings) {

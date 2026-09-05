@@ -367,6 +367,7 @@ private struct CollapsedInboxRail: View {
 private struct InboxColumn: View {
     @ObservedObject var store: Store
     @ObservedObject var focus: OrganizeFocus
+    @State private var showAI = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -388,6 +389,13 @@ private struct InboxColumn: View {
                 .font(Theme.font(11))
                 .foregroundColor(Theme.textDim)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Button("✦ 帮我整理") { showAI = true }
+                .buttonStyle(.plain).font(Theme.font(12, weight: .medium))
+                .foregroundColor(Theme.amber).disabled(store.inbox.isEmpty)
+                .sheet(isPresented: $showAI) {
+                    AIAssistantView(store: store, workflow: .organize)
+                }
 
             if store.inbox.isEmpty {
                 Spacer()

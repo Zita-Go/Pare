@@ -91,6 +91,9 @@ private struct SettingsView: View {
                 settingsGroup("快捷键") {
                     shortcutCard
                 }
+                settingsGroup("AI 辅助（可选）") {
+                    AIConfigurationView()
+                }
                 permissionCard
                 settingsGroup("启动与数据") {
                     startupAndDataCard

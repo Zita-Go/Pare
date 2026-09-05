@@ -376,6 +376,7 @@ struct TodayPlannerView: View {
     @State private var quickTask = ""
     @State private var rescueTaskID: UUID?
     @State private var rescuePreset: BlockerReason?
+    @State private var showAIPlan = false
 
     private var incomplete: [TaskItem] { store.todayTasks.filter { !$0.completed } }
     private var completed: [TaskItem] { store.todayTasks.filter(\.completed) }
@@ -383,6 +384,11 @@ struct TodayPlannerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Spacer()
+                Button("✦ 帮我安排今天") { showAIPlan = true }
+                    .buttonStyle(.plain).font(Theme.font(12, weight: .medium)).foregroundColor(Theme.amber)
+            }
             plannerHeader
             if store.todayTasks.isEmpty {
                 emptyState
@@ -403,6 +409,9 @@ struct TodayPlannerView: View {
             quickAdd
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .sheet(isPresented: $showAIPlan) {
+            AIAssistantView(store: store, workflow: .plan)
+        }
         .sheet(isPresented: rescuePresented) {
             if let id = rescueTaskID, let task = store.tasks.first(where: { $0.id == id }) {
                 MomentumRescueView(store: store, task: task, preset: rescuePreset,
@@ -586,6 +595,7 @@ private struct MomentumRescueView: View {
     @State private var reason: BlockerReason?
     @State private var nextAction: String
     @State private var definitionOfDone: String
+    @State private var showAI = false
 
     init(store: Store, task: TaskItem, preset: BlockerReason?, isPresented: Binding<Bool>) {
         self.store = store; self.task = task; self.preset = preset; self._isPresented = isPresented
@@ -624,6 +634,16 @@ private struct MomentumRescueView: View {
                          prompt: "一个 5–15 分钟内能直接做的动作")
             compactField("最低完成版本", text: $definitionOfDone,
                          prompt: "做到什么程度，今天就算有进展？")
+
+            Button("✦ 帮我想一个起点") { showAI = true }
+                .buttonStyle(.plain).font(Theme.font(12, weight: .medium)).foregroundColor(Theme.amber)
+                .sheet(isPresented: $showAI) {
+                    AIAssistantView(store: store, workflow: .nextStep, task: task,
+                                    blocker: reason?.title ?? "") { item in
+                        nextAction = item.nextAction
+                        definitionOfDone = item.definitionOfDone
+                    }
+                }
 
             if reason == .lowEnergy, let suggestion = lowEnergySuggestion {
                 Button("改做较轻的：\(suggestion.text)") {
