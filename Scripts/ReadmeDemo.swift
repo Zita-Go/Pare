@@ -29,6 +29,10 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
     private let verifyShortcuts = CommandLine.arguments.contains("--verify-shortcuts")
         || Bundle.main.bundleIdentifier == "com.zitago.Pare.ShortcutCheck"
     private let verifyIntegrations = CommandLine.arguments.contains("--verify-integrations")
+    private var aiDemoEndpoint: String? {
+        CommandLine.arguments.first { $0.hasPrefix("--ai-endpoint=") }
+            .map { String($0.dropFirst("--ai-endpoint=".count)) }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let directory = FileManager.default.temporaryDirectory
@@ -36,6 +40,7 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         store = Store(fileURL: directory.appendingPathComponent("store.json"))
         seed()
+        configureDemoAI()
         makeMenu()
 
         // A plain neutral backdrop gives the real frosted windows a consistent
@@ -107,6 +112,19 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         store.capture("找个时间整理书桌")
         store.capture("给旅行相册加一页手绘地图")
         _ = store.addThought("每周留一个不排计划的下午", notes: "散步、阅读，或者什么都不做。")
+    }
+
+    /// Screenshot-only configuration. It never copies the user's provider or
+    /// key; `--ai-endpoint` must be an explicit loopback mock supplied by the
+    /// screenshot command. Ordinary demo runs always start with AI disabled.
+    private func configureDemoAI() {
+        var config = AIConfiguration()
+        if let endpoint = aiDemoEndpoint {
+            config.enabled = true
+            config.baseURL = endpoint
+            config.model = "pare-readme-mock"
+        }
+        try? AIService.shared.save(config, newKey: "")
     }
 
     private func makeMenu() {

@@ -81,3 +81,5 @@ xcrun swiftc -target arm64-apple-macosx13.0 Scripts/capture-window.swift -o /tmp
 AI 联调仅使用虚构内容。真实服务地址、模型配置和 API Key 不应放入源码、截图、测试 fixture 或 Git；分别通过 App 本机偏好和钥匙串保存。单元测试使用保留的示例域名与占位模型，不发送付费网络请求。
 
 界面紧凑布局可使用 `bash Scripts/screenshot-demo.sh --verify-shortcuts --compact` 验收，主窗口以 880pt 宽度打开。演示主窗口的设置与本周回顾入口均连接独立数据的真实窗口。`InterfaceComponents.swift` 提供通用次级按钮、分类标签、状态标签和可展开分析；设置的非活动分类保持挂载以保留草稿，同时关闭点击及辅助功能访问。
+
+README 的 AI 结果图必须来自本机回环地址的模拟服务，并显式传入 `--ai-endpoint=http://127.0.0.1:PORT/v1`。截图演示会使用固定的 `pare-readme-mock` 模型名；未传参数时始终重置为关闭状态。不得把真实 API 地址、模型名、密钥或用户任务用于文档截图。
