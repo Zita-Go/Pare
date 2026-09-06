@@ -71,6 +71,12 @@ final class UIContractTests: XCTestCase {
         let store = try source("Sources/PareCore/Store.swift")
         XCTAssertTrue(store.contains("lastSavedData"),
                       "点击保存应复用内存中的上一代数据，不应反复解码磁盘备份")
+        let appDelegate = try source("Sources/Pare/AppDelegate.swift")
+        XCTAssertTrue(appDelegate.contains("NSApp.applicationIconImage = icon"),
+                      "菜单栏 App 启动时也要显式提供通知中心可解析的应用图标")
+        let build = try source("build_app.sh")
+        XCTAssertTrue(build.contains("<key>CFBundleIconFile</key><string>AppIcon.icns</string>"))
+        XCTAssertTrue(build.contains("<key>CFBundleIconFiles</key>"))
     }
 
     func testSettingsEntryRoutesToSharedWindowAndStaysInTopActions() throws {

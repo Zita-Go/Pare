@@ -20,6 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sleepStoppedTimer: (task: String, minutes: Int)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Menu-bar-only apps don't create a Dock tile, but Notification Center
+        // still needs a concrete application image. Load the bundled icon
+        // explicitly in addition to the Info.plist declarations so the running
+        // application and LaunchServices agree on the same artwork.
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = icon
+        }
         store.rolloverIfNeeded()
 
         popoverController = PopoverController(store: store, onOpenOrganize: { [weak self] in
