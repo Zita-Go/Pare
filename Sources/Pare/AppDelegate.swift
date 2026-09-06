@@ -126,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             organizeWindowController = OrganizeWindowController(
                 store: store,
                 onClose: {},
+                onOpenSettings: { [weak self] in self?.openSettings() },
                 onOpenWeeklyReview: { [weak self] in self?.openWeeklyReview() })
         }
         organizeWindowController?.present(showSummary: showSummary)

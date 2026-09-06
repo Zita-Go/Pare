@@ -64,10 +64,11 @@ private struct WeeklyReviewView: View {
         // data. The projection is pure and cheap.
         let review = store.weeklyReview()
         let trends = store.longTermTrends()
-        ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+            header(review).padding(.horizontal, 22).padding(.top, 34)
+            Divider().overlay(Theme.hairline)
+            ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                header(review)
-
                 if review.isEmpty {
                     emptyState
                 } else {
@@ -82,12 +83,14 @@ private struct WeeklyReviewView: View {
 
                 longTermSection(trends)
 
-                copyButton(review)
             }
             .padding(.horizontal, 22)
-            .padding(.top, 34)
+            .padding(.top, 4)
             .padding(.bottom, 22)
             .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Divider().overlay(Theme.hairline)
+            copyButton(review).padding(.horizontal, 22).padding(.bottom, 18)
         }
         .frame(minWidth: 420, minHeight: 480)
         .background(FrostBackground(tint: 0.62))

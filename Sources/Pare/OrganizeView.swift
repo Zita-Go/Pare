@@ -22,6 +22,8 @@ struct OrganizeView: View {
     @ObservedObject var summaryState: TodaySummaryState
     /// RFC-0001 T3: 打开「本周回顾」窗口的整理窗入口回调（默认空操作，兼容其它调用点）。
     var onOpenWeeklyReview: () -> Void = {}
+    /// Shared settings window, also reachable from the menu-bar menu.
+    let onOpenSettings: () -> Void
     /// RFC-0001: 整理窗全键盘归位的当前"光标" —— 选中的待整理项或象限任务。
     @StateObject private var focus = OrganizeFocus()
     @State private var workspace: WorkspaceMode = .matrix
@@ -135,13 +137,33 @@ struct OrganizeView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(Theme.amber))
             }.buttonStyle(.plain).help("按当前任务上下文打开 AI；未选中任务时帮助安排今天")
             weeklyReviewButton
-            Text(progressString)
+            Text(store.todayTotal > 0 ? progressString : "今天未安排")
                 .font(Theme.font(store.todayTotal > 0 ? 14 : 12,
                                  weight: store.todayTotal > 0 ? .medium : .regular))
                 .foregroundColor(store.todayTotal > 0 ? Theme.amber : Theme.textDim)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+            settingsButton
         }
+    }
+
+    private var settingsButton: some View {
+        Button(action: onOpenSettings) {
+            Label("设置", systemImage: "gearshape")
+                .font(Theme.font(12, weight: .medium))
+                .foregroundColor(Theme.text)
+                .padding(.horizontal, 9)
+                .frame(minHeight: 28)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel.opacity(0.55)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .keyboardShortcut(",", modifiers: .command)
+        .help("打开设置（⌘,）")
+        .accessibilityLabel("设置")
+        .accessibilityHint("打开 Pare 设置：通知、快捷键、AI 和数据备份")
     }
 
     @ViewBuilder private var workspaceContent: some View {
@@ -185,7 +207,7 @@ struct OrganizeView: View {
             }
             .foregroundColor(Theme.textDim)
             .padding(.horizontal, 9)
-            .padding(.vertical, 4)
+            .frame(minHeight: 28)
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Theme.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
@@ -543,6 +565,12 @@ private struct QuadrantCard: View {
             }
             ScrollView {
                 LazyVStack(spacing: 4) {
+                    if store.tasks(in: quadrant).isEmpty {
+                        Text("暂无任务")
+                            .font(Theme.font(12)).foregroundColor(Theme.textFaint)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
+                            .padding(.horizontal, 6)
+                    }
                     ForEach(store.tasks(in: quadrant)) { task in
                         QuadrantTaskRow(store: store, task: task, accent: accent, focus: focus)
                     }
@@ -698,6 +726,13 @@ private struct QuadrantTaskRow: View {
                     .layoutPriority(1)
                     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 Spacer(minLength: 6)
+                TaskDetailsButton(store: store, task: task)
+            }
+            // Metadata gets its own line, so estimates and completion time
+            // cannot squeeze the task title down to two or three characters.
+            if task.dueAt != nil || task.estimatedMinutes != nil || task.completed
+                || task.remindAt != nil || task.isToday || hovering || store.activeTimer?.taskID == task.id {
+            HStack(spacing: 8) {
                 if let due = task.dueAt { DueBadge(date: due, completed: task.completed) }
                 // 已设置的状态常显；未设置项统一收进“…”详情，避免一排悬停按钮挤压任务标题。
                 if task.estimatedMinutes != nil {
@@ -722,7 +757,8 @@ private struct QuadrantTaskRow: View {
                     .help(task.isToday ? "移出今天" : "加入今天")
                     .accessibilityLabel(task.isToday ? "移出今天" : "加入今天")
                 }
-                TaskDetailsButton(store: store, task: task)
+                Spacer(minLength: 0)
+            }.padding(.leading, 28)
             }
             // RFC-0001 T5：打勾完成后就地弹出一排预设时长，点一下即记，点 ✕ 跳过。
             if task.completed, showActualPrompt, task.actualMinutes == nil {

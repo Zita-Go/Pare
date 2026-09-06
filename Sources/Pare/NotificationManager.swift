@@ -192,8 +192,21 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     // MARK: - Settings-panel helpers
 
     /// Fire a notification a few seconds out so the user can confirm delivery.
-    func sendTestReminder() {
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] _, _ in
+    private enum SubmissionError: LocalizedError {
+        case permissionDenied
+        var errorDescription: String? { "系统未允许通知，测试提醒没有发送。请在系统通知设置中允许 Pare。" }
+    }
+
+    func sendTestReminder(completion: @escaping (Result<Void, Error>) -> Void) {
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
+            if let error {
+                DispatchQueue.main.async { completion(.failure(error)) }
+                return
+            }
+            guard granted else {
+                DispatchQueue.main.async { completion(.failure(SubmissionError.permissionDenied)) }
+                return
+            }
             guard let self else { return }
             let content = UNMutableNotificationContent()
             content.title = "测试提醒"
@@ -204,6 +217,10 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             let request = UNNotificationRequest(identifier: Self.testIdentifier, content: content, trigger: trigger)
             self.center.add(request) { err in
                 Self.diag("test add err=\(err?.localizedDescription ?? "nil")")
+                DispatchQueue.main.async {
+                    if let err { completion(.failure(err)) }
+                    else { completion(.success(())) }
+                }
             }
         }
     }
@@ -218,7 +235,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         center.add(UNNotificationRequest(identifier: "timer.sleep", content: content, trigger: trigger))
     }
 
-    func sendAttentionDriftNotice(task: TaskItem, decision: AttentionDriftDecision) {
+    func sendAttentionDriftNotice(task: TaskItem, decision: AttentionDriftDecision,
+                                  completion: ((Result<Void, Error>) -> Void)? = nil) {
         let content = UNMutableNotificationContent()
         content.title = "要不要先停一下？"
         if decision.browserPageChanges > 0 {
@@ -231,7 +249,12 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.userInfo = ["taskID": task.id.uuidString]
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let id = "attention.drift.\(Int(Date().timeIntervalSince1970))"
-        center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+        center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger)) { error in
+            DispatchQueue.main.async {
+                if let error { completion?(.failure(error)) }
+                else { completion?(.success(())) }
+            }
+        }
     }
 
     func sendImplementationCue(task: TaskItem, plan: ImplementationPlan) {

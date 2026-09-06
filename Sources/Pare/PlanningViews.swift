@@ -52,6 +52,7 @@ private struct TaskDetailView: View {
     @State private var cueTime: Date
     @State private var applicationBundleID: String
     @State private var applicationName: String
+    @State private var showScheduling: Bool
 
     init(store: Store, task: TaskItem, isPresented: Binding<Bool>) {
         self.store = store
@@ -79,19 +80,18 @@ private struct TaskDetailView: View {
             second: 0, of: Date()) ?? Date())
         _applicationBundleID = State(initialValue: plan?.applicationBundleID ?? "")
         _applicationName = State(initialValue: plan?.applicationName ?? "")
+        _showScheduling = State(initialValue: task.dueAt != nil || task.remindAt != nil)
     }
 
     var body: some View {
-        ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                PageHeading(title: "任务详情", subtitle: "写清下一步，再决定什么时候做。")
+                FocusTimerButton(store: store, task: task, showsLabel: true)
+            }.padding(18)
+            Divider().overlay(Theme.hairline)
+            ScrollView {
             VStack(alignment: .leading, spacing: 13) {
-                HStack {
-                    Text("任务详情")
-                        .font(Theme.font(16, weight: .semibold))
-                        .foregroundColor(Theme.text)
-                    Spacer()
-                    FocusTimerButton(store: store, task: task, showsLabel: true)
-                }
-
                 field("任务", text: $title, prompt: "要完成什么？")
                 field("下一步", text: $nextAction, prompt: "最小、具体的下一步动作")
                 field("完成标准", text: $definitionOfDone, prompt: "做到什么程度就可以结束？")
@@ -133,11 +133,15 @@ private struct TaskDetailView: View {
                     }
                 }
 
-                dateSection
+                DisclosureGroup("日期与提醒", isExpanded: $showScheduling) {
+                    dateSection.padding(.top, 10)
+                }.font(Theme.font(13, weight: .medium)).foregroundColor(Theme.text)
                 implementationSection
-
-                Divider().overlay(Theme.hairline)
-                HStack {
+            }
+            .padding(18)
+            }
+            Divider().overlay(Theme.hairline)
+            HStack {
                     Button("删除", role: .destructive) {
                         isPresented = false
                         store.deleteTask(task.id)
@@ -145,20 +149,14 @@ private struct TaskDetailView: View {
                     .buttonStyle(.plain)
                     .foregroundColor(Theme.qUrgent)
                     Spacer()
-                    Button("取消") { isPresented = false }.buttonStyle(.plain).foregroundColor(Theme.textDim)
+                    Button("取消") { isPresented = false }.buttonStyle(SecondaryActionStyle())
                     Button("保存") { save() }
-                        .buttonStyle(.plain)
-                        .foregroundColor(Theme.bg)
-                        .padding(.horizontal, 14).padding(.vertical, 7)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.amber))
+                        .buttonStyle(AIPrimaryButtonStyle())
                         .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                   || !implementationPlanIsValid)
-                }
-            }
-            .padding(16)
+            }.padding(16)
         }
-        .frame(width: 380)
-        .frame(maxHeight: 720)
+        .frame(width: 420, height: 620)
         .background(Theme.bg)
     }
 
@@ -426,7 +424,7 @@ struct TodayPlannerView: View {
                         Text("今天只赢一件")
                     }
                     .font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.amber)
-                    Text(keyTask?.text ?? "今天已经收完了")
+                    Text(keyTask?.text ?? (store.todayTasks.isEmpty ? "先选一件值得推进的事" : "今天已经收完了"))
                     .font(Theme.font(18, weight: .semibold))
                     .foregroundColor(incomplete.isEmpty ? Theme.textDim : Theme.text)
                     .lineLimit(2)
@@ -749,6 +747,7 @@ struct LibraryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            PageHeading(title: "想法与历史", subtitle: "留住想法，也看见已经推进的事情。")
             HStack(spacing: 10) {
                 HStack(spacing: 7) {
                     Image(systemName: "magnifyingglass").foregroundColor(Theme.textDim)
@@ -758,10 +757,8 @@ struct LibraryView: View {
                 .padding(.horizontal, 10).padding(.vertical, 8)
                 .background(RoundedRectangle(cornerRadius: 9).fill(Color.black.opacity(0.18)))
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border, lineWidth: 1))
-                Picker("", selection: $scope) {
-                    ForEach(LibraryScope.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .labelsHidden().pickerStyle(.segmented).frame(width: 286)
+                SegmentedTabs(values: LibraryScope.allCases, selection: $scope, label: { $0.rawValue })
+                    .frame(width: 240)
             }
 
             ScrollView {

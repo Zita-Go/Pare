@@ -24,7 +24,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
          shortcutController: CaptureShortcutController) {
         self.shortcutController = shortcutController
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 580, height: 640),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false)
@@ -69,6 +69,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
 // MARK: - SettingsView
 
+private enum SettingsCategory: String, CaseIterable {
+    case general = "通用", reminders = "提醒", ai = "AI", data = "数据"
+}
+
 private struct SettingsView: View {
     @ObservedObject var store: Store
     let manager: NotificationManager
@@ -77,63 +81,47 @@ private struct SettingsView: View {
     @StateObject private var loginItem = LoginItemManager()
 
     @State private var authText = "检查中…"
-    @State private var testSent = false
+    @State private var testSending = false
+    @State private var testMessage: String?
+    @State private var attentionTestSending = false
     @State private var dataMessage: String?
     @State private var attentionMessage: String?
+    @State private var category: SettingsCategory = .general
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Pare 设置")
-                    .font(Theme.font(20, weight: .semibold))
-                    .foregroundColor(Theme.text)
-
-                settingsGroup("快捷键") {
-                    shortcutCard
+        VStack(alignment: .leading, spacing: 16) {
+            PageHeading(title: "Pare 设置", subtitle: "按你的习惯安排工具，不必一次设置完。")
+            HStack(spacing: 4) {
+                ForEach(SettingsCategory.allCases, id: \.self) { tab in
+                    Button { category = tab; shortcutController.cancelRecording() } label: {
+                        Text(tab.rawValue).font(Theme.font(13, weight: .medium))
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .foregroundColor(category == tab ? Theme.bg : Theme.textDim)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(category == tab ? Theme.amber : .clear))
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                        .accessibilityAddTraits(category == tab ? .isSelected : [])
                 }
-                settingsGroup("AI 辅助（可选）") {
-                    AIConfigurationView()
+            }.padding(4).background(RoundedRectangle(cornerRadius: 11).fill(Theme.panel.opacity(0.45)))
+            // Keep the panes mounted so switching categories doesn't discard
+            // unsaved AI configuration, background or other local drafts.
+            ZStack(alignment: .topLeading) {
+                ForEach(SettingsCategory.allCases, id: \.self) { tab in
+                    ScrollView {
+                        settingsContent(tab)
+                            .padding(.trailing, 4).padding(.bottom, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .opacity(category == tab ? 1 : 0)
+                    .allowsHitTesting(category == tab)
+                    .accessibilityHidden(category != tab)
+                    .disabled(category != tab)
                 }
-                settingsGroup("AI 的本地历史与背景") {
-                    AIHistorySettingsView(store: store)
-                }
-                permissionCard
-                settingsGroup("启动与数据") {
-                    startupAndDataCard
-                }
-                settingsGroup("提醒与节奏") {
-                    planCard
-                    groupDivider
-                    reviewCard
-                    groupDivider
-                    weeklyCard
-                    groupDivider
-                    pileupCard
-                }
-                settingsGroup("注意力漂移") {
-                    attentionDriftCard
-                }
-                settingsGroup("规划边界") {
-                    overloadCard
-                }
-                settingsGroup("整理纪律") {
-                    focusStalenessCard
-                    groupDivider
-                    quadrantCleanupCard
-                }
-
-                Text("单个任务的定时提醒：在「整理」窗口点任务右侧的「…」设置任意时间与重复规则。到点可选「完成 / 稍后」。")
-                    .font(Theme.font(11))
-                    .foregroundColor(Theme.textDim)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 30)
-            .padding(.bottom, 20)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(width: 460, height: 560)
-        .background(FrostBackground(tint: 0.6))
+        .padding(.horizontal, 22).padding(.top, 32).padding(.bottom, 16)
+        .frame(width: 580, height: 640)
+        .background(Theme.bg)
         .onAppear(perform: refreshAuth)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // Returning from System Settings (or reopening the panel) should
@@ -145,6 +133,32 @@ private struct SettingsView: View {
     }
 
     // MARK: Cards
+
+    @ViewBuilder private func settingsContent(_ tab: SettingsCategory) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            switch tab {
+            case .general:
+                permissionCard
+                settingsGroup("随手记快捷键") { shortcutCard }
+            case .reminders:
+                settingsGroup("提醒与节奏") {
+                    planCard; groupDivider; reviewCard; groupDivider
+                    weeklyCard; groupDivider; pileupCard
+                }
+                settingsGroup("注意力漂移") { attentionDriftCard }
+                settingsGroup("规划边界") { overloadCard }
+                settingsGroup("整理纪律") { focusStalenessCard; groupDivider; quadrantCleanupCard }
+                Text("单个任务的定时提醒：在任务「…」中设置时间与重复规则。到点可选「完成 / 稍后」。")
+                    .font(Theme.font(12)).foregroundColor(Theme.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .ai:
+                settingsGroup("AI 连接（可选）") { AIConfigurationView() }
+                settingsGroup("本地历史与背景") { AIHistorySettingsView(store: store) }
+            case .data:
+                settingsGroup("启动与数据备份") { startupAndDataCard }
+            }
+        }
+    }
 
     private var shortcutCard: some View {
         sectionContent {
@@ -228,14 +242,23 @@ private struct SettingsView: View {
             HStack(spacing: 8) {
                 actionButton("请求权限") { manager.requestAuthorizationAgain(); scheduleAuthRefresh() }
                 actionButton("系统设置") { manager.openSystemNotificationSettings() }
-                actionButton(testSent ? "已发送，稍候…" : "发送测试提醒") {
-                    manager.sendTestReminder()
-                    testSent = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-                        testSent = false
+                actionButton(testSending ? "正在提交…" : "发送测试提醒") {
+                    testSending = true
+                    testMessage = nil
+                    manager.sendTestReminder { result in
+                        testSending = false
+                        switch result {
+                        case .success:
+                            testMessage = "已提交系统，约 3 秒后提醒。是否展示还取决于系统通知与专注模式设置。"
+                        case .failure(let error):
+                            testMessage = "测试提醒未发送：\(error.localizedDescription)"
+                        }
                         refreshAuth()
                     }
-                }
+                }.disabled(testSending)
+            }
+            if let testMessage {
+                Text(testMessage).font(Theme.font(11)).foregroundColor(Theme.amber)
             }
         }
     }
@@ -300,7 +323,8 @@ private struct SettingsView: View {
                     Text(last).font(Theme.font(11)).foregroundColor(Theme.amber)
                 }
                 HStack(spacing: 8) {
-                    actionButton("发送测试漂移提醒") { sendAttentionTest() }
+                    actionButton(attentionTestSending ? "正在提交…" : "发送测试漂移提醒") { sendAttentionTest() }
+                        .disabled(attentionTestSending)
                     actionButton("忽略 1 小时") { attentionDetector.snooze() }
                 }
                 if let attentionMessage {
@@ -317,12 +341,21 @@ private struct SettingsView: View {
             attentionMessage = "先添加一件未完成任务，提醒才有推荐目标。"
             return
         }
+        attentionTestSending = true
+        attentionMessage = nil
         manager.sendAttentionDriftNotice(
             task: task,
             decision: AttentionDriftDecision(switchCount: 9, uniqueContextCount: 2,
                                               medianDwellSeconds: 12, returnRatio: 0.8,
-                                              browserPageChanges: 4))
-        attentionMessage = "测试提醒已发送 ✓"
+                                              browserPageChanges: 4)) { result in
+            attentionTestSending = false
+            switch result {
+            case .success:
+                attentionMessage = "测试提醒已提交系统；是否展示还取决于系统通知与专注模式设置。"
+            case .failure(let error):
+                attentionMessage = "测试提醒未发送：\(error.localizedDescription)"
+            }
+        }
     }
 
     private var reviewCard: some View {
@@ -456,10 +489,9 @@ private struct SettingsView: View {
     private func settingsGroup<Content: View>(_ title: String,
                                               @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 13) {
-            Text(title.uppercased())
-                .font(Theme.font(11, weight: .semibold))
-                .tracking(0.7)
-                .foregroundColor(Theme.amber)
+            Text(title)
+                .font(Theme.font(14, weight: .semibold))
+                .foregroundColor(Theme.text)
             content()
         }
         .padding(14)
@@ -491,15 +523,7 @@ private struct SettingsView: View {
     }
 
     private func actionButton(_ title: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(Theme.font(12, weight: .medium))
-                .foregroundColor(Theme.text)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
+        Button(title, action: action).buttonStyle(SecondaryActionStyle())
     }
 
     private func exportBackup() {

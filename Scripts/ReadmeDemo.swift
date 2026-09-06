@@ -22,11 +22,13 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
     private var capture: PopoverController!
     private var backdrop: NSWindow!
     private var settings: SettingsWindowController?
+    private var weeklyReview: WeeklyReviewWindowController?
     private var shortcuts: CaptureShortcutController?
     private var notifications: NotificationManager?
     private var attention: AttentionDriftDetector?
     private let verifyShortcuts = CommandLine.arguments.contains("--verify-shortcuts")
         || Bundle.main.bundleIdentifier == "com.zitago.Pare.ShortcutCheck"
+    private let verifyIntegrations = CommandLine.arguments.contains("--verify-integrations")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let directory = FileManager.default.temporaryDirectory
@@ -43,14 +45,16 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         backdrop.backgroundColor = NSColor(red: 0.10, green: 0.12, blue: 0.11, alpha: 1)
         backdrop.isReleasedWhenClosed = false
         backdrop.orderFront(nil)
-        organizer = OrganizeWindowController(store: store, onClose: {})
+        organizer = OrganizeWindowController(store: store, onClose: {},
+            onOpenSettings: { [weak self] in self?.showShortcutSettings() },
+            onOpenWeeklyReview: { [weak self] in self?.showWeeklyReview() })
         capture = PopoverController(store: store) { [weak self] in self?.showOrganizer() }
-        if verifyShortcuts {
-            shortcuts = CaptureShortcutController { [weak self] shortcut in
-                HotKey(keyCode: shortcut.keyCode, modifiers: shortcut.modifiers) { [weak self] in
-                    self?.capture.toggle(relativeTo: nil)
-                }
+        shortcuts = CaptureShortcutController { [weak self] shortcut in
+            HotKey(keyCode: shortcut.keyCode, modifiers: shortcut.modifiers) { [weak self] in
+                self?.capture.toggle(relativeTo: nil)
             }
+        }
+        if verifyShortcuts {
             shortcuts?.start()
         }
         showOrganizer()
@@ -141,7 +145,8 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
     @objc private func showOrganizer() {
         capture?.close()
         organizer.present()
-        organizer.window?.setContentSize(NSSize(width: 1060, height: 660))
+        let compact = CommandLine.arguments.contains("--compact")
+        organizer.window?.setContentSize(NSSize(width: compact ? 880 : 1060, height: compact ? 620 : 660))
         organizer.window?.center()
     }
 
@@ -159,6 +164,11 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func showWeeklyReview() {
+        if weeklyReview == nil { weeklyReview = WeeklyReviewWindowController(store: store) }
+        weeklyReview?.present()
+    }
+
     @objc private func showShortcutSettings() {
         guard let shortcuts else { return }
         capture.close()
@@ -169,6 +179,13 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
             let attention = AttentionDriftDetector(store: store) { _, _ in }
             self.notifications = notifications
             self.attention = attention
+            // Explicit integration QA only: keep ordinary screenshots free of
+            // scheduling/monitoring. The seeded detector settings remain off;
+            // enabling them and granting OS permissions is a separate UI action.
+            if verifyIntegrations {
+                notifications.configure()
+                attention.start()
+            }
             settings = SettingsWindowController(store: store, manager: notifications,
                                                  attentionDetector: attention, shortcutController: shortcuts)
         }

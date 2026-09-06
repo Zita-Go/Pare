@@ -72,4 +72,51 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(store.contains("lastSavedData"),
                       "点击保存应复用内存中的上一代数据，不应反复解码磁盘备份")
     }
+
+    func testSettingsEntryRoutesToSharedWindowAndStaysInTopActions() throws {
+        let view = try source("Sources/Pare/OrganizeView.swift")
+        let controller = try source("Sources/Pare/OrganizeWindowController.swift")
+        let delegate = try source("Sources/Pare/AppDelegate.swift")
+        XCTAssertTrue(view.contains("let onOpenSettings: () -> Void"), "Settings must not default to an inert callback")
+        XCTAssertTrue(view.contains("Button(action: onOpenSettings)"))
+        XCTAssertTrue(view.contains("Label(\"设置\", systemImage: \"gearshape\")"))
+        XCTAssertTrue(view.contains(".keyboardShortcut(\",\", modifiers: .command)"))
+        let start = try XCTUnwrap(view.range(of: "private var topActions:"))
+        let end = try XCTUnwrap(view.range(of: "private var settingsButton:"))
+        XCTAssertTrue(view[start.upperBound..<end.lowerBound].contains("settingsButton"))
+        XCTAssertTrue(controller.contains("onOpenSettings: onOpenSettings"))
+        XCTAssertTrue(delegate.contains("onOpenSettings: { [weak self] in self?.openSettings() }"))
+        XCTAssertTrue(delegate.contains("if settingsWindowController == nil"), "Repeated entry must reuse the existing settings window")
+    }
+
+    func testAIResultsPutActionBeforeExpandableAnalysis() throws {
+        let ai = try source("Sources/Pare/AIViews.swift")
+        let cards = try XCTUnwrap(ai.range(of: "ForEach($suggestions)"))
+        let analysis = try XCTUnwrap(ai.range(of: "ExpandableNote(title:"))
+        XCTAssertLessThan(cards.lowerBound, analysis.lowerBound)
+        XCTAssertTrue(ai.contains("为什么这样安排"))
+        XCTAssertTrue(ai.contains("采纳会修改哪些内容？"))
+        XCTAssertTrue(ai.contains("只修改勾选的内容；不会自动开始专注。"))
+        let components = try source("Sources/Pare/InterfaceComponents.swift")
+        XCTAssertTrue(components.contains(".lineLimit(expanded ? nil : 2)"))
+        XCTAssertTrue(components.contains("Text(text)"), "完整分析必须保留，不能以截断文本替换原文")
+    }
+
+    func testSettingsCategoriesPreserveDraftsAndHideInactiveAccessibility() throws {
+        let settings = try source("Sources/Pare/SettingsWindowController.swift")
+        XCTAssertTrue(settings.contains("case general = \"通用\", reminders = \"提醒\", ai = \"AI\", data = \"数据\""))
+        XCTAssertTrue(settings.contains("ZStack(alignment: .topLeading)"))
+        XCTAssertTrue(settings.contains(".accessibilityHidden(category != tab)"))
+        XCTAssertTrue(settings.contains(".allowsHitTesting(category == tab)"))
+        XCTAssertTrue(settings.contains("shortcutController.cancelRecording()"))
+    }
+
+    func testReadingAndEmptyStateSafeguardsRemain() throws {
+        let theme = try source("Sources/Pare/Theme.swift")
+        let planning = try source("Sources/Pare/PlanningViews.swift")
+        XCTAssertTrue(theme.contains("accessibilityReduceTransparency"))
+        XCTAssertTrue(planning.contains("store.todayTasks.isEmpty ? \"先选一件值得推进的事\""))
+        XCTAssertTrue(planning.contains("DisclosureGroup(\"日期与提醒\""))
+        XCTAssertTrue(planning.contains(".frame(width: 420, height: 620)"))
+    }
 }

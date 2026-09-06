@@ -7,6 +7,7 @@ struct AIConfigurationView: View {
     @State private var key = ""
     @State private var message: String?
     @State private var test: Task<Void, Never>?
+    @State private var showAdvanced = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -14,24 +15,39 @@ struct AIConfigurationView: View {
                 .toggleStyle(.switch).tint(Theme.amber)
             Text("本机服务可离线使用。配置云端地址后，选中的内容会发送到该服务商；每次发送前可预览。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
-            TextField("API 基础地址，例如 http://127.0.0.1:11434/v1", text: $config.baseURL)
-            TextField("模型 ID（与本机服务列出的名称一致）", text: $config.model)
-            SecureField("API Key：本机 Ollama 可留空；留空保留已存密钥", text: $key)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("服务地址").font(Theme.font(11)).foregroundColor(Theme.textDim)
+                TextField("API 基础地址，例如 http://127.0.0.1:11434/v1", text: $config.baseURL)
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                Text("模型名称").font(Theme.font(11)).foregroundColor(Theme.textDim)
+                TextField("模型 ID（与本机服务列出的名称一致）", text: $config.model)
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                Text("API 密钥").font(Theme.font(11)).foregroundColor(Theme.textDim)
+                SecureField("API Key：本机 Ollama 可留空；留空保留已存密钥", text: $key)
+            }
             Text("密钥存入 macOS 钥匙串，按 API 地址隔离，不进入任务备份。")
                 .font(Theme.font(10)).foregroundColor(Theme.textDim)
+            DisclosureGroup("高级连接选项", isExpanded: $showAdvanced) {
+            VStack(alignment: .leading, spacing: 10) {
             Toggle("请求严格 JSON Schema", isOn: $config.strictSchema)
             Text("Ollama / OpenAI 支持时开启；服务报不兼容时可关闭。关闭后仍会校验 JSON 和建议内容。")
                 .font(Theme.font(10)).foregroundColor(Theme.textDim)
             Stepper("每日最多 \(config.dailyRequestLimit) 次请求", value: $config.dailyRequestLimit, in: 1...200)
             Stepper("单次输出上限 \(config.maxOutputTokens) tokens", value: $config.maxOutputTokens, in: 256...8000, step: 256)
+            }.padding(.top, 8)
+            }
             HStack {
-                Button("保存 AI 设置") { save() }
+                Button("保存 AI 设置") { save() }.buttonStyle(AIPrimaryButtonStyle())
+                Spacer()
                 Button("删除此地址的密钥") {
                     do { try service.deleteKey(for: config); key = ""; message = "已删除此地址的密钥。" }
                     catch { message = error.localizedDescription }
-                }
+                }.buttonStyle(.plain).foregroundColor(Theme.textDim)
             }
             Button("用示例测试连接（发送一条请求）") { testConnection() }
+                .buttonStyle(SecondaryActionStyle())
                 .disabled(!config.enabled)
             if let message { Text(message).font(Theme.font(11)).foregroundColor(Theme.amber) }
             Text("今日尝试 \(service.requestCount) 次。失败或取消的请求也计数；这个次数上限不等于服务商账单上限。")
@@ -214,11 +230,22 @@ struct AIAssistantView: View {
                                 .font(Theme.font(12)).foregroundColor(Theme.textDim)
                         }
                     } else {
-                        if !summary.isEmpty {
-                            Text(summary).font(Theme.font(13)).foregroundColor(Theme.textDim)
+                        HStack {
+                            Text("本次建议").font(Theme.font(14, weight: .semibold))
+                            Spacer()
+                            InfoBadge(text: "\(selectedIDs.count) 项已选")
+                            if suggestions.count > 1 {
+                            InfoBadge(text: "\(suggestions.filter { selectedIDs.contains($0.id) && $0.kind == "task" }.reduce(0) { $0 + $1.estimatedMinutes }) 分钟", symbol: "clock", accent: Theme.amber)
+                            }
                         }
                         ForEach($suggestions) { $item in suggestionCard($item) }
-                        Text(adoptionDescription).font(Theme.font(11)).foregroundColor(Theme.textDim)
+                        if !summary.isEmpty {
+                            ExpandableNote(title: "AI 分析与依据", text: summary)
+                        }
+                        DisclosureGroup("采纳会修改哪些内容？") {
+                            Text(adoptionDescription).font(Theme.font(12)).foregroundColor(Theme.textDim)
+                                .lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+                        }.font(Theme.font(12)).foregroundColor(Theme.textDim)
                         if let reviewID, let record = store.aiSummaries.first(where: { $0.id == reviewID }) {
                             DisclosureGroup("这次建议怎么样？") {
                                 AISummaryFeedbackView(store: store, record: record).padding(.top, 8)
@@ -237,11 +264,16 @@ struct AIAssistantView: View {
                      "点击生成后，参考内容会发往已配置的服务。生成结果不会自动写入任务。")
                     .font(Theme.font(10)).foregroundColor(Theme.textDim)
             }
+            if !suggestions.isEmpty {
+                Label("只修改勾选的内容；不会自动开始专注。", systemImage: "checkmark.shield")
+                    .font(Theme.font(11)).foregroundColor(Theme.textDim)
+            }
+            Divider().overlay(Theme.hairline)
             HStack(spacing: 12) {
                 Button(work == nil ? "关闭" : "取消请求", action: closeOrCancel)
                     .foregroundColor(Theme.textDim)
                 Spacer()
-                if !suggestions.isEmpty { Button("重新调整", action: discard).foregroundColor(Theme.textDim) }
+                if !suggestions.isEmpty { Button("重新调整", action: discard).buttonStyle(SecondaryActionStyle()) }
                 Button(action: primaryAction) {
                     HStack(spacing: 7) {
                         if work != nil { ProgressView().controlSize(.small) }
@@ -254,7 +286,7 @@ struct AIAssistantView: View {
         }
         .buttonStyle(.plain).toggleStyle(AISelectionToggleStyle()).tint(Theme.amber)
         .font(Theme.font(12)).foregroundColor(Theme.text)
-        .padding(22).frame(width: 580, height: showScope || !suggestions.isEmpty || rejectedDraft != nil ? 600 : 450)
+        .padding(22).frame(width: 600, height: showScope || !suggestions.isEmpty || rejectedDraft != nil ? 640 : 460)
         .background(Theme.bg)
         .onDisappear { work?.cancel() }
         .onChange(of: service.configuration) { _ in
@@ -509,19 +541,39 @@ struct AIAssistantView: View {
 
     private func suggestionCard(_ binding: Binding<AISuggestion>) -> some View {
         let item = binding.wrappedValue
-        return VStack(alignment: .leading, spacing: 9) {
-            Toggle(item.isKeyTask ? "今日重点：\(item.title)" : item.title,
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 10) {
+            Toggle(item.title,
                    isOn: Binding(get: { selectedIDs.contains(item.id) }, set: {
                        if $0 { selectedIDs.insert(item.id) } else { selectedIDs.remove(item.id) }
-                   })).font(Theme.font(14, weight: .semibold))
+                   })).font(Theme.font(15, weight: .semibold))
+                .accessibilityLabel(item.isKeyTask ? "今日重点：\(item.title)" : item.title)
+                if item.isKeyTask { InfoBadge(text: "重点", symbol: "star.fill", accent: Theme.amber) }
+            }
             if item.kind == "task" {
-                Text("\(item.estimatedMinutes) 分钟").font(Theme.font(11)).foregroundColor(Theme.amber)
+                HStack {
+                    Text("下一步").font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
+                    Spacer()
+                    InfoBadge(text: "\(item.estimatedMinutes) 分钟", symbol: "clock", accent: Theme.amber)
+                }
                 Text(item.nextAction).font(Theme.font(15, weight: .medium))
-                Text("完成标准 · \(item.definitionOfDone)").font(Theme.font(12)).foregroundColor(Theme.textDim)
+                    .lineSpacing(5).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("完成标准", systemImage: "checkmark.circle").font(Theme.font(11, weight: .medium))
+                    Text(item.definitionOfDone).font(Theme.font(13)).lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                }.foregroundColor(Theme.textDim).padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 9).fill(Theme.bg.opacity(0.45)))
             } else {
                 Text("保留为想法").font(Theme.font(11)).foregroundColor(Theme.amber)
             }
-            Text(item.reason).font(Theme.font(11)).foregroundColor(Theme.textDim)
+            if !item.reason.isEmpty {
+                DisclosureGroup("为什么这样安排") {
+                    Text(item.reason).font(Theme.font(12)).foregroundColor(Theme.textDim)
+                        .lineSpacing(4).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                }.font(Theme.font(11)).foregroundColor(Theme.textDim)
+            }
             DisclosureGroup("调整这条建议") {
                 VStack(alignment: .leading, spacing: 8) {
                     if workflow == .organize {
@@ -541,7 +593,8 @@ struct AIAssistantView: View {
                     }
                 }.textFieldStyle(.roundedBorder).padding(.top, 8)
             }.font(Theme.font(11)).foregroundColor(Theme.textDim)
-        }.padding(14).panel(corner: 12, accent: item.isKeyTask ? Theme.amber : nil)
+        }.padding(18).panel(corner: 14, accent: item.isKeyTask ? Theme.amber : nil,
+                            fill: selectedIDs.contains(item.id) ? 0.70 : 0.30)
     }
 
     private var adoptionDescription: String {

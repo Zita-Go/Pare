@@ -10,13 +10,12 @@ struct GoalPlanningView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("长期目标与规划助手").font(Theme.font(20, weight: .semibold))
-                Text("把目标关联到具体任务。Pare 管理进度、偏好和反馈，AI 在你发起分析时使用获准的上下文。")
-                    .font(Theme.font(12)).foregroundColor(Theme.textDim)
+                PageHeading(title: "目标与偏好", subtitle: "把长期目标落到下一步。AI 仅在你发起时使用获准的内容。")
                 HStack {
                     TextField("写下一个长期目标", text: $title).textFieldStyle(.roundedBorder)
                         .onSubmit(addGoal)
                     Button("添加目标", action: addGoal)
+                        .buttonStyle(AIPrimaryButtonStyle())
                         .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 150)
                 }
                 ForEach(store.goals) { goal in goalCard(goal) }
@@ -25,7 +24,9 @@ struct GoalPlanningView: View {
                         .font(Theme.font(12)).foregroundColor(Theme.textDim)
                 }
                 DisclosureGroup("我的规划偏好") { AgentPreferencesView(store: store).padding(.top, 10) }
+                    .padding(14).panel()
                 DisclosureGroup("长期背景与 AI 反馈") { AIHistorySettingsView(store: store).padding(.top, 10) }
+                    .padding(14).panel()
                 DisclosureGroup("最近分析状态（最多 20 次）") {
                     ForEach(store.planningRuns) { run in
                         VStack(alignment: .leading, spacing: 4) {
@@ -40,10 +41,11 @@ struct GoalPlanningView: View {
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 7)
                     }
                     if store.planningRuns.isEmpty { Text("还没有分析记录。").font(Theme.font(12)) }
-                }
+                }.padding(14).panel()
             }.padding(4)
         }
         .foregroundColor(Theme.text)
+        .font(Theme.font(13)).tint(Theme.amber).buttonStyle(SecondaryActionStyle())
         .sheet(item: $editing) { goal in GoalEditorView(store: store, goal: goal) }
         .sheet(item: $planning) { goal in AIAssistantView(store: store, workflow: .plan, goal: goal) }
     }
@@ -59,9 +61,13 @@ struct GoalPlanningView: View {
             HStack {
                 Text(goal.title).font(Theme.font(16, weight: .semibold))
                 Spacer()
-                Text(goal.status.title).font(Theme.font(11)).foregroundColor(Theme.amber)
+                InfoBadge(text: goal.status.title, accent: Theme.amber)
             }
-            if !goal.motivation.isEmpty { Text(goal.motivation).font(Theme.font(12)).foregroundColor(Theme.textDim) }
+            if !goal.motivation.isEmpty { Text(goal.motivation).font(Theme.font(13)).foregroundColor(Theme.textDim).lineSpacing(4) }
+            if !linked.isEmpty {
+                ProgressBar(fraction: Double(done) / Double(linked.count))
+                    .accessibilityLabel("关联任务进度")
+            }
             Text(linked.isEmpty ? "尚未关联任务" : "关联任务已完成 \(done) / \(linked.count)；目标是否达成由你确认")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
             if let date = goal.targetDate { Text("目标日期：\(date.formatted(date: .abbreviated, time: .omitted))").font(Theme.font(11)) }
@@ -71,6 +77,7 @@ struct GoalPlanningView: View {
             HStack {
                 Button("编辑 / 关联任务") { editing = goal }
                 Button("生成目标推进建议") { planning = goal }
+                    .buttonStyle(AIPrimaryButtonStyle())
                     .disabled(goal.status != .active || linked.allSatisfy(\.completed))
             }
         }.padding(14).panel(corner: 12, accent: Theme.amber)

@@ -30,9 +30,9 @@ struct CaptureView: View {
             }
             footer
         }
-        .padding(18)
+        .padding(20)
         .frame(width: 372)
-        .background(FrostBackground(tint: 0.55))
+        .background(FrostBackground(tint: 0.90))
         // 每次唤出面板都聚焦输入框：focusTick 首次订阅即发一次、之后每次 show 递增。
         .onReceive(chrome.$focusTick) { _ in focused = true }
         .onReceive(chrome.$suggestedDraft) { value in
@@ -47,11 +47,13 @@ struct CaptureView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(PareFormat.today())
-                .font(Theme.font(12))
-                .foregroundColor(Theme.textDim)
+            HStack {
+                Text("随手记").font(Theme.font(16, weight: .semibold)).foregroundColor(Theme.text)
+                Spacer()
+                Text(PareFormat.today()).font(Theme.font(11)).foregroundColor(Theme.textDim)
+            }
             Text(progressString)
-                .font(Theme.font(16, weight: .medium))
+                .font(Theme.font(13, weight: .medium))
                 .foregroundColor(Theme.amber)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -85,7 +87,7 @@ struct CaptureView: View {
                         .scaleEffect(justCaptured ? 1.0 : 1.03)
                         .opacity(justCaptured ? 0.9 : 0)
                 )
-                .shadow(color: Theme.amber.opacity(focused ? 0.18 : 0), radius: 8)
+                .shadow(color: Theme.amber.opacity(focused ? 0.06 : 0), radius: 4)
                 .animation(.easeOut(duration: 0.15), value: focused)
                 .accessibilityLabel("随手记输入框")
                 .accessibilityHint("输入一句话，回车记下")
@@ -197,7 +199,8 @@ struct CaptureView: View {
                 .accessibilityLabel("待整理 \(store.inboxCount) 条")
                 .accessibilityHint("打开整理窗口")
             }
-        }
+        }.padding(.top, 8)
+            .overlay(alignment: .top) { Rectangle().fill(Theme.hairline).frame(height: 1) }
     }
 
     // MARK: Logic

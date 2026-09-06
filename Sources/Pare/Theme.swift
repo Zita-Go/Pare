@@ -8,21 +8,21 @@ import PareCore
 /// quadrants read at a glance without shouting.
 enum Theme {
     // MARK: Base
-    static let bg        = Color(hex: 0x1A1F1C)   // 近黑底
+    static let bg        = Color(hex: 0x171D1A)   // 近黑底
     static let text      = Color(hex: 0xF0EDE6)   // 暖白字
     static let amber     = Color(hex: 0xE8C87A)   // 琥珀金（完成 / 今日焦点）
     static let amberSoft = Color(hex: 0xE8C87A).opacity(0.14)
-    static let panel     = Color(hex: 0x2D3B35)   // 面板底
-    static let panelHi   = Color(hex: 0x37473F)   // hover / 抬起态
-    static let border    = Color(hex: 0x3D5046)   // 边界
+    static let panel     = Color(hex: 0x2B3630)   // 面板底
+    static let panelHi   = Color(hex: 0x35433B)   // hover / 抬起态
+    static let border    = Color(hex: 0x425149)   // 边界
     static let hairline  = Color(hex: 0xF0EDE6).opacity(0.07)
     // Small helper text appears on translucent green panels, where the old
     // 50%/28% values fell below comfortable contrast. Keep the hierarchy with
     // two steps, but both now remain readable at 11–13 pt.
-    static let textDim   = Color(hex: 0xF0EDE6).opacity(0.68)
-    static let textFaint = Color(hex: 0xF0EDE6).opacity(0.56)
+    static let textDim   = Color(hex: 0xB6BDB6)
+    static let textFaint = Color(hex: 0x929F95)
 
-    static let nsBg = NSColor(hex: 0x1A1F1C)
+    static let nsBg = NSColor(hex: 0x171D1A)
 
     // MARK: Quadrant accents — 低饱和，压在深色调里，克制不喧宾夺主
     static let qUrgent   = Color(hex: 0xE2836E)   // 重要·紧急  珊瑚红 · 马上做
@@ -89,15 +89,21 @@ struct VisualEffectView: NSViewRepresentable {
 /// window / popover whose host window is transparent (see the window controllers
 /// and `PopoverController`). A faint top-lit gradient adds a little depth.
 struct FrostBackground: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var tint: Double = 0.6
     var material: NSVisualEffectView.Material = .hudWindow
 
     var body: some View {
-        VisualEffectView(material: material, blending: .behindWindow)
-            .overlay(Theme.bg.opacity(tint))
+        Group {
+            if reduceTransparency { Theme.bg }
+            else {
+                VisualEffectView(material: material, blending: .behindWindow)
+                    .overlay(Theme.bg.opacity(max(0.88, tint)))
+            }
+        }
             .overlay(
                 LinearGradient(
-                    colors: [Color.white.opacity(0.05), Color.clear, Color.black.opacity(0.10)],
+                    colors: [Color.white.opacity(0.025), Color.clear, Color.black.opacity(0.04)],
                     startPoint: .top, endPoint: .bottom)
             )
             .ignoresSafeArea()
@@ -128,8 +134,8 @@ struct Panel: ViewModifier {
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .stroke(strokeColor, lineWidth: highlighted ? 1.6 : 1)
             )
-            .shadow(color: Color.black.opacity(highlighted ? 0.24 : 0.10),
-                    radius: highlighted ? 12 : 6, x: 0, y: highlighted ? 5 : 2)
+            .shadow(color: Color.black.opacity(highlighted ? 0.20 : 0.035),
+                    radius: highlighted ? 10 : 3, x: 0, y: highlighted ? 4 : 1)
     }
 
     private var strokeColor: Color {

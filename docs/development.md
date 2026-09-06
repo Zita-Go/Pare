@@ -52,6 +52,8 @@ xcrun swiftc -target arm64-apple-macosx13.0 Scripts/capture-window.swift -o /tmp
 
 需要验证原生快捷键控件时，可显式运行 `bash Scripts/screenshot-demo.sh --verify-shortcuts`，启动独立标识的 **Pare Shortcut Check**，再从「演示 → 验证快捷键设置」进入。这个模式会注册真实全局快捷键，但仍使用验收应用自己的偏好；验证默认组合前先退出正式 Pare，避免两者争用 `⌥Space`。退出验收会释放快捷键，再启动正式 Pare 即可。普通截图模式不注册快捷键。
 
+验收系统通知与真实浏览器事件时，使用 `bash Scripts/screenshot-demo.sh --verify-shortcuts --verify-integrations`，再打开同一设置入口。这个显式模式会连接真实通知调度与事件监听；示例数据中的注意力检测仍默认关闭，需在测试 App 中手动开启，并单独授予所需系统权限。它不会读取正式 Pare 的任务或 AI 配置。普通截图和仅快捷键模式不启动这些集成。通知“已提交系统”不等于横幅已实际展示，必须另行检查通知中心或横幅。
+
 ## 代码位置
 
 | 位置 | 内容 |
@@ -77,3 +79,5 @@ xcrun swiftc -target arm64-apple-macosx13.0 Scripts/capture-window.swift -o /tmp
 用户可直接在 App 设置顶部修改随手记快捷键。`Sources/Pare/ShortcutRecorder.swift` 负责窗口内录入，`Sources/PareCore/CaptureShortcut.swift` 管理偏好与注册恢复，`Sources/Pare/HotKey.swift` 负责 Carbon 注册及系统保留组合检查。默认 `⌥Space`，无需为修改组合重新编译。
 
 AI 联调仅使用虚构内容。真实服务地址、模型配置和 API Key 不应放入源码、截图、测试 fixture 或 Git；分别通过 App 本机偏好和钥匙串保存。单元测试使用保留的示例域名与占位模型，不发送付费网络请求。
+
+界面紧凑布局可使用 `bash Scripts/screenshot-demo.sh --verify-shortcuts --compact` 验收，主窗口以 880pt 宽度打开。演示主窗口的设置与本周回顾入口均连接独立数据的真实窗口。`InterfaceComponents.swift` 提供通用次级按钮、分类标签、状态标签和可展开分析；设置的非活动分类保持挂载以保留草稿，同时关闭点击及辅助功能访问。
