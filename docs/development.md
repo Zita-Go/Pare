@@ -44,11 +44,14 @@ bash Scripts/screenshot-demo.sh
 # Apple Silicon；只需编译一次
 xcrun swiftc -target arm64-apple-macosx13.0 Scripts/capture-window.swift -o /tmp/pare-capture-window
 
+# 列出当前演示窗口的编号和尺寸
+/tmp/pare-capture-window --list
+
 # 将 WINDOW_ID 替换为当前演示窗口编号
 /tmp/pare-capture-window WINDOW_ID docs/images/matrix.png 42
 ```
 
-最后的 `42` 表示拍摄时略过标题栏顶部 42 pt；浮窗和卡点面板无需这个参数。工具使用原生窗口捕获 API，生成 2× PNG，不重绘界面或替换文字。当前四张首页图片合计约 1.6 MB，README 为每张图片提供用途说明和替代文字。
+最后的 `42` 表示拍摄时略过标题栏顶部 42 pt；浮窗和卡点面板无需这个参数。工具使用原生窗口捕获 API 和 `.bestResolution` 生成 Retina 2× PNG，不重绘界面、插值放大或替换文字。README 为每张图片提供用途说明和替代文字；提交前必须检查像素尺寸，1060pt 的整理窗截图应为 2120px 宽。
 
 需要验证原生快捷键控件时，可显式运行 `bash Scripts/screenshot-demo.sh --verify-shortcuts`，启动独立标识的 **Pare Shortcut Check**，再从「演示 → 验证快捷键设置」进入。这个模式会注册真实全局快捷键，但仍使用验收应用自己的偏好；验证默认组合前先退出正式 Pare，避免两者争用 `⌥Space`。退出验收会释放快捷键，再启动正式 Pare 即可。普通截图模式不注册快捷键。
 

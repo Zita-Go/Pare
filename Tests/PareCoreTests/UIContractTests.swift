@@ -1,4 +1,5 @@
 import XCTest
+import ImageIO
 
 /// Pure Swift Package projects cannot host an XCUITest application bundle.
 /// These smoke contracts keep the critical entry points, modes and accessible
@@ -14,6 +15,14 @@ final class UIContractTests: XCTestCase {
 
     private func source(_ path: String) throws -> String {
         try String(contentsOf: repositoryRoot.appendingPathComponent(path), encoding: .utf8)
+    }
+
+    private func imageSize(_ path: String) throws -> (Int, Int) {
+        let url = repositoryRoot.appendingPathComponent(path)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
+        let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        return (try XCTUnwrap(properties[kCGImagePropertyPixelWidth] as? Int),
+                try XCTUnwrap(properties[kCGImagePropertyPixelHeight] as? Int))
     }
 
     func testPrimaryWorkspaceAndTaskActionsRemainDiscoverable() throws {
@@ -124,5 +133,21 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(planning.contains("store.todayTasks.isEmpty ? \"先选一件值得推进的事\""))
         XCTAssertTrue(planning.contains("DisclosureGroup(\"日期与提醒\""))
         XCTAssertTrue(planning.contains(".frame(width: 420, height: 620)"))
+    }
+
+    func testReadmeScreenshotsUseNativeRetinaResolution() throws {
+        let expected: [String: (Int, Int)] = [
+            "docs/images/matrix.png": (2120, 1236),
+            "docs/images/today.png": (2120, 1236),
+            "docs/images/capture.png": (848, 890),
+            "docs/images/momentum.png": (860, 852),
+            "docs/images/settings.png": (1160, 1260),
+            "docs/images/ai-plan.png": (1200, 1280),
+        ]
+        for (path, size) in expected {
+            let actual = try imageSize(path)
+            XCTAssertEqual(actual.0, size.0, "\(path) must remain a native 2× capture")
+            XCTAssertEqual(actual.1, size.1, "\(path) must remain a native 2× capture")
+        }
     }
 }
