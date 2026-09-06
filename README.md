@@ -85,9 +85,9 @@ AI 辅助默认关闭，可连接 OpenAI 兼容的云端 API 或本机服务。�
 
 ## 安装
 
-可从 [GitHub Releases 下载 2.5.0 预发布版](https://github.com/Zita-Go/Pare/releases/tag/v2.5.0)。本次安装包面向 **Apple Silicon（M 系列）Mac**，要求 macOS 13 及以上；解压后将 `Pare.app` 拖入「应用程序」。更新前建议在设置的「数据」页导出备份，退出旧版后再替换。
+可从 [GitHub Releases 下载 2.5.1 预发布版](https://github.com/Zita-Go/Pare/releases/tag/v2.5.1)。本次安装包面向 **Apple Silicon（M 系列）Mac**，要求 macOS 13 及以上；解压后将 `Pare.app` 拖入「应用程序」。更新前建议在设置的「数据」页导出备份，退出旧版后再替换。
 
-此版本尚未经过 Developer ID 签名和 Apple 公证，macOS 可能拦截打开。请只从本仓库下载并核对随包提供的 SHA-256；也可按下方步骤自行构建。浏览器增强提醒、通知动作和实际休眠/唤醒仍有待完成的端到端验收，详见 [版本说明](docs/releases/v2.5.0.md)。
+此版本尚未经过 Developer ID 签名和 Apple 公证，macOS 可能拦截打开。请只从本仓库下载并核对随包提供的 SHA-256；也可按下方步骤自行构建。浏览器增强提醒、通知动作和实际休眠/唤醒仍有待完成的端到端验收，详见 [版本说明](docs/releases/v2.5.1.md)。
 
 源码构建需要 Swift 6 工具链，当前构建流程在 Apple Silicon Mac 上验证：
 
