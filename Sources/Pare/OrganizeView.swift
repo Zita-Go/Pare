@@ -747,6 +747,9 @@ private struct QuadrantTaskRow: View {
                 if !task.completed, (hovering || store.activeTimer?.taskID == task.id) {
                     FocusTimerButton(store: store, task: task)
                 }
+                if !task.completed, (hovering || store.parallelRuns.contains(where: { $0.taskID == task.id })) {
+                    ParallelRunButton(store: store, task: task)
+                }
                 if task.isToday || hovering {
                     Button { store.toggleToday(task.id) } label: {
                         Image(systemName: task.isToday ? "sun.max.fill" : "sun.max")

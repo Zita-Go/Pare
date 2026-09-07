@@ -104,6 +104,25 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(delegate.contains("if settingsWindowController == nil"), "Repeated entry must reuse the existing settings window")
     }
 
+    func testParallelProgressStaysSeparateAndDiscoverable() throws {
+        let planning = try source("Sources/Pare/PlanningViews.swift")
+        let capture = try source("Sources/Pare/CaptureView.swift")
+        let notifications = try source("Sources/Pare/NotificationManager.swift")
+        XCTAssertTrue(planning.contains("Label(\"正在进行\", systemImage: \"arrow.triangle.2.circlepath\")"))
+        XCTAssertTrue(planning.contains("不计入个人专注时长"))
+        XCTAssertTrue(planning.contains("ParallelRunButton(store: store, task: task"))
+        XCTAssertTrue(planning.contains("store.pauseParallelRun"))
+        XCTAssertTrue(planning.contains("store.completeParallelRun"))
+        XCTAssertTrue(planning.contains(".id(\"parallel-\\(task.id.uuidString)\")"))
+        XCTAssertTrue(planning.contains(".id(\"completed-\\(task.id.uuidString)\")"))
+        XCTAssertTrue(capture.contains("store.parallelRuns.contains"))
+        XCTAssertTrue(notifications.contains("PARE_PARALLEL_CHECK"))
+        XCTAssertTrue(notifications.contains("15 分钟后再检查"))
+        let status = try source("Sources/Pare/StatusItemController.swift")
+        XCTAssertTrue(status.contains("↻\\(running)"))
+        XCTAssertTrue(status.contains("件任务正在同时进行"))
+    }
+
     func testAIResultsPutActionBeforeExpandableAnalysis() throws {
         let ai = try source("Sources/Pare/AIViews.swift")
         let cards = try XCTUnwrap(ai.range(of: "ForEach($suggestions)"))
@@ -130,7 +149,8 @@ final class UIContractTests: XCTestCase {
         let theme = try source("Sources/Pare/Theme.swift")
         let planning = try source("Sources/Pare/PlanningViews.swift")
         XCTAssertTrue(theme.contains("accessibilityReduceTransparency"))
-        XCTAssertTrue(planning.contains("store.todayTasks.isEmpty ? \"先选一件值得推进的事\""))
+        XCTAssertTrue(planning.contains("return \"先选一件值得推进的事\""))
+        XCTAssertTrue(planning.contains("有 \\(running.count) 件事正在其它地方推进"))
         XCTAssertTrue(planning.contains("DisclosureGroup(\"日期与提醒\""))
         XCTAssertTrue(planning.contains(".frame(width: 420, height: 620)"))
     }

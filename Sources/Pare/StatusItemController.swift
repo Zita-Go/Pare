@@ -65,19 +65,25 @@ final class StatusItemController {
     func refreshBadge() {
         guard let button = statusItem.button else { return }
         let attention = needsAttention
+        let running = store.parallelRuns.count
         button.image = Self.glyph(attention: attention)
         let remaining = store.todayRemaining
         if let task = store.activeTimerTask {
             let minutes = max(1, store.timerElapsedMinutes())
             button.title = " ⏱ \(DurationLabel.short(minutes))"
-            button.setAccessibilityLabel("正在专注：\(task.text)，已 \(DurationLabel.short(minutes))")
+            let parallelText = running > 0 ? "，另有 \(running) 件任务正在进行" : ""
+            button.setAccessibilityLabel("正在专注：\(task.text)，已 \(DurationLabel.short(minutes))\(parallelText)")
             button.imagePosition = .imageLeading
             return
         }
-        button.title = remaining > 0 ? " \(remaining)" : ""
+        var status: [String] = []
+        if remaining > 0 { status.append("\(remaining)") }
+        if running > 0 { status.append("↻\(running)") }
+        button.title = status.isEmpty ? "" : " " + status.joined(separator: " · ")
         button.imagePosition = (button.image == nil) ? .noImage
-                             : (remaining > 0 ? .imageLeading : .imageOnly)
-        button.setAccessibilityLabel(Self.accessibilityLabel(remaining: remaining, attention: attention))
+                             : (!status.isEmpty ? .imageLeading : .imageOnly)
+        button.setAccessibilityLabel(Self.accessibilityLabel(remaining: remaining, running: running,
+                                                              attention: attention))
     }
 
     /// Whether the menu-bar icon should show its restrained status dot.
@@ -123,9 +129,10 @@ final class StatusItemController {
     }
 
     /// RFC-0001: 让 VoiceOver 读出菜单栏图标的状态（今日剩余 + 是否有待看信号）。
-    private static func accessibilityLabel(remaining: Int, attention: Bool) -> String {
+    private static func accessibilityLabel(remaining: Int, running: Int, attention: Bool) -> String {
         var parts = ["Pare 随手记"]
         if remaining > 0 { parts.append("今天还有 \(remaining) 件未完成") }
+        if running > 0 { parts.append("\(running) 件任务正在同时进行") }
         if attention { parts.append("有待整理或停滞的事，抽空看一下") }
         return parts.joined(separator: "，")
     }

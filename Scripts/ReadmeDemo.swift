@@ -29,6 +29,7 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
     private let verifyShortcuts = CommandLine.arguments.contains("--verify-shortcuts")
         || Bundle.main.bundleIdentifier == "com.zitago.Pare.ShortcutCheck"
     private let verifyIntegrations = CommandLine.arguments.contains("--verify-integrations")
+    private let parallelDemo = CommandLine.arguments.contains("--parallel-demo")
     private var aiDemoEndpoint: String? {
         CommandLine.arguments.first { $0.hasPrefix("--ai-endpoint=") }
             .map { String($0.dropFirst("--ai-endpoint=".count)) }
@@ -84,10 +85,10 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         store.setMomentumDetails(report.id, nextAction: "打开文档，先写三个小标题",
                                  definitionOfDone: "列出结构和要点，暂时不用润色")
         store.addTask("确认明天的预约", to: .importantUrgent, estimatedMinutes: 5)
-        store.addTask("整理周末旅行计划", to: .importantNotUrgent,
-                      addToToday: true, estimatedMinutes: 30)
+        let trip = store.addTask("整理周末旅行计划", to: .importantNotUrgent,
+                                 addToToday: true, estimatedMinutes: 30)!
         store.addTask("读完一章书并记下想法", to: .importantNotUrgent, estimatedMinutes: 20)
-        store.addTask("回复活动时间确认", to: .urgentNotImportant, estimatedMinutes: 5)
+        let reply = store.addTask("回复活动时间确认", to: .urgentNotImportant, estimatedMinutes: 5)!
         store.addTask("整理收藏夹", to: .neither, estimatedMinutes: 15)
         let done = store.addTask("预约年度体检", to: .importantNotUrgent,
                                  addToToday: true, estimatedMinutes: 10)!
@@ -112,6 +113,12 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         store.capture("找个时间整理书桌")
         store.capture("给旅行相册加一页手绘地图")
         _ = store.addThought("每周留一个不排计划的下午", notes: "散步、阅读，或者什么都不做。")
+        if parallelDemo {
+            let now = Date()
+            store.startParallelRun(trip.id, now: now.addingTimeInterval(-38 * 60),
+                                   nextCheckAt: now.addingTimeInterval(7 * 60))
+            store.startParallelRun(reply.id, now: now.addingTimeInterval(-12 * 60))
+        }
     }
 
     /// Screenshot-only configuration. It never copies the user's provider or

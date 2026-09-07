@@ -182,6 +182,46 @@ public struct ActiveTimer: Codable, Equatable {
     }
 }
 
+/// A task that is progressing elsewhere (another machine, an external AI, or
+/// another person). Several can coexist. This is wall-clock task state and is
+/// deliberately separate from `ActiveTimer`, which measures the user's focus.
+public struct ParallelTaskRun: Identifiable, Codable, Hashable {
+    public var id: UUID { taskID }
+    public var taskID: UUID
+    public var startedAt: Date
+    public var nextCheckAt: Date?
+
+    public init(taskID: UUID, startedAt: Date = Date(), nextCheckAt: Date? = nil) {
+        self.taskID = taskID
+        self.startedAt = startedAt
+        self.nextCheckAt = nextCheckAt
+    }
+}
+
+public enum ParallelRunEndReason: String, Codable, Hashable {
+    case paused
+    case completed
+}
+
+/// Historical wall-clock interval for an externally progressing task. It does
+/// not contribute to `actualMinutes` or focus calibration.
+public struct ParallelRunSession: Identifiable, Codable, Hashable {
+    public var id: UUID
+    public var startedAt: Date
+    public var endedAt: Date
+    public var elapsedMinutes: Int
+    public var reason: ParallelRunEndReason
+
+    public init(id: UUID = UUID(), startedAt: Date, endedAt: Date,
+                elapsedMinutes: Int, reason: ParallelRunEndReason) {
+        self.id = id
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.elapsedMinutes = max(1, elapsedMinutes)
+        self.reason = reason
+    }
+}
+
 /// A task that lives in a quadrant, optionally flagged as part of "today".
 public struct TaskItem: Identifiable, Codable, Hashable {
     public var id: UUID
@@ -222,6 +262,7 @@ public struct TaskItem: Identifiable, Codable, Hashable {
     public var implementationPlan: ImplementationPlan?
     public var lastImplementationTriggeredAt: Date?
     public var progressSessions: [ProgressSession]?
+    public var parallelRunSessions: [ParallelRunSession]?
     public var blockerEntries: [BlockerEntry]?
 
     public init(id: UUID = UUID(),
@@ -245,6 +286,7 @@ public struct TaskItem: Identifiable, Codable, Hashable {
                 implementationPlan: ImplementationPlan? = nil,
                 lastImplementationTriggeredAt: Date? = nil,
                 progressSessions: [ProgressSession]? = nil,
+                parallelRunSessions: [ParallelRunSession]? = nil,
                 blockerEntries: [BlockerEntry]? = nil) {
         self.id = id
         self.text = text
@@ -267,6 +309,7 @@ public struct TaskItem: Identifiable, Codable, Hashable {
         self.implementationPlan = implementationPlan
         self.lastImplementationTriggeredAt = lastImplementationTriggeredAt
         self.progressSessions = progressSessions
+        self.parallelRunSessions = parallelRunSessions
         self.blockerEntries = blockerEntries
     }
 }

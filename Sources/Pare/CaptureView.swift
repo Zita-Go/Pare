@@ -264,7 +264,11 @@ private struct TodayRow: View {
                     .foregroundColor(Theme.amber.opacity(0.85))
                 }
                 if !task.completed {
-                    FocusTimerButton(store: store, task: task)
+                    if store.parallelRuns.contains(where: { $0.taskID == task.id }) {
+                        ParallelRunButton(store: store, task: task, showsLabel: true)
+                    } else {
+                        FocusTimerButton(store: store, task: task)
+                    }
                 }
                 TaskDetailsButton(store: store, task: task)
             }

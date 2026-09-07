@@ -13,6 +13,7 @@ public struct PlannedReminder: Equatable {
         case task(UUID)    // a single task's one-shot reminder
         case implementation(UUID)
         case timerCheckpoint(UUID)
+        case parallelCheck(UUID)
     }
 
     public let kind: Kind
@@ -35,7 +36,7 @@ public struct PlannedReminder: Equatable {
     /// The task this reminder belongs to, if any.
     public var taskID: UUID? {
         switch kind {
-        case .task(let id), .implementation(let id), .timerCheckpoint(let id): return id
+        case .task(let id), .implementation(let id), .timerCheckpoint(let id), .parallelCheck(let id): return id
         default: return nil
         }
     }
@@ -168,6 +169,19 @@ extension Store {
                     title: "该做这件事了",
                     body: task.text))
             }
+        }
+
+        // Optional check-ins for tasks progressing elsewhere. These are wall-
+        // clock reminders and do not affect the user's focus timer.
+        for run in parallelRuns {
+            guard let at = run.nextCheckAt, at > now,
+                  let task = tasks.first(where: { $0.id == run.taskID && !$0.completed }) else { continue }
+            result.append(PlannedReminder(
+                kind: .parallelCheck(task.id),
+                identifier: "parallel.check.\(task.id.uuidString)",
+                fireDate: at,
+                title: "检查一下进行中的任务",
+                body: task.text))
         }
 
         // “If–then” plans with a clock cue reuse the notification planner;

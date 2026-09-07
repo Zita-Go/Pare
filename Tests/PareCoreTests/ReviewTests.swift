@@ -519,6 +519,8 @@ final class ReviewTests: XCTestCase {
         XCTAssertEqual(store.archive.count, 1)
         // New task fields default to nil.
         XCTAssertNil(store.tasks[0].actualMinutes)
+        XCTAssertNil(store.tasks[0].parallelRunSessions)
+        XCTAssertTrue(store.parallelRuns.isEmpty)
         XCTAssertNil(store.tasks[0].lastProgressAt)
         // Old settings preserved…
         XCTAssertEqual(store.settings.planHour, 7)

@@ -10,14 +10,23 @@ import PareCore
 struct TaskDetailsButton: View {
     @ObservedObject var store: Store
     let task: TaskItem
+    var showsLabel = false
     @State private var presented = false
 
     var body: some View {
         Button { presented = true } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Theme.textFaint)
-                .frame(width: 24, height: 22)
+            if showsLabel {
+                Label("检查", systemImage: "doc.text.magnifyingglass")
+                    .font(Theme.font(11, weight: .medium)).foregroundColor(Theme.text)
+                    .padding(.horizontal, 9).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel.opacity(0.55)))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border.opacity(0.55)))
+            } else {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Theme.textFaint)
+                    .frame(width: 24, height: 22)
+            }
         }
         .buttonStyle(.plain)
         .help("编辑任务详情")
@@ -86,7 +95,8 @@ private struct TaskDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                PageHeading(title: "任务详情", subtitle: "写清下一步，再决定什么时候做。")
+                PageHeading(title: "任务详情", subtitle: "写清下一步，再决定由你专注或让它并行进行。")
+                ParallelRunButton(store: store, task: task, showsLabel: true)
                 FocusTimerButton(store: store, task: task, showsLabel: true)
             }.padding(18)
             Divider().overlay(Theme.hairline)
@@ -127,6 +137,11 @@ private struct TaskDetailView: View {
                 HStack {
                     Text("预估").font(Theme.font(12)).foregroundColor(Theme.textDim)
                     Spacer()
+                    let parallelMinutes = store.parallelRecordedMinutes(task.id)
+                    if parallelMinutes > 0 {
+                        InfoBadge(text: "进行累计 \(DurationLabel.short(parallelMinutes))",
+                                  symbol: "arrow.triangle.2.circlepath", accent: Theme.qDelegate)
+                    }
                     DurationPill(minutes: estimate) { estimate = $0 }
                     if task.actualMinutes != nil {
                         ActualTimePill(minutes: task.actualMinutes ?? 0) { store.setActual(task.id, minutes: $0) }
@@ -292,6 +307,7 @@ struct FocusTimerButton: View {
     @State private var sessionMinutes = 0
 
     private var isActive: Bool { store.activeTimer?.taskID == task.id }
+    private var isParallel: Bool { store.parallelRuns.contains { $0.taskID == task.id } }
 
     var body: some View {
         HStack(spacing: 3) {
@@ -350,10 +366,10 @@ struct FocusTimerButton: View {
             .overlay(Capsule().stroke(Theme.amber.opacity(0.45), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .disabled(task.completed)
-        .help(isActive
+        .disabled(task.completed || isParallel)
+        .help(isParallel ? "这件事正在并行进行；先暂停后再开始个人专注" : (isActive
               ? (showsLabel ? "停止并记录实际用时" : "停止并记录实际用时；右键可放弃")
-              : "开始专注计时")
+              : "开始专注计时"))
         .accessibilityLabel(isActive ? "停止专注计时" : "开始专注计时")
     }
 
@@ -367,6 +383,75 @@ struct FocusTimerButton: View {
     }
 }
 
+// MARK: - Parallel task progress
+
+/// Marks a task as progressing elsewhere. Multiple runs may coexist; their
+/// wall-clock duration is deliberately separate from the user's focus time.
+struct ParallelRunButton: View {
+    @ObservedObject var store: Store
+    let task: TaskItem
+    var showsLabel = false
+
+    private var run: ParallelTaskRun? { store.parallelRuns.first { $0.taskID == task.id } }
+    private var focusActive: Bool { store.activeTimer?.taskID == task.id }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            Menu {
+                if run == nil {
+                    Button("直接标记为进行中") { start(after: nil) }
+                    Divider()
+                    Text("提醒我检查")
+                    ForEach([15, 30, 60, 120], id: \.self) { minutes in
+                        Button("\(DurationLabel.short(minutes)) 后") { start(after: minutes) }
+                    }
+                } else {
+                    Text("已进行 \(DurationLabel.short(max(1, store.parallelElapsedMinutes(task.id, now: context.date))))")
+                    if let check = run?.nextCheckAt {
+                        Text(check <= context.date ? "现在可以检查" : "下次检查：\(ReminderFormat.short(check, now: context.date))")
+                    }
+                    Divider()
+                    Menu("调整检查时间") {
+                        Button("不提醒") { store.setParallelCheck(task.id, at: nil) }
+                        ForEach([15, 30, 60, 120], id: \.self) { minutes in
+                            Button("\(DurationLabel.short(minutes)) 后") {
+                                store.setParallelCheck(task.id,
+                                    at: context.date.addingTimeInterval(Double(minutes) * 60), now: context.date)
+                            }
+                        }
+                    }
+                    Button("暂停进行") { _ = store.pauseParallelRun(task.id, now: context.date) }
+                    Button("标记完成") { _ = store.completeParallelRun(task.id, now: context.date) }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 9, weight: .bold))
+                    if showsLabel {
+                        Text(run == nil ? "进行" : DurationLabel.short(max(1, store.parallelElapsedMinutes(task.id, now: context.date))))
+                            .font(Theme.font(11, weight: .medium))
+                    }
+                }
+                .foregroundColor(run == nil ? Theme.qDelegate : Theme.bg)
+                .padding(.horizontal, showsLabel ? 8 : 6).padding(.vertical, 4)
+                .background(Capsule().fill(run == nil ? Theme.qDelegate.opacity(0.12) : Theme.qDelegate))
+                .overlay(Capsule().stroke(Theme.qDelegate.opacity(0.55), lineWidth: 1))
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .disabled(task.completed || focusActive)
+            .help(focusActive ? "这件事正在由你专注处理" :
+                  (run == nil ? "标记为进行中；可与其它任务同时运行" : "管理进行状态和检查提醒"))
+            .accessibilityLabel(run == nil ? "标记任务为进行中" : "管理进行中的任务")
+        }
+    }
+
+    private func start(after minutes: Int?) {
+        let now = Date()
+        let check = minutes.map { now.addingTimeInterval(Double($0) * 60) }
+        _ = store.startParallelRun(task.id, now: now, nextCheckAt: check)
+    }
+}
+
 // MARK: - Today planner
 
 struct TodayPlannerView: View {
@@ -375,24 +460,38 @@ struct TodayPlannerView: View {
     @State private var rescueTaskID: UUID?
     @State private var rescuePreset: BlockerReason?
 
-    private var incomplete: [TaskItem] { store.todayTasks.filter { !$0.completed } }
+    private var runningIDs: Set<UUID> { Set(store.parallelRuns.map(\.taskID)) }
+    private var running: [TaskItem] { store.parallelRunningTasks }
+    private var incomplete: [TaskItem] { store.todayTasks.filter { !$0.completed && !runningIDs.contains($0.id) } }
     private var completed: [TaskItem] { store.todayTasks.filter(\.completed) }
-    private var keyTask: TaskItem? { store.dailyWinTask ?? incomplete.first }
+    private var keyTask: TaskItem? {
+        store.dailyWinTask ?? incomplete.first
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             plannerHeader
-            if store.todayTasks.isEmpty {
+            if store.todayTasks.isEmpty && running.isEmpty {
                 emptyState
             } else {
                 ScrollView {
                     LazyVStack(spacing: 7) {
+                        if !running.isEmpty {
+                            parallelSection
+                        }
+                        if !running.isEmpty && !incomplete.isEmpty {
+                            sectionLabel("我来推进")
+                        }
                         ForEach(Array(incomplete.enumerated()), id: \.element.id) { index, task in
                             TodayPlannerRow(store: store, task: task, index: index)
+                                .id("today-\(task.id.uuidString)")
                         }
                         if !completed.isEmpty {
                             sectionLabel("已完成 · \(completed.count)")
-                            ForEach(completed) { task in TodayPlannerRow(store: store, task: task, index: nil) }
+                            ForEach(completed) { task in
+                                TodayPlannerRow(store: store, task: task, index: nil)
+                                    .id("completed-\(task.id.uuidString)")
+                            }
                         }
                     }
                     .padding(.vertical, 2)
@@ -424,9 +523,9 @@ struct TodayPlannerView: View {
                         Text("今天只赢一件")
                     }
                     .font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.amber)
-                    Text(keyTask?.text ?? (store.todayTasks.isEmpty ? "先选一件值得推进的事" : "今天已经收完了"))
+                    Text(keyTask?.text ?? headerEmptyTitle)
                     .font(Theme.font(18, weight: .semibold))
-                    .foregroundColor(incomplete.isEmpty ? Theme.textDim : Theme.text)
+                    .foregroundColor(keyTask == nil ? Theme.textDim : Theme.text)
                     .lineLimit(2)
                     if let task = keyTask, let action = task.nextAction {
                         Text("下一步：\(action)").font(Theme.font(12)).foregroundColor(Theme.textDim)
@@ -441,26 +540,59 @@ struct TodayPlannerView: View {
                 }
             }
             if let task = keyTask, !task.completed {
-                HStack(spacing: 8) {
-                    momentumButton("开始 5 分钟", icon: "play.fill") {
-                        store.setDailyWin(task.id)
-                        _ = store.startTimer(task.id, targetMinutes: 5)
+                if runningIDs.contains(task.id) {
+                    HStack(spacing: 8) {
+                        InfoBadge(text: "正在进行", symbol: "arrow.triangle.2.circlepath",
+                                  accent: Theme.qDelegate)
+                        ParallelRunButton(store: store, task: task, showsLabel: true)
+                        TaskDetailsButton(store: store, task: task, showsLabel: true)
                     }
-                    momentumButton("拆小一步", icon: "arrow.down.right.and.arrow.up.left") {
-                        rescuePreset = .tooLarge; rescueTaskID = task.id
-                    }
-                    momentumButton("我卡住了", icon: "questionmark.bubble") {
-                        rescuePreset = nil; rescueTaskID = task.id
-                    }
-                    if store.dailyWinTask == nil {
-                        Button("设为今日关键") { store.setDailyWin(task.id) }
-                            .buttonStyle(.plain).font(Theme.font(11, weight: .medium))
-                            .foregroundColor(Theme.textDim)
+                } else {
+                    HStack(spacing: 8) {
+                        momentumButton("开始 5 分钟", icon: "play.fill") {
+                            store.setDailyWin(task.id)
+                            _ = store.startTimer(task.id, targetMinutes: 5)
+                        }
+                        momentumButton("拆小一步", icon: "arrow.down.right.and.arrow.up.left") {
+                            rescuePreset = .tooLarge; rescueTaskID = task.id
+                        }
+                        momentumButton("我卡住了", icon: "questionmark.bubble") {
+                            rescuePreset = nil; rescueTaskID = task.id
+                        }
+                        if store.dailyWinTask == nil {
+                            Button("设为今日关键") { store.setDailyWin(task.id) }
+                                .buttonStyle(.plain).font(Theme.font(11, weight: .medium))
+                                .foregroundColor(Theme.textDim)
+                        }
                     }
                 }
             }
         }
         .padding(16).panel(corner: 14, accent: Theme.amber)
+    }
+
+    private var headerEmptyTitle: String {
+        if !running.isEmpty { return "有 \(running.count) 件事正在其它地方推进" }
+        if !store.todayTasks.isEmpty && completed.count == store.todayTasks.count { return "今天已经收完了" }
+        return "先选一件值得推进的事"
+    }
+
+    private var parallelSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("正在进行", systemImage: "arrow.triangle.2.circlepath")
+                    .font(Theme.font(13, weight: .semibold)).foregroundColor(Theme.qDelegate)
+                Text("\(running.count) 件可同时运行 · 不计入个人专注时长")
+                    .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                Spacer()
+            }
+            ForEach(Array(running.enumerated()), id: \.element.id) { offset, task in
+                if offset > 0 { Divider().overlay(Theme.hairline) }
+                ParallelRunRow(store: store, task: task)
+                    .id("parallel-\(task.id.uuidString)")
+            }
+        }
+        .padding(14).panel(corner: 12, accent: Theme.qDelegate)
     }
 
     private func momentumButton(_ title: String, icon: String,
@@ -479,8 +611,11 @@ struct TodayPlannerView: View {
     }
 
     private var remainingText: String {
-        let minutes = store.todayRemainingEstimatedMinutes
-        let unestimated = store.todayRemainingUnestimatedCount
+        if incomplete.isEmpty {
+            return running.isEmpty ? "剩余 0 件" : "进行中 \(running.count) 件"
+        }
+        let minutes = incomplete.reduce(0) { $0 + ($1.estimatedMinutes ?? 0) }
+        let unestimated = incomplete.filter { $0.estimatedMinutes == nil }.count
         if minutes > 0, unestimated > 0 {
             return "剩余 \(incomplete.count) 件 · 约 \(DurationLabel.short(minutes)) + \(unestimated) 件未估时"
         }
@@ -516,6 +651,39 @@ struct TodayPlannerView: View {
     private func sectionLabel(_ text: String) -> some View {
         Text(text).font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.textDim)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+    }
+}
+
+private struct ParallelRunRow: View {
+    @ObservedObject var store: Store
+    let task: TaskItem
+
+    private var run: ParallelTaskRun? { store.parallelRuns.first { $0.taskID == task.id } }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundColor(Theme.qDelegate).frame(width: 18)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(task.text).font(Theme.font(13, weight: .medium)).foregroundColor(Theme.text).lineLimit(2)
+                    if let check = run?.nextCheckAt {
+                        Text(check <= context.date ? "现在可以检查" : "检查：\(ReminderFormat.short(check, now: context.date))")
+                            .font(Theme.font(10, weight: check <= context.date ? .semibold : .regular))
+                            .foregroundColor(check <= context.date ? Theme.amber : Theme.textDim)
+                    } else {
+                        Text("未设置检查提醒").font(Theme.font(10)).foregroundColor(Theme.textDim)
+                    }
+                }
+                Spacer(minLength: 8)
+                ParallelRunButton(store: store, task: task, showsLabel: true)
+                Button("暂停") { _ = store.pauseParallelRun(task.id, now: context.date) }
+                    .buttonStyle(SecondaryActionStyle())
+                Button("完成") { _ = store.completeParallelRun(task.id, now: context.date) }
+                    .buttonStyle(AIPrimaryButtonStyle())
+                TaskDetailsButton(store: store, task: task, showsLabel: true)
+            }
+        }
     }
 }
 
@@ -560,6 +728,7 @@ private struct TodayPlannerRow: View {
                 Text(DurationLabel.short(minutes)).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
             }
             if !task.completed { FocusTimerButton(store: store, task: task, showsLabel: true) }
+            if !task.completed { ParallelRunButton(store: store, task: task, showsLabel: true) }
             TaskDetailsButton(store: store, task: task)
         }
         .padding(.horizontal, 11).padding(.vertical, 9)

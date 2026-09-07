@@ -20,6 +20,7 @@ public final class Store: ObservableObject {
     @Published public private(set) var agentPreferences = AgentPreferences()
     @Published public private(set) var planningRuns: [PlanningRun] = []
     @Published public private(set) var activeTimer: ActiveTimer?
+    @Published public private(set) var parallelRuns: [ParallelTaskRun] = []
     /// A short-lived, UI-friendly description of the last destructive action.
     @Published public private(set) var undoMessage: String?
     /// Non-fatal persistence diagnostics surfaced in Settings instead of
@@ -77,6 +78,7 @@ public final class Store: ObservableObject {
         var archive: [TaskItem]?
         var thoughts: [ThoughtItem]?
         var activeTimer: ActiveTimer?
+        var parallelRuns: [ParallelTaskRun]?
         var lastActiveDay: Date?
         var settings: Settings?
         var aiBackground: String?
@@ -149,6 +151,13 @@ public final class Store: ObservableObject {
             return value
         }
         activeTimer = snap.activeTimer
+        var seenParallel = Set<UUID>()
+        parallelRuns = (snap.parallelRuns ?? []).filter { run in
+            guard seenParallel.insert(run.taskID).inserted,
+                  tasks.contains(where: { $0.id == run.taskID && !$0.completed }),
+                  activeTimer?.taskID != run.taskID else { return false }
+            return true
+        }
         lastActiveDay = snap.lastActiveDay
         settings = snap.settings ?? .default
         if let timer = activeTimer,
@@ -160,13 +169,14 @@ public final class Store: ObservableObject {
     private func decodeSnapshot(_ data: Data, using decoder: JSONDecoder) throws -> Snapshot {
         let snapshot = try decoder.decode(Snapshot.self, from: data)
         let version = snapshot.schemaVersion ?? 1
-        guard version <= 2 else { throw DataTransferError.unsupportedVersion(version) }
+        guard version <= 3 else { throw DataTransferError.unsupportedVersion(version) }
         return snapshot
     }
 
     private func currentSnapshot() -> Snapshot {
-        Snapshot(schemaVersion: 2, inbox: inbox, tasks: tasks,
+        Snapshot(schemaVersion: 3, inbox: inbox, tasks: tasks,
                  archive: archive, thoughts: thoughts, activeTimer: activeTimer,
+                 parallelRuns: parallelRuns,
                  lastActiveDay: lastActiveDay, settings: settings,
                  aiBackground: aiBackground, aiSummaries: aiSummaries,
                  goals: goals, agentPreferences: agentPreferences, planningRuns: planningRuns)
@@ -480,6 +490,7 @@ public final class Store: ObservableObject {
     public func setCompleted(_ id: UUID, _ value: Bool, now: Date = Date()) {
         guard tasks.contains(where: { $0.id == id }) else { return }
         if value, activeTimer?.taskID == id { _ = stopTimer(now: now) }
+        if value { _ = endParallelRun(id, reason: .completed, now: now) }
         guard let refreshed = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[refreshed].completed = value
         tasks[refreshed].completedAt = value ? now : nil
@@ -535,6 +546,7 @@ public final class Store: ObservableObject {
     public func deleteTask(_ id: UUID) {
         guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
         if activeTimer?.taskID == id { activeTimer = nil }
+        parallelRuns.removeAll { $0.taskID == id }
         let task = tasks.remove(at: index)
         stageUndo(.task(task, index), message: "已删除任务“\(task.text)”")
         save()
@@ -555,6 +567,7 @@ public final class Store: ObservableObject {
         let ids = Set(removed.map { $0.1.id })
         tasks.removeAll { ids.contains($0.id) }
         if let id = activeTimer?.taskID, ids.contains(id) { activeTimer = nil }
+        parallelRuns.removeAll { ids.contains($0.taskID) }
         stageUndo(.tasks(removed), message: "已清空 \(removed.count) 个任务")
         save()
         return removed.count
@@ -601,7 +614,8 @@ public final class Store: ObservableObject {
 
     @discardableResult
     public func startTimer(_ taskID: UUID, now: Date = Date(), targetMinutes: Int? = nil) -> Bool {
-        guard tasks.contains(where: { $0.id == taskID && !$0.completed }) else { return false }
+        guard tasks.contains(where: { $0.id == taskID && !$0.completed }),
+              !parallelRuns.contains(where: { $0.taskID == taskID }) else { return false }
         if activeTimer?.taskID == taskID { return true }
         if activeTimer != nil { _ = stopTimer(now: now) }
         activeTimer = ActiveTimer(taskID: taskID, startedAt: now,
@@ -652,6 +666,84 @@ public final class Store: ObservableObject {
     public var activeTimerTask: TaskItem? {
         guard let id = activeTimer?.taskID else { return nil }
         return tasks.first { $0.id == id }
+    }
+
+    // MARK: - Parallel task runs
+
+    /// Mark an incomplete task as progressing elsewhere. Unlike focus, several
+    /// runs can coexist and their elapsed time never increments `actualMinutes`.
+    @discardableResult
+    public func startParallelRun(_ taskID: UUID, now: Date = Date(), nextCheckAt: Date? = nil) -> Bool {
+        guard let index = tasks.firstIndex(where: { $0.id == taskID && !$0.completed }),
+              activeTimer?.taskID != taskID else { return false }
+        if let existing = parallelRuns.firstIndex(where: { $0.taskID == taskID }) {
+            if let nextCheckAt, nextCheckAt > now { parallelRuns[existing].nextCheckAt = nextCheckAt }
+            save()
+            return true
+        }
+        parallelRuns.append(ParallelTaskRun(taskID: taskID, startedAt: now,
+            nextCheckAt: nextCheckAt.flatMap { $0 > now ? $0 : nil }))
+        tasks[index].isToday = true
+        tasks[index].todayOrder = tasks[index].todayOrder ?? nextTodayOrder()
+        tasks[index].lastProgressAt = now
+        save()
+        return true
+    }
+
+    public func setParallelCheck(_ taskID: UUID, at date: Date?, now: Date = Date()) {
+        guard let index = parallelRuns.firstIndex(where: { $0.taskID == taskID }) else { return }
+        parallelRuns[index].nextCheckAt = date.flatMap { $0 > now ? $0 : nil }
+        save()
+    }
+
+    @discardableResult
+    public func pauseParallelRun(_ taskID: UUID, now: Date = Date()) -> Int? {
+        let minutes = endParallelRun(taskID, reason: .paused, now: now)
+        if minutes != nil { save() }
+        return minutes
+    }
+
+    @discardableResult
+    public func completeParallelRun(_ taskID: UUID, now: Date = Date()) -> Int? {
+        let minutes = endParallelRun(taskID, reason: .completed, now: now)
+        guard let index = tasks.firstIndex(where: { $0.id == taskID }) else {
+            if minutes != nil { save() }
+            return minutes
+        }
+        tasks[index].completed = true
+        tasks[index].completedAt = now
+        tasks[index].lastProgressAt = now
+        save()
+        return minutes
+    }
+
+    public func parallelElapsedMinutes(_ taskID: UUID, now: Date = Date()) -> Int {
+        guard let run = parallelRuns.first(where: { $0.taskID == taskID }) else { return 0 }
+        return max(0, Int(now.timeIntervalSince(run.startedAt) / 60))
+    }
+
+    public func parallelRecordedMinutes(_ taskID: UUID) -> Int {
+        tasks.first(where: { $0.id == taskID })?.parallelRunSessions?.reduce(0) { $0 + $1.elapsedMinutes } ?? 0
+    }
+
+    public var parallelRunningTasks: [TaskItem] {
+        let starts = Dictionary(uniqueKeysWithValues: parallelRuns.map { ($0.taskID, $0.startedAt) })
+        return tasks.filter { starts[$0.id] != nil }.sorted {
+            (starts[$0.id] ?? .distantFuture) < (starts[$1.id] ?? .distantFuture)
+        }
+    }
+
+    @discardableResult
+    private func endParallelRun(_ taskID: UUID, reason: ParallelRunEndReason, now: Date) -> Int? {
+        guard let runIndex = parallelRuns.firstIndex(where: { $0.taskID == taskID }),
+              let taskIndex = tasks.firstIndex(where: { $0.id == taskID }) else { return nil }
+        let run = parallelRuns.remove(at: runIndex)
+        let minutes = max(1, Int(ceil(max(0, now.timeIntervalSince(run.startedAt)) / 60)))
+        tasks[taskIndex].parallelRunSessions = (tasks[taskIndex].parallelRunSessions ?? [])
+            + [ParallelRunSession(startedAt: run.startedAt, endedAt: now,
+                                  elapsedMinutes: minutes, reason: reason)]
+        tasks[taskIndex].lastProgressAt = now
+        return minutes
     }
 
     // MARK: - Settings

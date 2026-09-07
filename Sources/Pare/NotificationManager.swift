@@ -33,6 +33,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private static let attentionCategory = "PARE_ATTENTION"
     private static let momentumCategory = "PARE_MOMENTUM"
     private static let timerCategory = "PARE_TIMER_CHECKPOINT"
+    private static let parallelCategory = "PARE_PARALLEL_CHECK"
     private static let actionComplete = "PARE_COMPLETE"
     private static let actionSnooze15 = "PARE_SNOOZE_15"
     private static let actionSnooze60 = "PARE_SNOOZE_60"
@@ -44,6 +45,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private static let actionQuickStart = "PARE_QUICK_START"
     private static let actionTimerContinue = "PARE_TIMER_CONTINUE"
     private static let actionTimerPause = "PARE_TIMER_PAUSE"
+    private static let actionParallelPause = "PARE_PARALLEL_PAUSE"
+    private static let actionParallelSnooze15 = "PARE_PARALLEL_SNOOZE_15"
+    private static let actionParallelSnooze60 = "PARE_PARALLEL_SNOOZE_60"
     private static let testIdentifier = "pare.test"
     /// The stable identifier of the weekly-review reminder (see `Reminders`).
     private static let weeklyIdentifier = "weekly.review"
@@ -128,7 +132,16 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let timer = UNNotificationCategory(identifier: Self.timerCategory,
                                            actions: [timerContinue, timerPause, complete],
                                            intentIdentifiers: [], options: [])
-        center.setNotificationCategories([task, daily, weekly, attention, momentum, timer])
+        let parallelPause = UNNotificationAction(identifier: Self.actionParallelPause,
+                                                 title: "暂停", options: [])
+        let parallel15 = UNNotificationAction(identifier: Self.actionParallelSnooze15,
+                                              title: "15 分钟后再检查", options: [])
+        let parallel60 = UNNotificationAction(identifier: Self.actionParallelSnooze60,
+                                              title: "1 小时后再检查", options: [])
+        let parallel = UNNotificationCategory(identifier: Self.parallelCategory,
+                                              actions: [complete, parallelPause, parallel15, parallel60],
+                                              intentIdentifiers: [], options: [])
+        center.setNotificationCategories([task, daily, weekly, attention, momentum, timer, parallel])
     }
 
     // MARK: - Scheduling
@@ -167,6 +180,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                     content.categoryIdentifier = Self.momentumCategory
                 case .timerCheckpoint:
                     content.categoryIdentifier = Self.timerCategory
+                case .parallelCheck:
+                    content.categoryIdentifier = Self.parallelCategory
                 case .weeklyReview:
                     content.categoryIdentifier = Self.weeklyCategory
                 case .plan, .review:
@@ -186,6 +201,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         id == "daily.plan" || id == Self.reviewIdentifier || id == Self.weeklyIdentifier
             || id.hasPrefix("task.") || id == Self.testIdentifier || id == "timer.sleep"
             || id.hasPrefix("attention.drift") || id.hasPrefix("implementation.")
+            || id.hasPrefix("parallel.check.")
             || id == "timer.checkpoint"
     }
 
@@ -355,6 +371,18 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                 self.store.continueTimerWithoutTarget()
             case Self.actionTimerPause:
                 _ = self.store.stopTimer()
+            case Self.actionParallelPause:
+                if let id = taskID { _ = self.store.pauseParallelRun(id) }
+            case Self.actionParallelSnooze15:
+                if let id = taskID {
+                    self.store.setParallelCheck(id, at: Date().addingTimeInterval(15 * 60))
+                    self.reschedule()
+                }
+            case Self.actionParallelSnooze60:
+                if let id = taskID {
+                    self.store.setParallelCheck(id, at: Date().addingTimeInterval(60 * 60))
+                    self.reschedule()
+                }
             case Self.actionComplete:
                 if let id = taskID { self.store.setCompleted(id, true) }
             case Self.actionSnooze15:
