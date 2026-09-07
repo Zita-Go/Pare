@@ -263,21 +263,19 @@ private struct TodayRow: View {
                     }
                     .foregroundColor(Theme.amber.opacity(0.85))
                 }
-                if !task.completed {
-                    if store.parallelRuns.contains(where: { $0.taskID == task.id }) {
-                        ParallelRunButton(store: store, task: task, showsLabel: true)
-                    } else {
-                        FocusTimerButton(store: store, task: task)
-                    }
-                }
                 TaskDetailsButton(store: store, task: task)
             }
-            if !task.completed, task.nextAction != nil || task.dueAt != nil {
+            if !task.completed {
                 HStack(spacing: 7) {
                     if let action = task.nextAction {
                         Text("下一步：\(action)").font(Theme.font(10)).foregroundColor(Theme.textDim).lineLimit(1)
                     }
                     if let due = task.dueAt { DueBadge(date: due) }
+                    Spacer(minLength: 4)
+                    FocusTimerButton(store: store, task: task, showsLabel: true,
+                                     activeLabel: "暂停", showsCancel: false,
+                                     asksCompletionOnStop: false)
+                    QuickParallelRunButton(store: store, task: task)
                 }
                 .padding(.leading, 30)
             }
@@ -313,5 +311,52 @@ private struct TodayRow: View {
         let willComplete = !task.completed
         store.toggleComplete(task.id)
         showActualPrompt = willComplete && task.actualMinutes == nil
+    }
+}
+
+/// The capture panel is for immediate action: personal focus and work running
+/// elsewhere both start or pause with one click. Scheduling a later check stays
+/// in the larger organizer where there is room to explain it.
+private struct QuickParallelRunButton: View {
+    @ObservedObject var store: Store
+    let task: TaskItem
+
+    private var isRunning: Bool {
+        store.parallelRuns.contains { $0.taskID == task.id }
+    }
+
+    private var focusActive: Bool {
+        store.activeTimer?.taskID == task.id
+    }
+
+    var body: some View {
+        Button {
+            if isRunning {
+                _ = store.pauseParallelRun(task.id)
+            } else {
+                _ = store.startParallelRun(task.id)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: isRunning ? "pause.fill" : "arrow.triangle.2.circlepath")
+                    .font(.system(size: 9, weight: .bold))
+                Text(isRunning ? "暂停" : "并行")
+                    .font(Theme.font(11, weight: .medium))
+            }
+            .foregroundColor(isRunning ? Theme.bg : Theme.qDelegate)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(isRunning ? Theme.qDelegate : Theme.qDelegate.opacity(0.12)))
+            .overlay(Capsule().stroke(Theme.qDelegate.opacity(0.55), lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .disabled(task.completed || focusActive)
+        .help(focusActive
+              ? "这件事正在由你专注处理"
+              : (isRunning ? "暂停并行进行" : "标记为并行进行，可与其它任务同时运行"))
+        .accessibilityLabel(isRunning ? "暂停并行进行" : "开始并行进行")
+        .fixedSize()
     }
 }

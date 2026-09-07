@@ -306,6 +306,9 @@ struct FocusTimerButton: View {
     @ObservedObject var store: Store
     let task: TaskItem
     var showsLabel = false
+    var activeLabel: String? = nil
+    var showsCancel = true
+    var asksCompletionOnStop = true
     @State private var askComplete = false
     @State private var sessionMinutes = 0
 
@@ -314,7 +317,7 @@ struct FocusTimerButton: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            if isActive, showsLabel {
+            if isActive, showsLabel, showsCancel {
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     timerButton(now: context.date)
                 }
@@ -332,6 +335,7 @@ struct FocusTimerButton: View {
                 .accessibilityLabel("放弃本次专注计时")
             }
         }
+        .fixedSize()
         .contextMenu {
             if isActive {
                 Button("放弃本次计时", role: .destructive) { store.cancelTimer() }
@@ -356,10 +360,12 @@ struct FocusTimerButton: View {
     private func timerButton(now: Date) -> some View {
         Button { toggle(now: Date()) } label: {
             HStack(spacing: 4) {
-                Image(systemName: isActive ? "stop.fill" : "play.fill")
+                Image(systemName: isActive ? (activeLabel == nil ? "stop.fill" : "pause.fill") : "play.fill")
                     .font(.system(size: 9, weight: .bold))
                 if showsLabel {
-                    Text(isActive ? DurationLabel.short(max(1, store.timerElapsedMinutes(now: now))) : "专注")
+                    Text(isActive
+                         ? (activeLabel ?? DurationLabel.short(max(1, store.timerElapsedMinutes(now: now))))
+                         : "专注")
                         .font(Theme.font(11, weight: .medium))
                 }
             }
@@ -371,15 +377,16 @@ struct FocusTimerButton: View {
         .buttonStyle(.plain)
         .disabled(task.completed || isParallel)
         .help(isParallel ? "这件事正在并行进行；先暂停后再开始个人专注" : (isActive
-              ? (showsLabel ? "停止并记录实际用时" : "停止并记录实际用时；右键可放弃")
+              ? (activeLabel.map { "\($0)并记录实际用时" }
+                 ?? (showsLabel ? "停止并记录实际用时" : "停止并记录实际用时；右键可放弃"))
               : "开始专注计时"))
-        .accessibilityLabel(isActive ? "停止专注计时" : "开始专注计时")
+        .accessibilityLabel(isActive ? "\(activeLabel ?? "停止")专注计时" : "开始专注计时")
     }
 
     private func toggle(now: Date) {
         if isActive {
             sessionMinutes = store.stopTimer(now: now) ?? 0
-            askComplete = sessionMinutes > 0
+            askComplete = asksCompletionOnStop && sessionMinutes > 0
         } else {
             _ = store.startTimer(task.id, now: now)
         }

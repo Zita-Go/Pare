@@ -84,6 +84,14 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(capture.contains("chrome.resizeTick += 1"))
         XCTAssertFalse(capture.contains(".onHover"),
                        "随手记悬停不能再触发列表结构重绘")
+        XCTAssertTrue(capture.contains("activeLabel: \"暂停\", showsCancel: false"),
+                      "随手记必须直接提供个人专注的启动和暂停")
+        XCTAssertTrue(capture.contains("asksCompletionOnStop: false"),
+                      "随手记暂停专注时不能再弹出二次确认")
+        XCTAssertTrue(capture.contains("QuickParallelRunButton(store: store, task: task)"),
+                      "随手记必须直接提供并行任务的启动和暂停")
+        XCTAssertTrue(capture.contains("store.startParallelRun(task.id)"))
+        XCTAssertTrue(capture.contains("store.pauseParallelRun(task.id)"))
         let store = try source("Sources/PareCore/Store.swift")
         XCTAssertTrue(store.contains("lastSavedData"),
                       "点击保存应复用内存中的上一代数据，不应反复解码磁盘备份")
