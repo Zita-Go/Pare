@@ -249,6 +249,11 @@ private struct TodayRow: View {
                     .strikethrough(task.completed, color: Theme.textDim)
                     .lineLimit(2)
                 Spacer(minLength: 0)
+                if !task.completed, let scheduledAt = task.scheduledAt {
+                    Label(ReminderFormat.short(scheduledAt), systemImage: "calendar")
+                        .font(Theme.font(10, weight: .medium)).foregroundColor(Theme.amber)
+                        .accessibilityLabel("安排时间 \(ReminderFormat.short(scheduledAt))")
+                }
                 if let minutes = task.estimatedMinutes {
                     Text(DurationLabel.short(minutes))
                         .font(Theme.font(11, weight: .medium))

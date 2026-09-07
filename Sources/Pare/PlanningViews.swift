@@ -58,6 +58,9 @@ private struct TaskDetailView: View {
     @State private var hasReminder: Bool
     @State private var remindAt: Date
     @State private var recurrence: RecurrenceRule?
+    @State private var hasSchedule: Bool
+    @State private var scheduledAt: Date
+    @State private var scheduleReminderLeadMinutes: Int?
     @State private var hasImplementationPlan: Bool
     @State private var implementationKind: ImplementationCueKind
     @State private var implementationAction: String
@@ -83,6 +86,10 @@ private struct TaskDetailView: View {
         _hasReminder = State(initialValue: task.remindAt != nil)
         _remindAt = State(initialValue: task.remindAt ?? Date().addingTimeInterval(3600))
         _recurrence = State(initialValue: task.recurrence)
+        let parallelCheck = store.parallelRuns.first { $0.taskID == task.id }?.nextCheckAt
+        _hasSchedule = State(initialValue: task.scheduledAt != nil || parallelCheck != nil)
+        _scheduledAt = State(initialValue: task.scheduledAt ?? parallelCheck ?? Date().addingTimeInterval(3600))
+        _scheduleReminderLeadMinutes = State(initialValue: task.scheduleReminderLeadMinutes ?? 5)
         let plan = task.implementationPlan
         _hasImplementationPlan = State(initialValue: plan != nil)
         _implementationKind = State(initialValue: plan?.kind ?? .time)
@@ -92,7 +99,8 @@ private struct TaskDetailView: View {
             second: 0, of: Date()) ?? Date())
         _applicationBundleID = State(initialValue: plan?.applicationBundleID ?? "")
         _applicationName = State(initialValue: plan?.applicationName ?? "")
-        _showScheduling = State(initialValue: task.dueAt != nil || task.remindAt != nil)
+        _showScheduling = State(initialValue: task.dueAt != nil || task.remindAt != nil
+                                || task.scheduledAt != nil || parallelCheck != nil)
     }
 
     var body: some View {
@@ -132,7 +140,9 @@ private struct TaskDetailView: View {
 
                 Toggle("加入今日计划", isOn: $isToday)
                     .toggleStyle(.switch).tint(Theme.amber).font(Theme.font(12))
-                    .onChange(of: isToday) { value in if !value { isDailyWin = false } }
+                    .onChange(of: isToday) { value in
+                        if !value { isDailyWin = false; hasSchedule = false }
+                    }
                 Toggle("今天只赢这一件", isOn: $isDailyWin)
                     .toggleStyle(.switch).tint(Theme.amber).font(Theme.font(12))
                     .onChange(of: isDailyWin) { value in if value { isToday = true } }
@@ -180,6 +190,32 @@ private struct TaskDetailView: View {
 
     private var dateSection: some View {
         VStack(alignment: .leading, spacing: 9) {
+            Toggle(isParallelTask ? "安排检查时间" : "安排到今日时间轴", isOn: $hasSchedule)
+                .toggleStyle(.switch).tint(Theme.amber).font(Theme.font(12))
+                .onChange(of: hasSchedule) { value in if value { isToday = true } }
+            if hasSchedule {
+                DatePicker("", selection: $scheduledAt, displayedComponents: .hourAndMinute)
+                    .labelsHidden().datePickerStyle(.field)
+                if isParallelTask {
+                    Text("并行任务会在时间轴显示为检查点，不占用个人时间。")
+                        .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                } else {
+                    HStack {
+                        Text("开始提醒").font(Theme.font(12)).foregroundColor(Theme.textDim)
+                        Spacer()
+                        Picker("", selection: $scheduleReminderLeadMinutes) {
+                            Text("关闭").tag(nil as Int?)
+                            Text("准时").tag(0 as Int?)
+                            Text("提前 5 分钟").tag(5 as Int?)
+                            Text("提前 15 分钟").tag(15 as Int?)
+                        }
+                        .labelsHidden().pickerStyle(.menu).fixedSize()
+                    }
+                    Text("时间块使用上方预估时长；在时间轴拖动底边也可调整。")
+                        .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                }
+            }
+            Divider().overlay(Theme.hairline)
             Toggle("截止日期", isOn: $hasDue)
                 .toggleStyle(.switch).tint(Theme.amber).font(Theme.font(12))
             if hasDue {
@@ -286,9 +322,22 @@ private struct TaskDetailView: View {
                                 implementationPlan: plan,
                                 isDailyWin: isDailyWin)
         if quadrant != task.quadrant { store.changeQuadrant(task.id, to: quadrant) }
-        if isToday != task.isToday { store.setToday(task.id, isToday) }
         if estimate != task.estimatedMinutes { store.setEstimate(task.id, minutes: estimate) }
+        if isParallelTask {
+            store.setParallelCheck(task.id, at: hasSchedule ? scheduledAt : nil)
+        } else if hasSchedule {
+            store.scheduleTask(task.id, at: scheduledAt, durationMinutes: estimate,
+                               reminderLeadMinutes: scheduleReminderLeadMinutes)
+            store.setScheduleReminder(task.id, leadMinutes: scheduleReminderLeadMinutes)
+        } else if task.scheduledAt != nil {
+            store.unscheduleTask(task.id)
+        }
+        if isToday != task.isToday && !hasSchedule { store.setToday(task.id, isToday) }
         isPresented = false
+    }
+
+    private var isParallelTask: Bool {
+        store.parallelRuns.contains { $0.taskID == task.id }
     }
 
     private var implementationPlanIsValid: Bool {
@@ -464,11 +513,17 @@ struct ParallelRunButton: View {
 
 // MARK: - Today planner
 
+private enum TodayPlannerMode: String, CaseIterable {
+    case list = "清单"
+    case timeline = "时间轴"
+}
+
 struct TodayPlannerView: View {
     @ObservedObject var store: Store
     @State private var quickTask = ""
     @State private var rescueTaskID: UUID?
     @State private var rescuePreset: BlockerReason?
+    @State private var mode: TodayPlannerMode = .list
 
     private var runningIDs: Set<UUID> { Set(store.parallelRuns.map(\.taskID)) }
     private var running: [TaskItem] { store.parallelRunningTasks }
@@ -480,31 +535,36 @@ struct TodayPlannerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            plannerHeader
-            if store.todayTasks.isEmpty && running.isEmpty {
-                emptyState
+            modeSwitcher
+            if mode == .timeline {
+                DayTimelineView(store: store)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 7) {
-                        if !running.isEmpty {
-                            parallelSection
-                        }
-                        if !running.isEmpty && !incomplete.isEmpty {
-                            sectionLabel("我来推进")
-                        }
-                        ForEach(Array(incomplete.enumerated()), id: \.element.id) { index, task in
-                            TodayPlannerRow(store: store, task: task, index: index)
-                                .id("today-\(task.id.uuidString)")
-                        }
-                        if !completed.isEmpty {
-                            sectionLabel("已完成 · \(completed.count)")
-                            ForEach(completed) { task in
-                                TodayPlannerRow(store: store, task: task, index: nil)
-                                    .id("completed-\(task.id.uuidString)")
+                plannerHeader
+                if store.todayTasks.isEmpty && running.isEmpty {
+                    emptyState
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 7) {
+                            if !running.isEmpty {
+                                parallelSection
+                            }
+                            if !running.isEmpty && !incomplete.isEmpty {
+                                sectionLabel("我来推进")
+                            }
+                            ForEach(Array(incomplete.enumerated()), id: \.element.id) { index, task in
+                                TodayPlannerRow(store: store, task: task, index: index)
+                                    .id("today-\(task.id.uuidString)")
+                            }
+                            if !completed.isEmpty {
+                                sectionLabel("已完成 · \(completed.count)")
+                                ForEach(completed) { task in
+                                    TodayPlannerRow(store: store, task: task, index: nil)
+                                        .id("completed-\(task.id.uuidString)")
+                                }
                             }
                         }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.vertical, 2)
                 }
             }
             quickAdd
@@ -515,6 +575,20 @@ struct TodayPlannerView: View {
                 MomentumRescueView(store: store, task: task, preset: rescuePreset,
                                    isPresented: rescuePresented)
             }
+        }
+    }
+
+    private var modeSwitcher: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(mode == .list ? "今天做什么" : "今天什么时候做")
+                    .font(Theme.font(12, weight: .semibold)).foregroundColor(Theme.text)
+                Text(mode == .list ? "选择重点并推进" : "把任务拖到时间轴；底边可调整时长")
+                    .font(Theme.font(10)).foregroundColor(Theme.textDim)
+            }
+            Spacer()
+            SegmentedTabs(values: TodayPlannerMode.allCases, selection: $mode, label: { $0.rawValue })
+                .frame(width: 164)
         }
     }
 
@@ -664,6 +738,466 @@ struct TodayPlannerView: View {
     }
 }
 
+private struct ParallelCheckItem: Identifiable {
+    var id: UUID { task.id }
+    let task: TaskItem
+    let date: Date
+}
+
+/// A focused day planner rather than a second full calendar. Personal work
+/// occupies time; tasks progressing elsewhere appear as lightweight check
+/// points, so the two kinds of commitment never look interchangeable.
+private struct DayTimelineView: View {
+    @ObservedObject var store: Store
+
+    private let startHour = 6
+    private let endHour = 24
+    private let minutesPerSlot = 15
+    private let slotHeight: CGFloat = 24
+    private let gutterWidth: CGFloat = 50
+
+    private var calendar: Calendar { Calendar.current }
+    private var dayStart: Date { calendar.startOfDay(for: Date()) }
+    private var slotCount: Int { (endHour - startHour) * 60 / minutesPerSlot }
+    private var contentHeight: CGFloat { CGFloat(slotCount) * slotHeight }
+    private var runningIDs: Set<UUID> { Set(store.parallelRuns.map(\.taskID)) }
+
+    private var scheduledTasks: [TaskItem] {
+        store.todayTasks.filter { task in
+            guard !task.completed, !runningIDs.contains(task.id), let date = task.scheduledAt else { return false }
+            return calendar.isDate(date, inSameDayAs: dayStart)
+        }
+        .sorted { ($0.scheduledAt ?? .distantFuture) < ($1.scheduledAt ?? .distantFuture) }
+    }
+
+    private var parallelChecks: [ParallelCheckItem] {
+        store.parallelRuns.compactMap { run in
+            guard let date = run.nextCheckAt,
+                  calendar.isDate(date, inSameDayAs: dayStart),
+                  let task = store.tasks.first(where: { $0.id == run.taskID && !$0.completed }) else { return nil }
+            return ParallelCheckItem(task: task, date: date)
+        }
+        .sorted { $0.date < $1.date }
+    }
+
+    private var unscheduledTasks: [TaskItem] {
+        var seen = Set<UUID>()
+        var result: [TaskItem] = []
+        for task in store.todayTasks + store.parallelRunningTasks where !task.completed {
+            guard seen.insert(task.id).inserted else { continue }
+            if runningIDs.contains(task.id) {
+                let check = store.parallelRuns.first { $0.taskID == task.id }?.nextCheckAt
+                if let check {
+                    if !calendar.isDate(check, inSameDayAs: dayStart) { result.append(task) }
+                } else {
+                    result.append(task)
+                }
+            } else if let scheduledAt = task.scheduledAt {
+                if !calendar.isDate(scheduledAt, inSameDayAs: dayStart) { result.append(task) }
+            } else {
+                result.append(task)
+            }
+        }
+        return result
+    }
+
+    private var conflictedCount: Int {
+        scheduledTasks.filter { !store.scheduleConflicts(for: $0.id).isEmpty }.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            timelineSummary
+            unscheduledShelf
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    ZStack(alignment: .topLeading) {
+                        timeGrid
+                        GeometryReader { geometry in
+                            let available = max(160, geometry.size.width - gutterWidth - 8)
+                            ForEach(scheduledTasks) { task in
+                                let placement = lanePlacement(for: task)
+                                let laneWidth = available / CGFloat(placement.count)
+                                TimelineTaskBlock(store: store, task: task, slotHeight: slotHeight)
+                                    .frame(width: max(96, laneWidth - 4), alignment: .leading)
+                                    .offset(x: gutterWidth + CGFloat(placement.index) * laneWidth,
+                                            y: yOffset(for: task.scheduledAt ?? dayStart))
+                                    .zIndex(2)
+                            }
+                            ForEach(parallelChecks) { item in
+                                TimelineParallelMarker(store: store, item: item)
+                                    .frame(width: min(190, available * 0.46))
+                                    .offset(x: geometry.size.width - min(190, available * 0.46) - 6,
+                                            y: yOffset(for: item.date) - 13)
+                                    .zIndex(4)
+                            }
+                            TimelineView(.periodic(from: .now, by: 60)) { context in
+                                currentTimeLine(width: geometry.size.width, now: context.date)
+                            }
+                        }
+                    }
+                    .frame(height: contentHeight)
+                    .onDrop(of: [UTType.text], delegate: TimelineDropDelegate(
+                        store: store, dayStart: dayStart, startHour: startHour,
+                        slotCount: slotCount, minutesPerSlot: minutesPerSlot,
+                        slotHeight: slotHeight))
+                }
+                .onAppear {
+                    let nowMinutes = calendar.component(.hour, from: Date()) * 60
+                        + calendar.component(.minute, from: Date())
+                    let slot = min(slotCount - 1, max(0, (nowMinutes - startHour * 60) / minutesPerSlot - 3))
+                    DispatchQueue.main.async { proxy.scrollTo(slot, anchor: .top) }
+                }
+            }
+            .panel(corner: 11)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var timelineSummary: some View {
+        HStack(spacing: 8) {
+            InfoBadge(text: "时间块 \(scheduledTasks.count)", symbol: "calendar.day.timeline.left", accent: Theme.amber)
+            if !parallelChecks.isEmpty {
+                InfoBadge(text: "检查点 \(parallelChecks.count)", symbol: "arrow.triangle.2.circlepath", accent: Theme.qDelegate)
+            }
+            if conflictedCount > 0 {
+                InfoBadge(text: "\(conflictedCount) 项有冲突", symbol: "exclamationmark.triangle", accent: Theme.qUrgent)
+            }
+            Spacer()
+            Text("06:00—24:00 · 15 分钟刻度")
+                .font(Theme.font(10)).foregroundColor(Theme.textDim)
+        }
+    }
+
+    private var unscheduledShelf: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("待安排").font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.text)
+                Text("拖到下方时间轴").font(Theme.font(10)).foregroundColor(Theme.textDim)
+                Spacer()
+            }
+            if unscheduledTasks.isEmpty {
+                Text("今天的任务都已有位置；拖回这里可取消安排。")
+                    .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                    .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 7) {
+                        ForEach(unscheduledTasks) { task in
+                            TimelineTaskChip(store: store, task: task, isParallel: runningIDs.contains(task.id))
+                        }
+                    }
+                }
+                .frame(minHeight: 34)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel.opacity(0.38)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border.opacity(0.7)))
+        .contentShape(Rectangle())
+        .onDrop(of: [UTType.text], delegate: UnscheduledDropDelegate(store: store))
+    }
+
+    private var timeGrid: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<slotCount, id: \.self) { slot in
+                HStack(spacing: 0) {
+                    Text(slot % 4 == 0 ? clockLabel(slot: slot) : "")
+                        .font(Theme.font(9, weight: slot % 4 == 0 ? .medium : .regular))
+                        .foregroundColor(Theme.textDim)
+                        .frame(width: gutterWidth - 8, alignment: .trailing)
+                        .padding(.trailing, 8)
+                    Rectangle()
+                        .fill(slot % 4 == 0 ? Theme.border.opacity(0.8) : Theme.hairline.opacity(0.45))
+                        .frame(height: 1)
+                }
+                .frame(height: slotHeight, alignment: .top)
+                .id(slot)
+            }
+        }
+    }
+
+    @ViewBuilder private func currentTimeLine(width: CGFloat, now: Date) -> some View {
+        let minutes = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
+        if minutes >= startHour * 60 && minutes < endHour * 60 {
+            HStack(spacing: 0) {
+                Circle().fill(Theme.qUrgent).frame(width: 7, height: 7)
+                Rectangle().fill(Theme.qUrgent.opacity(0.75)).frame(height: 1)
+            }
+            .frame(width: max(0, width - gutterWidth + 3))
+            .offset(x: gutterWidth - 3,
+                    y: CGFloat(minutes - startHour * 60) / CGFloat(minutesPerSlot) * slotHeight)
+            .zIndex(6)
+            .accessibilityHidden(true)
+        }
+    }
+
+    private func clockLabel(slot: Int) -> String {
+        let total = startHour * 60 + slot * minutesPerSlot
+        return String(format: "%02d:%02d", total / 60, total % 60)
+    }
+
+    private func yOffset(for date: Date) -> CGFloat {
+        let minutes = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
+        let raw = CGFloat(minutes - startHour * 60) / CGFloat(minutesPerSlot) * slotHeight
+        return min(contentHeight - slotHeight, max(0, raw))
+    }
+
+    private func lanePlacement(for task: TaskItem) -> (index: Int, count: Int) {
+        guard let start = task.scheduledAt else { return (0, 1) }
+        let end = start.addingTimeInterval(Double(task.scheduledMinutes ?? task.estimatedMinutes ?? 30) * 60)
+        let peers = scheduledTasks.filter { other in
+            guard let otherStart = other.scheduledAt else { return false }
+            let otherEnd = otherStart.addingTimeInterval(
+                Double(other.scheduledMinutes ?? other.estimatedMinutes ?? 30) * 60)
+            return start < otherEnd && otherStart < end
+        }
+        .sorted {
+            if $0.scheduledAt == $1.scheduledAt { return $0.id.uuidString < $1.id.uuidString }
+            return ($0.scheduledAt ?? .distantFuture) < ($1.scheduledAt ?? .distantFuture)
+        }
+        let count = min(3, max(1, peers.count))
+        let index = peers.firstIndex(where: { $0.id == task.id }).map { $0 % count } ?? 0
+        return (index, count)
+    }
+}
+
+private struct TimelineTaskChip: View {
+    @ObservedObject var store: Store
+    let task: TaskItem
+    let isParallel: Bool
+    @State private var showPicker = false
+    @State private var chosenTime = Self.nextQuarterHour()
+
+    var body: some View {
+        Button {
+            chosenTime = Self.nextQuarterHour()
+            showPicker = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isParallel ? "arrow.triangle.2.circlepath" : "circle.dashed")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(isParallel ? Theme.qDelegate : Theme.accent(for: task.quadrant))
+                Text(task.text).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.text).lineLimit(1)
+                if !isParallel, let minutes = task.estimatedMinutes {
+                    Text(DurationLabel.short(minutes)).font(Theme.font(10)).foregroundColor(Theme.textDim)
+                }
+                Image(systemName: "clock").font(.system(size: 9)).foregroundColor(Theme.textDim)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 7)
+            .background(Capsule().fill(Theme.panelHi.opacity(0.8)))
+            .overlay(Capsule().stroke((isParallel ? Theme.qDelegate : Theme.accent(for: task.quadrant)).opacity(0.45)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onDrag { NSItemProvider(object: task.id.uuidString as NSString) }
+        .help(isParallel ? "点击选择检查时间，或拖到时间轴" : "点击选择开始时间，或拖到时间轴")
+        .popover(isPresented: $showPicker, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 12) {
+                PageHeading(title: isParallel ? "安排检查" : "安排时间",
+                            subtitle: isParallel ? "只设置回来看结果的时间，不占用个人时间。"
+                                                 : "选择今天准备开始的时间。")
+                DatePicker("时间", selection: $chosenTime, displayedComponents: .hourAndMinute)
+                    .datePickerStyle(.field)
+                HStack {
+                    Button("取消") { showPicker = false }.buttonStyle(SecondaryActionStyle())
+                    Spacer()
+                    Button("安排") {
+                        if isParallel {
+                            store.setParallelCheck(task.id, at: chosenTime)
+                        } else {
+                            store.scheduleTask(task.id, at: chosenTime)
+                        }
+                        showPicker = false
+                    }
+                    .buttonStyle(AIPrimaryButtonStyle())
+                    .disabled(isParallel && chosenTime <= Date())
+                }
+            }
+            .padding(16).frame(width: 280).background(Theme.bg)
+        }
+    }
+
+    private static func nextQuarterHour(now: Date = Date()) -> Date {
+        let calendar = Calendar.current
+        let minute = calendar.component(.minute, from: now)
+        let delta = 15 - minute % 15
+        let shifted = calendar.date(byAdding: .minute, value: delta, to: now)
+            ?? now.addingTimeInterval(15 * 60)
+        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: shifted)
+        components.second = 0
+        return calendar.date(from: components) ?? shifted
+    }
+}
+
+private struct TimelineTaskBlock: View {
+    @ObservedObject var store: Store
+    let task: TaskItem
+    let slotHeight: CGFloat
+    @State private var resizedMinutes: Int?
+    @State private var showDetails = false
+
+    private var baseMinutes: Int { task.scheduledMinutes ?? task.estimatedMinutes ?? 30 }
+    private var effectiveMinutes: Int { resizedMinutes ?? baseMinutes }
+    private var blockHeight: CGFloat {
+        max(23, CGFloat(effectiveMinutes) / 15 * slotHeight - 2)
+    }
+    private var accent: Color {
+        store.scheduleConflicts(for: task.id).isEmpty ? Theme.accent(for: task.quadrant) : Theme.qUrgent
+    }
+    private var isActive: Bool { store.activeTimer?.taskID == task.id }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            TaskCheckbox(completed: task.completed, label: task.text) { store.toggleComplete(task.id) }
+                .scaleEffect(0.78)
+                .frame(width: 17, height: 17)
+            Text(task.text)
+                .font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.text)
+                .lineLimit(effectiveMinutes >= 45 ? 2 : 1)
+            Spacer(minLength: 2)
+            if isActive {
+                Image(systemName: "play.fill").font(.system(size: 8)).foregroundColor(Theme.amber)
+            }
+            if task.scheduleReminderLeadMinutes != nil {
+                Image(systemName: "bell.fill").font(.system(size: 8)).foregroundColor(Theme.amber)
+            }
+            Text(DurationLabel.short(effectiveMinutes))
+                .font(Theme.font(9, weight: .medium)).foregroundColor(Theme.textDim)
+        }
+        .padding(.horizontal, 7).padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: blockHeight, maxHeight: blockHeight, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 7).fill(accent.opacity(0.16)))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(accent.opacity(0.72), lineWidth: 1))
+        .overlay(alignment: .bottom) {
+            Capsule().fill(accent.opacity(0.75)).frame(width: 30, height: 4).padding(.bottom, 2)
+                .contentShape(Rectangle().inset(by: -5))
+                .gesture(DragGesture(minimumDistance: 2)
+                    .onChanged { value in
+                        let steps = Int((value.translation.height / slotHeight).rounded())
+                        resizedMinutes = min(480, max(15, baseMinutes + steps * 15))
+                    }
+                    .onEnded { _ in
+                        if let resizedMinutes { store.setScheduleDuration(task.id, minutes: resizedMinutes) }
+                        resizedMinutes = nil
+                    })
+                .help("上下拖动调整时长")
+        }
+        .contentShape(Rectangle())
+        .onDrag { NSItemProvider(object: task.id.uuidString as NSString) }
+        .contextMenu {
+            Button("开始专注") { _ = store.startTimer(task.id, targetMinutes: effectiveMinutes) }
+            Button("编辑详情") { showDetails = true }
+            Menu("开始提醒") {
+                Button("关闭") { store.setScheduleReminder(task.id, leadMinutes: nil) }
+                Button("准时") { store.setScheduleReminder(task.id, leadMinutes: 0) }
+                Button("提前 5 分钟") { store.setScheduleReminder(task.id, leadMinutes: 5) }
+                Button("提前 15 分钟") { store.setScheduleReminder(task.id, leadMinutes: 15) }
+            }
+            Divider()
+            Button("取消安排") { store.unscheduleTask(task.id) }
+        }
+        .popover(isPresented: $showDetails, arrowEdge: .trailing) {
+            TaskDetailView(store: store, task: task, isPresented: $showDetails)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("时间块：\(task.text)，\(DurationLabel.short(effectiveMinutes))")
+        .accessibilityHint("拖动可改时间；拖动底边可改时长；右键可开始或取消安排")
+    }
+}
+
+private struct TimelineParallelMarker: View {
+    @ObservedObject var store: Store
+    let item: ParallelCheckItem
+    @State private var showDetails = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 9, weight: .bold))
+            Text(Self.clock.string(from: item.date)).font(Theme.font(9, weight: .semibold))
+            Text(item.task.text).font(Theme.font(10, weight: .medium)).lineLimit(1)
+        }
+        .foregroundColor(Theme.bg)
+        .padding(.horizontal, 8).frame(height: 26)
+        .background(Capsule().fill(Theme.qDelegate))
+        .contentShape(Rectangle())
+        .onDrag { NSItemProvider(object: item.task.id.uuidString as NSString) }
+        .contextMenu {
+            Button("编辑详情") { showDetails = true }
+            Button("暂停进行") { _ = store.pauseParallelRun(item.task.id) }
+            Button("取消检查时间") { store.setParallelCheck(item.task.id, at: nil) }
+        }
+        .popover(isPresented: $showDetails, arrowEdge: .trailing) {
+            TaskDetailView(store: store, task: item.task, isPresented: $showDetails)
+        }
+        .accessibilityLabel("并行检查点：\(item.task.text)，\(Self.clock.string(from: item.date))")
+    }
+
+    private static let clock: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+}
+
+private struct TimelineDropDelegate: DropDelegate {
+    let store: Store
+    let dayStart: Date
+    let startHour: Int
+    let slotCount: Int
+    let minutesPerSlot: Int
+    let slotHeight: CGFloat
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let slot = min(slotCount - 1, max(0, Int(floor(info.location.y / slotHeight))))
+        guard let date = Calendar.current.date(byAdding: .minute,
+                                               value: startHour * 60 + slot * minutesPerSlot,
+                                               to: dayStart),
+              let provider = info.itemProviders(for: [UTType.text]).first else { return false }
+        loadTaskID(from: provider) { id in
+            DispatchQueue.main.async {
+                if store.parallelRuns.contains(where: { $0.taskID == id }) {
+                    store.setParallelCheck(id, at: date)
+                } else {
+                    store.scheduleTask(id, at: date)
+                }
+            }
+        }
+        return true
+    }
+}
+
+private struct UnscheduledDropDelegate: DropDelegate {
+    let store: Store
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
+        loadTaskID(from: provider) { id in
+            DispatchQueue.main.async {
+                if store.parallelRuns.contains(where: { $0.taskID == id }) {
+                    store.setParallelCheck(id, at: nil)
+                } else {
+                    store.unscheduleTask(id)
+                }
+            }
+        }
+        return true
+    }
+}
+
+private func loadTaskID(from provider: NSItemProvider, completion: @escaping (UUID) -> Void) {
+    provider.loadObject(ofClass: NSString.self) { object, _ in
+        guard let raw = object as? String, let id = UUID(uuidString: raw) else { return }
+        completion(id)
+    }
+}
+
 private struct ParallelRunRow: View {
     @ObservedObject var store: Store
     let task: TaskItem
@@ -727,6 +1261,11 @@ private struct TodayPlannerRow: View {
                     .strikethrough(task.completed).lineLimit(2)
                 HStack(spacing: 7) {
                     Text(task.quadrant.title).font(Theme.font(10)).foregroundColor(Theme.accent(for: task.quadrant))
+                    if let scheduledAt = task.scheduledAt {
+                        Label(ReminderFormat.short(scheduledAt), systemImage: "calendar")
+                            .font(Theme.font(10, weight: .medium)).foregroundColor(Theme.amber)
+                            .accessibilityLabel("安排时间 \(ReminderFormat.short(scheduledAt))")
+                    }
                     if let action = task.nextAction {
                         Text(action).font(Theme.font(10)).foregroundColor(Theme.textDim).lineLimit(1)
                     }

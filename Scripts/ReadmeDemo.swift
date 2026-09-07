@@ -84,7 +84,7 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
                                    addToToday: true, estimatedMinutes: 25)!
         store.setMomentumDetails(report.id, nextAction: "打开文档，先写三个小标题",
                                  definitionOfDone: "列出结构和要点，暂时不用润色")
-        store.addTask("确认明天的预约", to: .importantUrgent, estimatedMinutes: 5)
+        let confirm = store.addTask("确认明天的预约", to: .importantUrgent, estimatedMinutes: 5)!
         let trip = store.addTask("整理周末旅行计划", to: .importantNotUrgent,
                                  addToToday: true, estimatedMinutes: 30)!
         store.addTask("读完一章书并记下想法", to: .importantNotUrgent, estimatedMinutes: 20)
@@ -95,6 +95,13 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         store.setCompleted(done.id, true)
         store.setActual(done.id, minutes: 8)
         store.setDailyWin(report.id)
+        let calendar = Calendar.current
+        let currentHour = calendar.component(.hour, from: Date())
+        let demoHour = min(22, max(8, currentHour + 1))
+        let blockStart = calendar.date(bySettingHour: demoHour, minute: 0, second: 0, of: Date())!
+        store.scheduleTask(report.id, at: blockStart, durationMinutes: 30)
+        store.setToday(confirm.id, true)
+        store.scheduleTask(confirm.id, at: blockStart.addingTimeInterval(45 * 60), durationMinutes: 15)
         if let goalID = store.addGoal("本月完成一份结构清晰的报告"),
            var goal = store.goals.first(where: { $0.id == goalID }) {
             goal.motivation = "先理清结构，再逐步补全内容。"

@@ -138,6 +138,30 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(status.contains("件任务正在同时进行"))
     }
 
+    func testTodayTimelineSupportsDirectTimeBlockingWithoutAnotherTopLevelPage() throws {
+        let planning = try source("Sources/Pare/PlanningViews.swift")
+        let store = try source("Sources/PareCore/Store.swift")
+        let reminders = try source("Sources/PareCore/Reminders.swift")
+        let notifications = try source("Sources/Pare/NotificationManager.swift")
+        let organize = try source("Sources/Pare/OrganizeView.swift")
+
+        XCTAssertTrue(planning.contains("case list = \"清单\""))
+        XCTAssertTrue(planning.contains("case timeline = \"时间轴\""))
+        XCTAssertTrue(planning.contains("DayTimelineView(store: store)"))
+        XCTAssertTrue(planning.contains("TimelineDropDelegate"))
+        XCTAssertTrue(planning.contains("UnscheduledDropDelegate"))
+        XCTAssertTrue(planning.contains("点击选择开始时间，或拖到时间轴"),
+                      "待安排任务必须同时支持点击与拖放，避免精确拖动成为唯一入口")
+        XCTAssertTrue(planning.contains("上下拖动调整时长"))
+        XCTAssertTrue(planning.contains("并行任务会在时间轴显示为检查点，不占用个人时间。"))
+        XCTAssertTrue(store.contains("public func scheduleTask"))
+        XCTAssertTrue(store.contains("public func scheduleConflicts"))
+        XCTAssertTrue(reminders.contains("case schedule(UUID)"))
+        XCTAssertTrue(notifications.contains("PARE_SCHEDULE"))
+        XCTAssertFalse(organize.contains("case calendar"),
+                       "时间轴应留在今日计划内部，避免增加第五个顶层工作区")
+    }
+
     func testAIResultsPutActionBeforeExpandableAnalysis() throws {
         let ai = try source("Sources/Pare/AIViews.swift")
         let cards = try XCTUnwrap(ai.range(of: "ForEach($suggestions)"))

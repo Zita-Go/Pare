@@ -257,6 +257,17 @@ public struct TaskItem: Identifiable, Codable, Hashable {
     public var recurrence: RecurrenceRule?
     /// Stable user-defined order inside the Today planner.
     public var todayOrder: Int?
+    /// The time the user intends to work on this task. This is deliberately
+    /// separate from `dueAt` (latest acceptable finish) and `remindAt`
+    /// (an arbitrary interruption). A scheduled task is rendered as a block
+    /// on today's timeline.
+    public var scheduledAt: Date?
+    /// The visible size of the time block. It normally follows the estimate,
+    /// but is persisted so resizing the block remains stable across relaunches.
+    public var scheduledMinutes: Int?
+    /// Minutes before `scheduledAt` to notify. `nil` means no schedule alert;
+    /// zero means exactly at the start time.
+    public var scheduleReminderLeadMinutes: Int?
     public var definitionOfDone: String?
     public var isDailyWin: Bool?
     public var implementationPlan: ImplementationPlan?
@@ -281,6 +292,9 @@ public struct TaskItem: Identifiable, Codable, Hashable {
                 dueAt: Date? = nil,
                 recurrence: RecurrenceRule? = nil,
                 todayOrder: Int? = nil,
+                scheduledAt: Date? = nil,
+                scheduledMinutes: Int? = nil,
+                scheduleReminderLeadMinutes: Int? = nil,
                 definitionOfDone: String? = nil,
                 isDailyWin: Bool? = nil,
                 implementationPlan: ImplementationPlan? = nil,
@@ -304,6 +318,9 @@ public struct TaskItem: Identifiable, Codable, Hashable {
         self.dueAt = dueAt
         self.recurrence = recurrence
         self.todayOrder = todayOrder
+        self.scheduledAt = scheduledAt
+        self.scheduledMinutes = scheduledMinutes
+        self.scheduleReminderLeadMinutes = scheduleReminderLeadMinutes
         self.definitionOfDone = definitionOfDone
         self.isDailyWin = isDailyWin
         self.implementationPlan = implementationPlan

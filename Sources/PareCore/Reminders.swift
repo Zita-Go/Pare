@@ -14,6 +14,7 @@ public struct PlannedReminder: Equatable {
         case implementation(UUID)
         case timerCheckpoint(UUID)
         case parallelCheck(UUID)
+        case schedule(UUID)
     }
 
     public let kind: Kind
@@ -36,7 +37,8 @@ public struct PlannedReminder: Equatable {
     /// The task this reminder belongs to, if any.
     public var taskID: UUID? {
         switch kind {
-        case .task(let id), .implementation(let id), .timerCheckpoint(let id), .parallelCheck(let id): return id
+        case .task(let id), .implementation(let id), .timerCheckpoint(let id),
+             .parallelCheck(let id), .schedule(let id): return id
         default: return nil
         }
     }
@@ -181,6 +183,22 @@ extension Store {
                 identifier: "parallel.check.\(task.id.uuidString)",
                 fireDate: at,
                 title: "检查一下进行中的任务",
+                body: task.text))
+        }
+
+        // A time block is an intention to begin, distinct from both a deadline
+        // and an arbitrary task reminder. If the preferred lead time has
+        // already passed, notify at the start instead of silently dropping it.
+        for task in tasks where !task.completed {
+            guard let start = task.scheduledAt, start > now,
+                  let lead = task.scheduleReminderLeadMinutes else { continue }
+            let preferred = start.addingTimeInterval(Double(-lead) * 60)
+            let fireDate = preferred > now ? preferred : start
+            result.append(PlannedReminder(
+                kind: .schedule(task.id),
+                identifier: "schedule.\(task.id.uuidString)",
+                fireDate: fireDate,
+                title: lead == 0 ? "时间到了" : "还有 \(lead) 分钟开始",
                 body: task.text))
         }
 

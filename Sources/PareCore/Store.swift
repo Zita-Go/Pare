@@ -158,23 +158,32 @@ public final class Store: ObservableObject {
                   activeTimer?.taskID != run.taskID else { return false }
             return true
         }
+        let parallelIDs = Set(parallelRuns.map(\.taskID))
+        for index in tasks.indices where parallelIDs.contains(tasks[index].id) {
+            tasks[index].scheduledAt = nil
+            tasks[index].scheduledMinutes = nil
+            tasks[index].scheduleReminderLeadMinutes = nil
+        }
         lastActiveDay = snap.lastActiveDay
         settings = snap.settings ?? .default
         if let timer = activeTimer,
            !tasks.contains(where: { $0.id == timer.taskID && !$0.completed }) {
             activeTimer = nil
+        } else if let timer = activeTimer,
+                  let index = tasks.firstIndex(where: { $0.id == timer.taskID }) {
+            tasks[index].scheduleReminderLeadMinutes = nil
         }
     }
 
     private func decodeSnapshot(_ data: Data, using decoder: JSONDecoder) throws -> Snapshot {
         let snapshot = try decoder.decode(Snapshot.self, from: data)
         let version = snapshot.schemaVersion ?? 1
-        guard version <= 3 else { throw DataTransferError.unsupportedVersion(version) }
+        guard version <= 4 else { throw DataTransferError.unsupportedVersion(version) }
         return snapshot
     }
 
     private func currentSnapshot() -> Snapshot {
-        Snapshot(schemaVersion: 3, inbox: inbox, tasks: tasks,
+        Snapshot(schemaVersion: 4, inbox: inbox, tasks: tasks,
                  archive: archive, thoughts: thoughts, activeTimer: activeTimer,
                  parallelRuns: parallelRuns,
                  lastActiveDay: lastActiveDay, settings: settings,
@@ -279,6 +288,9 @@ public final class Store: ObservableObject {
             tasks[i].isToday = false
             tasks[i].todayOrder = nil
             tasks[i].isDailyWin = false
+            tasks[i].scheduledAt = nil
+            tasks[i].scheduledMinutes = nil
+            tasks[i].scheduleReminderLeadMinutes = nil
         }
         save()
         return true
@@ -371,6 +383,9 @@ public final class Store: ObservableObject {
         task.completedAt = nil
         task.isToday = false
         task.todayOrder = nil
+        task.scheduledAt = nil
+        task.scheduledMinutes = nil
+        task.scheduleReminderLeadMinutes = nil
         task.lastProgressAt = now
         tasks.append(task)
         save()
@@ -417,8 +432,82 @@ public final class Store: ObservableObject {
     public func setEstimate(_ id: UUID, minutes: Int?) {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         let clamped = minutes.map { max(0, $0) }
-        tasks[i].estimatedMinutes = (clamped == 0) ? nil : clamped
+        if tasks[i].scheduledAt != nil {
+            let duration = clamped.flatMap { $0 > 0 ? min(480, max(15, $0)) : nil } ?? 30
+            tasks[i].estimatedMinutes = duration
+            tasks[i].scheduledMinutes = duration
+        } else {
+            tasks[i].estimatedMinutes = (clamped == 0) ? nil : clamped
+        }
         save()
+    }
+
+    // MARK: - Time blocking
+
+    /// Place a personal task on the day timeline. New blocks adopt the task's
+    /// estimate (or 30 minutes); resizing keeps estimate and block duration in
+    /// sync so capacity calculations remain honest.
+    public func scheduleTask(_ id: UUID, at date: Date, durationMinutes: Int? = nil,
+                             reminderLeadMinutes: Int? = 5, now: Date = Date()) {
+        guard let i = tasks.firstIndex(where: { $0.id == id && !$0.completed }),
+              !parallelRuns.contains(where: { $0.taskID == id }) else { return }
+        let wasScheduled = tasks[i].scheduledAt != nil
+        let rawDuration = durationMinutes ?? tasks[i].scheduledMinutes ?? tasks[i].estimatedMinutes ?? 30
+        let duration = min(480, max(15, rawDuration))
+        tasks[i].scheduledAt = date
+        tasks[i].scheduledMinutes = duration
+        tasks[i].estimatedMinutes = duration
+        if !wasScheduled {
+            tasks[i].scheduleReminderLeadMinutes = reminderLeadMinutes.map { min(120, max(0, $0)) }
+        }
+        tasks[i].isToday = true
+        tasks[i].todayOrder = tasks[i].todayOrder ?? nextTodayOrder()
+        tasks[i].lastProgressAt = now
+        save()
+    }
+
+    public func setScheduleDuration(_ id: UUID, minutes: Int, now: Date = Date()) {
+        guard let i = tasks.firstIndex(where: { $0.id == id && $0.scheduledAt != nil }) else { return }
+        let duration = min(480, max(15, minutes))
+        tasks[i].scheduledMinutes = duration
+        tasks[i].estimatedMinutes = duration
+        tasks[i].lastProgressAt = now
+        save()
+    }
+
+    public func setScheduleReminder(_ id: UUID, leadMinutes: Int?) {
+        guard let i = tasks.firstIndex(where: { $0.id == id && $0.scheduledAt != nil }) else { return }
+        tasks[i].scheduleReminderLeadMinutes = leadMinutes.map { min(120, max(0, $0)) }
+        save()
+    }
+
+    public func shiftSchedule(_ id: UUID, by minutes: Int, now: Date = Date()) {
+        guard let i = tasks.firstIndex(where: { $0.id == id }),
+              let scheduledAt = tasks[i].scheduledAt else { return }
+        tasks[i].scheduledAt = scheduledAt.addingTimeInterval(Double(minutes) * 60)
+        tasks[i].lastProgressAt = now
+        save()
+    }
+
+    public func unscheduleTask(_ id: UUID, now: Date = Date()) {
+        guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
+        tasks[i].scheduledAt = nil
+        tasks[i].scheduledMinutes = nil
+        tasks[i].scheduleReminderLeadMinutes = nil
+        tasks[i].lastProgressAt = now
+        save()
+    }
+
+    public func scheduleConflicts(for id: UUID) -> [TaskItem] {
+        guard let task = tasks.first(where: { $0.id == id }),
+              let start = task.scheduledAt else { return [] }
+        let end = start.addingTimeInterval(Double(task.scheduledMinutes ?? task.estimatedMinutes ?? 30) * 60)
+        return tasks.filter { other in
+            guard other.id != id, !other.completed, let otherStart = other.scheduledAt else { return false }
+            let otherEnd = otherStart.addingTimeInterval(
+                Double(other.scheduledMinutes ?? other.estimatedMinutes ?? 30) * 60)
+            return start < otherEnd && otherStart < end
+        }
     }
 
     /// Record (or clear, with `nil` / 0) a task's actual minutes. Recording the
@@ -473,7 +562,12 @@ public final class Store: ObservableObject {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[i].isToday = value
         tasks[i].todayOrder = value ? (tasks[i].todayOrder ?? nextTodayOrder()) : nil
-        if !value { tasks[i].isDailyWin = false }
+        if !value {
+            tasks[i].isDailyWin = false
+            tasks[i].scheduledAt = nil
+            tasks[i].scheduledMinutes = nil
+            tasks[i].scheduleReminderLeadMinutes = nil
+        }
         tasks[i].lastProgressAt = now
         save()
     }
@@ -482,7 +576,12 @@ public final class Store: ObservableObject {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[i].isToday.toggle()
         tasks[i].todayOrder = tasks[i].isToday ? nextTodayOrder() : nil
-        if !tasks[i].isToday { tasks[i].isDailyWin = false }
+        if !tasks[i].isToday {
+            tasks[i].isDailyWin = false
+            tasks[i].scheduledAt = nil
+            tasks[i].scheduledMinutes = nil
+            tasks[i].scheduleReminderLeadMinutes = nil
+        }
         tasks[i].lastProgressAt = now
         save()
     }
@@ -614,10 +713,15 @@ public final class Store: ObservableObject {
 
     @discardableResult
     public func startTimer(_ taskID: UUID, now: Date = Date(), targetMinutes: Int? = nil) -> Bool {
-        guard tasks.contains(where: { $0.id == taskID && !$0.completed }),
+        guard let taskIndex = tasks.firstIndex(where: { $0.id == taskID && !$0.completed }),
               !parallelRuns.contains(where: { $0.taskID == taskID }) else { return false }
         if activeTimer?.taskID == taskID { return true }
         if activeTimer != nil { _ = stopTimer(now: now) }
+        // Beginning the scheduled work fulfils its start reminder. Keep the
+        // block visible, but do not alert again while the user is already in it.
+        if tasks[taskIndex].scheduledAt != nil {
+            tasks[taskIndex].scheduleReminderLeadMinutes = nil
+        }
         activeTimer = ActiveTimer(taskID: taskID, startedAt: now,
                                   targetMinutes: targetMinutes.map { max(1, $0) })
         save()
@@ -683,6 +787,9 @@ public final class Store: ObservableObject {
         }
         parallelRuns.append(ParallelTaskRun(taskID: taskID, startedAt: now,
             nextCheckAt: nextCheckAt.flatMap { $0 > now ? $0 : nil }))
+        tasks[index].scheduledAt = nil
+        tasks[index].scheduledMinutes = nil
+        tasks[index].scheduleReminderLeadMinutes = nil
         tasks[index].isToday = true
         tasks[index].todayOrder = tasks[index].todayOrder ?? nextTodayOrder()
         tasks[index].lastProgressAt = now

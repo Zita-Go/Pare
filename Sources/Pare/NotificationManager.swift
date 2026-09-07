@@ -34,6 +34,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private static let momentumCategory = "PARE_MOMENTUM"
     private static let timerCategory = "PARE_TIMER_CHECKPOINT"
     private static let parallelCategory = "PARE_PARALLEL_CHECK"
+    private static let scheduleCategory = "PARE_SCHEDULE"
     private static let actionComplete = "PARE_COMPLETE"
     private static let actionSnooze15 = "PARE_SNOOZE_15"
     private static let actionSnooze60 = "PARE_SNOOZE_60"
@@ -48,6 +49,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private static let actionParallelPause = "PARE_PARALLEL_PAUSE"
     private static let actionParallelSnooze15 = "PARE_PARALLEL_SNOOZE_15"
     private static let actionParallelSnooze60 = "PARE_PARALLEL_SNOOZE_60"
+    private static let actionScheduleStart = "PARE_SCHEDULE_START"
+    private static let actionScheduleDelay15 = "PARE_SCHEDULE_DELAY_15"
     private static let testIdentifier = "pare.test"
     /// The stable identifier of the weekly-review reminder (see `Reminders`).
     private static let weeklyIdentifier = "weekly.review"
@@ -141,7 +144,14 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let parallel = UNNotificationCategory(identifier: Self.parallelCategory,
                                               actions: [complete, parallelPause, parallel15, parallel60],
                                               intentIdentifiers: [], options: [])
-        center.setNotificationCategories([task, daily, weekly, attention, momentum, timer, parallel])
+        let scheduleStart = UNNotificationAction(identifier: Self.actionScheduleStart,
+                                                 title: "开始专注", options: [])
+        let scheduleDelay = UNNotificationAction(identifier: Self.actionScheduleDelay15,
+                                                 title: "延后 15 分钟", options: [])
+        let schedule = UNNotificationCategory(identifier: Self.scheduleCategory,
+                                              actions: [scheduleStart, scheduleDelay, complete],
+                                              intentIdentifiers: [], options: [])
+        center.setNotificationCategories([task, daily, weekly, attention, momentum, timer, parallel, schedule])
     }
 
     // MARK: - Scheduling
@@ -182,6 +192,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                     content.categoryIdentifier = Self.timerCategory
                 case .parallelCheck:
                     content.categoryIdentifier = Self.parallelCategory
+                case .schedule:
+                    content.categoryIdentifier = Self.scheduleCategory
                 case .weeklyReview:
                     content.categoryIdentifier = Self.weeklyCategory
                 case .plan, .review:
@@ -202,6 +214,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             || id.hasPrefix("task.") || id == Self.testIdentifier || id == "timer.sleep"
             || id.hasPrefix("attention.drift") || id.hasPrefix("implementation.")
             || id.hasPrefix("parallel.check.")
+            || id.hasPrefix("schedule.")
             || id == "timer.checkpoint"
     }
 
@@ -383,6 +396,13 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                     self.store.setParallelCheck(id, at: Date().addingTimeInterval(60 * 60))
                     self.reschedule()
                 }
+            case Self.actionScheduleStart:
+                if let id = taskID,
+                   let task = self.store.tasks.first(where: { $0.id == id }) {
+                    _ = self.store.startTimer(id, targetMinutes: task.scheduledMinutes ?? task.estimatedMinutes)
+                }
+            case Self.actionScheduleDelay15:
+                if let id = taskID { self.store.shiftSchedule(id, by: 15) }
             case Self.actionComplete:
                 if let id = taskID { self.store.setCompleted(id, true) }
             case Self.actionSnooze15:

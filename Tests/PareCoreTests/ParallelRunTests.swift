@@ -70,7 +70,7 @@ final class ParallelRunTests: XCTestCase {
         store.startParallelRun(second.id)
         XCTAssertEqual(Store(fileURL: url).parallelRuns.count, 2)
         let json = try! JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
-        XCTAssertEqual(json["schemaVersion"] as? Int, 3)
+        XCTAssertEqual(json["schemaVersion"] as? Int, 4)
         XCTAssertEqual((json["parallelRuns"] as? [[String: Any]])?.count, 2)
 
         store.deleteTask(first.id)
