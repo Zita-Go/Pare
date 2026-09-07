@@ -23,14 +23,17 @@ struct TaskDetailsButton: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border.opacity(0.55)))
             } else {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(Theme.textFaint)
-                    .frame(width: 24, height: 22)
+                    .frame(width: 36, height: 32)
+                    .contentShape(Rectangle())
             }
         }
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .help("编辑任务详情")
         .accessibilityLabel("编辑任务详情")
+        .accessibilityHint("打开任务详情")
         .popover(isPresented: $presented, arrowEdge: .trailing) {
             TaskDetailView(store: store, task: task, isPresented: $presented)
         }

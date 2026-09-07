@@ -42,6 +42,13 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(organize.contains(".padding(.horizontal, 1.5)"),
                       "分页按钮的视觉间隔必须属于按钮本身，而不是 HStack spacing")
         XCTAssertTrue(planning.contains("编辑任务详情"))
+        let detailsButtonStart = try XCTUnwrap(planning.range(of: "struct TaskDetailsButton"))
+        let detailsButtonEnd = try XCTUnwrap(planning.range(of: "private struct TaskDetailView"))
+        let detailsButton = planning[detailsButtonStart.lowerBound..<detailsButtonEnd.lowerBound]
+        XCTAssertTrue(detailsButton.contains(".frame(width: 36, height: 32)"),
+                      "省略号详情按钮必须保留易于命中的点击区域")
+        XCTAssertTrue(detailsButton.contains(".contentShape(Rectangle())"),
+                      "省略号周围的透明区域也必须响应点击")
         XCTAssertTrue(planning.contains("放弃本次专注计时"))
         XCTAssertFalse(planning.contains("showsLabel || isActive"),
                        "紧凑计时按钮不应因运行中而强行展开文字")
