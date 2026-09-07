@@ -148,8 +148,8 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(planning.contains("case list = \"清单\""))
         XCTAssertTrue(planning.contains("case timeline = \"时间轴\""))
         XCTAssertTrue(planning.contains("DayTimelineView(store: store)"))
-        XCTAssertTrue(planning.contains("TimelineDropDelegate"))
-        XCTAssertTrue(planning.contains("UnscheduledDropDelegate"))
+        XCTAssertTrue(planning.contains(".dropDestination(for: String.self)"))
+        XCTAssertTrue(planning.contains(".draggable(task.id.uuidString)"))
         XCTAssertTrue(planning.contains("点击选择开始时间，或拖到时间轴"),
                       "待安排任务必须同时支持点击与拖放，避免精确拖动成为唯一入口")
         XCTAssertTrue(planning.contains("上下拖动调整时长"))
@@ -198,10 +198,11 @@ final class UIContractTests: XCTestCase {
         let expected: [String: (Int, Int)] = [
             "docs/images/matrix.png": (2120, 1236),
             "docs/images/today.png": (2120, 1236),
-            "docs/images/capture.png": (848, 890),
+            "docs/images/capture.png": (848, 1130),
             "docs/images/momentum.png": (860, 852),
             "docs/images/settings.png": (1160, 1260),
             "docs/images/ai-plan.png": (1200, 1280),
+            "docs/images/timeline.png": (2120, 1236),
         ]
         for (path, size) in expected {
             let actual = try imageSize(path)

@@ -837,10 +837,9 @@ private struct DayTimelineView: View {
                         }
                     }
                     .frame(height: contentHeight)
-                    .onDrop(of: [UTType.text], delegate: TimelineDropDelegate(
-                        store: store, dayStart: dayStart, startHour: startHour,
-                        slotCount: slotCount, minutesPerSlot: minutesPerSlot,
-                        slotHeight: slotHeight))
+                    .dropDestination(for: String.self) { values, location in
+                        scheduleDropped(values, at: location.y)
+                    }
                 }
                 .onAppear {
                     let nowMinutes = calendar.component(.hour, from: Date()) * 60
@@ -895,7 +894,9 @@ private struct DayTimelineView: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel.opacity(0.38)))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border.opacity(0.7)))
         .contentShape(Rectangle())
-        .onDrop(of: [UTType.text], delegate: UnscheduledDropDelegate(store: store))
+        .dropDestination(for: String.self) { values, _ in
+            return returnToShelf(values)
+        }
     }
 
     private var timeGrid: some View {
@@ -941,6 +942,30 @@ private struct DayTimelineView: View {
         let minutes = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
         let raw = CGFloat(minutes - startHour * 60) / CGFloat(minutesPerSlot) * slotHeight
         return min(contentHeight - slotHeight, max(0, raw))
+    }
+
+    private func scheduleDropped(_ values: [String], at y: CGFloat) -> Bool {
+        guard let raw = values.first, let id = UUID(uuidString: raw) else { return false }
+        let slot = min(slotCount - 1, max(0, Int(floor(y / slotHeight))))
+        guard let date = calendar.date(byAdding: .minute,
+                                       value: startHour * 60 + slot * minutesPerSlot,
+                                       to: dayStart) else { return false }
+        if runningIDs.contains(id) {
+            store.setParallelCheck(id, at: date)
+        } else {
+            store.scheduleTask(id, at: date)
+        }
+        return true
+    }
+
+    private func returnToShelf(_ values: [String]) -> Bool {
+        guard let raw = values.first, let id = UUID(uuidString: raw) else { return false }
+        if runningIDs.contains(id) {
+            store.setParallelCheck(id, at: nil)
+        } else {
+            store.unscheduleTask(id)
+        }
+        return true
     }
 
     private func lanePlacement(for task: TaskItem) -> (index: Int, count: Int) {
@@ -990,7 +1015,7 @@ private struct TimelineTaskChip: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onDrag { NSItemProvider(object: task.id.uuidString as NSString) }
+        .draggable(task.id.uuidString)
         .help(isParallel ? "点击选择检查时间，或拖到时间轴" : "点击选择开始时间，或拖到时间轴")
         .popover(isPresented: $showPicker, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 12) {
@@ -1084,7 +1109,7 @@ private struct TimelineTaskBlock: View {
                 .help("上下拖动调整时长")
         }
         .contentShape(Rectangle())
-        .onDrag { NSItemProvider(object: task.id.uuidString as NSString) }
+        .draggable(task.id.uuidString)
         .contextMenu {
             Button("开始专注") { _ = store.startTimer(task.id, targetMinutes: effectiveMinutes) }
             Button("编辑详情") { showDetails = true }
@@ -1122,7 +1147,7 @@ private struct TimelineParallelMarker: View {
         .padding(.horizontal, 8).frame(height: 26)
         .background(Capsule().fill(Theme.qDelegate))
         .contentShape(Rectangle())
-        .onDrag { NSItemProvider(object: item.task.id.uuidString as NSString) }
+        .draggable(item.task.id.uuidString)
         .contextMenu {
             Button("编辑详情") { showDetails = true }
             Button("暂停进行") { _ = store.pauseParallelRun(item.task.id) }
@@ -1140,62 +1165,6 @@ private struct TimelineParallelMarker: View {
         formatter.dateFormat = "HH:mm"
         return formatter
     }()
-}
-
-private struct TimelineDropDelegate: DropDelegate {
-    let store: Store
-    let dayStart: Date
-    let startHour: Int
-    let slotCount: Int
-    let minutesPerSlot: Int
-    let slotHeight: CGFloat
-
-    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
-
-    func performDrop(info: DropInfo) -> Bool {
-        let slot = min(slotCount - 1, max(0, Int(floor(info.location.y / slotHeight))))
-        guard let date = Calendar.current.date(byAdding: .minute,
-                                               value: startHour * 60 + slot * minutesPerSlot,
-                                               to: dayStart),
-              let provider = info.itemProviders(for: [UTType.text]).first else { return false }
-        loadTaskID(from: provider) { id in
-            DispatchQueue.main.async {
-                if store.parallelRuns.contains(where: { $0.taskID == id }) {
-                    store.setParallelCheck(id, at: date)
-                } else {
-                    store.scheduleTask(id, at: date)
-                }
-            }
-        }
-        return true
-    }
-}
-
-private struct UnscheduledDropDelegate: DropDelegate {
-    let store: Store
-
-    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
-
-    func performDrop(info: DropInfo) -> Bool {
-        guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
-        loadTaskID(from: provider) { id in
-            DispatchQueue.main.async {
-                if store.parallelRuns.contains(where: { $0.taskID == id }) {
-                    store.setParallelCheck(id, at: nil)
-                } else {
-                    store.unscheduleTask(id)
-                }
-            }
-        }
-        return true
-    }
-}
-
-private func loadTaskID(from provider: NSItemProvider, completion: @escaping (UUID) -> Void) {
-    provider.loadObject(ofClass: NSString.self) { object, _ in
-        guard let raw = object as? String, let id = UUID(uuidString: raw) else { return }
-        completion(id)
-    }
 }
 
 private struct ParallelRunRow: View {

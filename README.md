@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Zita-Go/Pare/releases/download/v2.5.1/Pare-2.5.1-macos-arm64.zip"><strong>下载 Pare 2.5.1（预发布）</strong></a>
+  <a href="https://github.com/Zita-Go/Pare/releases/download/v2.7.0/Pare-2.7.0-macos-arm64.zip"><strong>下载 Pare 2.7.0（预发布）</strong></a>
   · <a href="#一分钟开始使用">开始使用</a>
   · <a href="docs/guide.md">完整指南</a>
 </p>
@@ -20,7 +20,7 @@ Pare 是一个常驻 macOS 菜单栏的个人规划工具。念头出现时先�
 
 ![今日计划：选出完成报告提纲作为今日重点，并提供开始五分钟、拆小一步和我卡住了三个入口](docs/images/today.png)
 
-<p align="center"><em>截图来自 2.5.1 原生界面，内容均为隔离的虚构演示任务。</em></p>
+<p align="center"><em>截图来自 2.7.0 原生界面，内容均为隔离的虚构演示任务。</em></p>
 
 > 不必先整理完人生。先选一件，开始一点。
 
@@ -30,6 +30,7 @@ Pare 是一个常驻 macOS 菜单栏的个人规划工具。念头出现时先�
 | --- | --- |
 | 脑中事情太多，怕忘又不想被打断 | 用 `⌥Space` 唤出随手记，回车保存 |
 | 清单很长，不知道先做什么 | 用四象限分清重要与紧急，只挑少量任务进入今天 |
+| 今天的任务总被继续往后推 | 切到时间轴，把任务放进一个明确的开始时间 |
 | 知道该做，却迟迟开始不了 | 写下最小下一步，或直接开始 5 分钟 |
 | 在应用和页面之间反复切换 | 可选的注意力提示，提醒你停一下并回到重点 |
 | 想让计划参考长期目标和过去反馈 | 可选 AI 草稿助手；你控制参考范围并决定是否采纳 |
@@ -40,6 +41,7 @@ Pare 是一个常驻 macOS 菜单栏的个人规划工具。念头出现时先�
 2. **分清轻重：** 打开「整理」，把待整理内容拖进四象限。
 3. **选择今天：** 点任务旁的太阳，在「今日计划」里选出“今天只赢一件”。
 4. **降低门槛：** 写一个 5–15 分钟能完成的下一步，然后点「开始 5 分钟」。
+5. **需要时再排时间：** 在今日计划切到「时间轴」，拖入任务或单击选择开始时间。
 
 不需要每天使用所有功能。只用“随手记 → 今日重点 → 开始五分钟”，Pare 就已经能发挥作用。
 
@@ -48,13 +50,14 @@ Pare 是一个常驻 macOS 菜单栏的个人规划工具。念头出现时先�
 随手记只做一件事：快速接住此刻的想法。它不会要求你立刻分类，也不用离开正在做的工作。
 
 <p align="center">
-  <img src="docs/images/capture.png" width="424" alt="随手记浮窗：顶部是输入框，下方显示三件今日任务">
+  <img src="docs/images/capture.png" width="424" alt="随手记浮窗：顶部快速记录，下方显示今日任务、安排时间及专注与并行按钮">
 </p>
 
 - 点击菜单栏图标或按 `⌥Space` 打开，再按一次收起。
 - 回车保存；输入框会在每次打开时自动聚焦。
 - 支持 `30分钟后提醒我喝水` 这类简单时间表达。
 - 暂时不需要行动的内容可以保留为「想法」。
+- 今日任务可直接开始／暂停个人专注，或标记为可同时推进的并行任务。
 
 ## 看清轻重，但不给今天塞满
 
@@ -63,6 +66,14 @@ Pare 是一个常驻 macOS 菜单栏的个人规划工具。念头出现时先�
 ![四象限：左侧是两条待整理内容，右侧按重要与紧急分为四格，任务标题与时长分行显示](docs/images/matrix.png)
 
 Pare 会在今日任务过多或估时过满时给出温和提示，但不会阻止你继续安排。每天翻篇后，完成项进入历史，未完成任务留在原象限，今天的选择重新开始。
+
+## 从清单变成今天的时间
+
+「今日计划」内部可以在 `清单 / 时间轴` 间切换，不会多出一个顶层页面。把待安排任务拖到 15 分钟刻度，或单击任务直接选择开始时间；时间块采用任务预估，拖动底边即可调整时长。
+
+![今日时间轴：个人任务显示为时间块，并行任务显示为不占用个人时间的检查点](docs/images/timeline.png)
+
+时间重叠会提示但不会强制阻止。时间块默认提前 5 分钟提醒，可改为准时、提前 15 分钟或关闭；通知可开始专注、延后或完成。并行任务只显示检查点，不占用你的个人时间。
 
 ## 没动力时，不要求自己完成
 
@@ -119,8 +130,8 @@ AI 可以：
 
 当前提供 **Apple Silicon（M 系列）预发布版**，需要 macOS 13 或更高版本。
 
-1. 下载 [Pare-2.5.1-macos-arm64.zip](https://github.com/Zita-Go/Pare/releases/download/v2.5.1/Pare-2.5.1-macos-arm64.zip)。
-2. 可用 [SHA256SUMS.txt](https://github.com/Zita-Go/Pare/releases/download/v2.5.1/SHA256SUMS.txt) 核对文件。
+1. 下载 [Pare-2.7.0-macos-arm64.zip](https://github.com/Zita-Go/Pare/releases/download/v2.7.0/Pare-2.7.0-macos-arm64.zip)。
+2. 可用 [SHA256SUMS.txt](https://github.com/Zita-Go/Pare/releases/download/v2.7.0/SHA256SUMS.txt) 核对文件。
 3. 解压后，把 `Pare.app` 拖入「应用程序」文件夹，再从那里启动。
 4. 首次打开后，在「设置 → 通用」开启通知并发送测试提醒。
 
@@ -128,7 +139,7 @@ AI 可以：
 
 ### macOS 拦截打开时
 
-当前安装包尚未使用 Developer ID 签名和 Apple 公证。请确认文件来自本仓库并核对 SHA-256，然后在 Finder 中右键 Pare，选择「打开」。[查看 2.5.1 版本说明](docs/releases/v2.5.1.md)。
+当前安装包尚未使用 Developer ID 签名和 Apple 公证。请确认文件来自本仓库并核对 SHA-256，然后在 Finder 中右键 Pare，选择「打开」。[查看 2.7.0 版本说明](docs/releases/v2.7.0.md)。
 
 ## 你的内容由你控制
 
@@ -158,4 +169,4 @@ open dist/Pare.app
 
 长期使用时仍应把构建得到的 `Pare.app` 拖入「应用程序」。
 
-[完整使用指南](docs/guide.md) · [2.5.1 版本说明](docs/releases/v2.5.1.md) · [开发与截图方法](docs/development.md) · [发布验收记录](Tests/RELEASE_ACCEPTANCE.md)
+[完整使用指南](docs/guide.md) · [2.7.0 版本说明](docs/releases/v2.7.0.md) · [开发与截图方法](docs/development.md) · [发布验收记录](Tests/RELEASE_ACCEPTANCE.md)

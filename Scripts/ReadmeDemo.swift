@@ -96,12 +96,19 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         store.setActual(done.id, minutes: 8)
         store.setDailyWin(report.id)
         let calendar = Calendar.current
-        let currentHour = calendar.component(.hour, from: Date())
-        let demoHour = min(22, max(8, currentHour + 1))
-        let blockStart = calendar.date(bySettingHour: demoHour, minute: 0, second: 0, of: Date())!
+        let now = Date()
+        let minute = calendar.component(.minute, from: now)
+        let shifted = calendar.date(byAdding: .minute, value: 30 - minute % 15, to: now)!
+        var roundedComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: shifted)
+        roundedComponents.second = 0
+        let rounded = calendar.date(from: roundedComponents)!
+        let blockStart = calendar.isDate(rounded, inSameDayAs: now)
+            && calendar.component(.hour, from: rounded) < 23
+            ? rounded
+            : calendar.date(bySettingHour: 22, minute: 0, second: 0, of: now)!
         store.scheduleTask(report.id, at: blockStart, durationMinutes: 30)
         store.setToday(confirm.id, true)
-        store.scheduleTask(confirm.id, at: blockStart.addingTimeInterval(45 * 60), durationMinutes: 15)
+        store.scheduleTask(confirm.id, at: blockStart.addingTimeInterval(30 * 60), durationMinutes: 15)
         if let goalID = store.addGoal("本月完成一份结构清晰的报告"),
            var goal = store.goals.first(where: { $0.id == goalID }) {
             goal.motivation = "先理清结构，再逐步补全内容。"
@@ -121,7 +128,6 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         store.capture("给旅行相册加一页手绘地图")
         _ = store.addThought("每周留一个不排计划的下午", notes: "散步、阅读，或者什么都不做。")
         if parallelDemo {
-            let now = Date()
             store.startParallelRun(trip.id, now: now.addingTimeInterval(-38 * 60),
                                    nextCheckAt: now.addingTimeInterval(7 * 60))
             store.startParallelRun(reply.id, now: now.addingTimeInterval(-12 * 60))
