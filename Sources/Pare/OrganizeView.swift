@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
 import PareCore
 
 private enum WorkspaceMode: String, CaseIterable {
@@ -8,6 +7,31 @@ private enum WorkspaceMode: String, CaseIterable {
     case today = "今日计划"
     case library = "想法与历史"
     case goals = "目标与偏好"
+}
+
+/// Matrix drag values carry their origin so a quadrant can distinguish a raw
+/// inbox capture from an existing task. Both use UUIDs, so an untagged string
+/// would otherwise make every task drop look like an inbox organization.
+private enum MatrixDragItem {
+    case inbox(UUID)
+    case task(UUID)
+
+    var value: String {
+        switch self {
+        case .inbox(let id): return "inbox:\(id.uuidString)"
+        case .task(let id): return "task:\(id.uuidString)"
+        }
+    }
+
+    init?(_ value: String) {
+        let parts = value.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let id = UUID(uuidString: parts[1]) else { return nil }
+        switch parts[0] {
+        case "inbox": self = .inbox(id)
+        case "task": self = .task(id)
+        default: return nil
+        }
+    }
 }
 
 /// The "整理状态" — the four quadrants are the main act, each with its own quiet
@@ -525,7 +549,7 @@ private struct InboxCard: View {
         .onTapGesture { focus.selection = .inbox(item.id) }
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .onDrag { NSItemProvider(object: item.id.uuidString as NSString) }
+        .draggable(MatrixDragItem.inbox(item.id).value)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("待整理：\(item.text)")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
@@ -584,9 +608,9 @@ private struct QuadrantCard: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .panel(corner: 14, accent: accent, highlighted: targeted)
         .animation(.easeOut(duration: 0.12), value: targeted)
-        .onDrop(of: [UTType.text], isTargeted: $targeted) { providers in
-            handleDrop(providers)
-        }
+        .dropDestination(for: String.self) { values, _ in
+            return handleDrop(values)
+        } isTargeted: { targeted = $0 }
         // RFC-0001 T4: 「清空」二次确认 —— 只删本象限未完成项，绝不触碰其它象限。
         .alert("清空「不重要 · 不紧急」？", isPresented: $confirmingClear) {
             Button("取消", role: .cancel) {}
@@ -692,13 +716,19 @@ private struct QuadrantCard: View {
         store.tasks(in: quadrant).reduce(0) { $0 + ($1.completed ? 0 : ($1.estimatedMinutes ?? 0)) }
     }
 
-    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
-        provider.loadObject(ofClass: NSString.self) { object, _ in
-            guard let string = object as? String, let id = UUID(uuidString: string) else { return }
-            DispatchQueue.main.async { store.organize(inboxID: id, to: quadrant) }
+    private func handleDrop(_ values: [String]) -> Bool {
+        guard let raw = values.first, let item = MatrixDragItem(raw) else { return false }
+        switch item {
+        case .inbox(let id):
+            return store.organize(inboxID: id, to: quadrant) != nil
+        case .task(let id):
+            guard let task = store.tasks.first(where: { $0.id == id }) else { return false }
+            if task.quadrant != quadrant {
+                store.changeQuadrant(id, to: quadrant)
+                focus.selection = .task(id)
+            }
+            return true
         }
-        return true
     }
 }
 
@@ -724,6 +754,7 @@ private struct QuadrantTaskRow: View {
                     .lineLimit(2)
                     // RFC-0001: 任务文字优先拿宽度，短任务名不再被尾部控件挤到换行。
                     .layoutPriority(1)
+                    .help("拖到其它象限，或选中后按 1–4 移动")
                     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 Spacer(minLength: 6)
                 TaskDetailsButton(store: store, task: task)
@@ -786,6 +817,7 @@ private struct QuadrantTaskRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { focus.selection = .task(task.id) }
+        .draggable(MatrixDragItem.task(task.id).value)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: showActualPrompt)
         .contextMenu {

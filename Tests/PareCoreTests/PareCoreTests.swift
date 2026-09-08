@@ -183,4 +183,32 @@ final class PareCoreTests: XCTestCase {
         XCTAssertEqual(reloaded.settings.inboxPileupThreshold, 12)
         try? FileManager.default.removeItem(at: url)
     }
+
+    func testMovingBetweenQuadrantsPreservesTaskState() {
+        let (store, _) = makeStore()
+        let now = Date()
+        let task = store.addTask("移动我", to: .importantUrgent, addToToday: true,
+                                 estimatedMinutes: 30, now: now)!
+        store.updateTaskDetails(task.id, text: task.text, note: "背景", nextAction: "先打开文件",
+                                dueAt: now.addingTimeInterval(7200),
+                                remindAt: now.addingTimeInterval(3600), recurrence: nil)
+        store.scheduleTask(task.id, at: now.addingTimeInterval(1800))
+
+        store.changeQuadrant(task.id, to: .urgentNotImportant)
+        var moved = store.tasks.first { $0.id == task.id }!
+        XCTAssertEqual(moved.quadrant, .urgentNotImportant)
+        XCTAssertTrue(moved.isToday)
+        XCTAssertEqual(moved.note, "背景")
+        XCTAssertEqual(moved.nextAction, "先打开文件")
+        XCTAssertEqual(moved.estimatedMinutes, 30)
+        XCTAssertNotNil(moved.remindAt)
+        XCTAssertNotNil(moved.scheduledAt)
+
+        store.setCompleted(task.id, true)
+        store.changeQuadrant(task.id, to: .neither)
+        moved = store.tasks.first { $0.id == task.id }!
+        XCTAssertEqual(moved.quadrant, .neither)
+        XCTAssertTrue(moved.completed)
+        XCTAssertNotNil(moved.completedAt)
+    }
 }

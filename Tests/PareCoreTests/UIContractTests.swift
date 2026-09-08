@@ -41,6 +41,13 @@ final class UIContractTests: XCTestCase {
                       "顶部工作区切换器不能在分页按钮之间留下点击死区")
         XCTAssertTrue(organize.contains(".padding(.horizontal, 1.5)"),
                       "分页按钮的视觉间隔必须属于按钮本身，而不是 HStack spacing")
+        XCTAssertTrue(organize.contains(".draggable(MatrixDragItem.task(task.id).value)"),
+                      "象限任务必须提供拖拽来源")
+        XCTAssertTrue(organize.contains(".draggable(MatrixDragItem.inbox(item.id).value)"),
+                      "待整理与任务拖拽必须携带不同来源")
+        XCTAssertTrue(organize.contains("case .task(let id):"))
+        XCTAssertTrue(organize.contains("store.changeQuadrant(id, to: quadrant)"),
+                      "象限放置目标必须能迁移已有任务，而不只是整理 inbox")
         XCTAssertTrue(planning.contains("编辑任务详情"))
         let detailsButtonStart = try XCTUnwrap(planning.range(of: "struct TaskDetailsButton"))
         let detailsButtonEnd = try XCTUnwrap(planning.range(of: "private struct TaskDetailView"))
