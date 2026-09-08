@@ -179,6 +179,14 @@ final class UIContractTests: XCTestCase {
                       "象限任务没有估时时也必须显示估时入口")
         XCTAssertTrue(planning.contains("DurationPill(minutes: task.estimatedMinutes, emptyLabel: \"估时\")"),
                       "今日清单没有估时时也必须显示估时入口")
+        let rowStart = try XCTUnwrap(organize.range(of: "private struct QuadrantTaskRow"))
+        let rowEnd = try XCTUnwrap(organize.range(of: "enum OrganizeSelection"))
+        let row = organize[rowStart.lowerBound..<rowEnd.lowerBound]
+        let estimate = try XCTUnwrap(row.range(of: "DurationPill(minutes: task.estimatedMinutes, emptyLabel: \"估时\")"))
+        let details = try XCTUnwrap(row.range(of: "TaskDetailsButton(store: store, task: task)"))
+        XCTAssertLessThan(estimate.lowerBound, details.lowerBound,
+                          "估时应留在标题行，不能为所有任务强制增加第二行")
+        XCTAssertEqual(String(row).components(separatedBy: "emptyLabel: \"估时\"").count - 1, 1)
     }
 
     func testAIResultsPutActionBeforeExpandableAnalysis() throws {

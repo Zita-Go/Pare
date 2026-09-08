@@ -757,16 +757,28 @@ private struct QuadrantTaskRow: View {
                     .help("拖到其它象限，或选中后按 1–4 移动")
                     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 Spacer(minLength: 6)
-                TaskDetailsButton(store: store, task: task)
-            }
-            // Metadata gets its own line, so estimates and completion time
-            // cannot squeeze the task title down to two or three characters.
-            HStack(spacing: 8) {
-                if let due = task.dueAt { DueBadge(date: due, completed: task.completed) }
-                // 已设置的状态常显；未设置项统一收进“…”详情，避免一排悬停按钮挤压任务标题。
                 DurationPill(minutes: task.estimatedMinutes, emptyLabel: "估时") {
                     store.setEstimate(task.id, minutes: $0)
                 }
+                if task.isToday || hovering {
+                    Button { store.toggleToday(task.id) } label: {
+                        Image(systemName: task.isToday ? "sun.max.fill" : "sun.max")
+                            .font(.system(size: 12))
+                            .foregroundColor(task.isToday ? Theme.amber : Theme.textDim)
+                    }
+                    .buttonStyle(.plain)
+                    .help(task.isToday ? "移出今天" : "加入今天")
+                    .accessibilityLabel(task.isToday ? "移出今天" : "加入今天")
+                }
+                TaskDetailsButton(store: store, task: task)
+            }
+            // Only real secondary state gets another line. Estimate and Today
+            // stay above so short cards never hide them behind the add field.
+            if task.dueAt != nil || task.completed || task.remindAt != nil
+                || hovering || store.activeTimer?.taskID == task.id
+                || store.parallelRuns.contains(where: { $0.taskID == task.id }) {
+            HStack(spacing: 8) {
+                if let due = task.dueAt { DueBadge(date: due, completed: task.completed) }
                 // 完成后提醒已无意义（提醒本身也会随完成撤销），让位给「实际用时」控件。
                 if task.completed {
                     actualControl
@@ -779,18 +791,9 @@ private struct QuadrantTaskRow: View {
                 if !task.completed, (hovering || store.parallelRuns.contains(where: { $0.taskID == task.id })) {
                     ParallelRunButton(store: store, task: task)
                 }
-                if task.isToday || hovering {
-                    Button { store.toggleToday(task.id) } label: {
-                        Image(systemName: task.isToday ? "sun.max.fill" : "sun.max")
-                            .font(.system(size: 12))
-                            .foregroundColor(task.isToday ? Theme.amber : Theme.textDim)
-                    }
-                    .buttonStyle(.plain)
-                    .help(task.isToday ? "移出今天" : "加入今天")
-                    .accessibilityLabel(task.isToday ? "移出今天" : "加入今天")
-                }
                 Spacer(minLength: 0)
             }.padding(.leading, 28)
+            }
             // RFC-0001 T5：打勾完成后就地弹出一排预设时长，点一下即记，点 ✕ 跳过。
             if task.completed, showActualPrompt, task.actualMinutes == nil {
                 CompletionTimeChips(
