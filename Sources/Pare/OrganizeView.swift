@@ -761,13 +761,11 @@ private struct QuadrantTaskRow: View {
             }
             // Metadata gets its own line, so estimates and completion time
             // cannot squeeze the task title down to two or three characters.
-            if task.dueAt != nil || task.estimatedMinutes != nil || task.completed
-                || task.remindAt != nil || task.isToday || hovering || store.activeTimer?.taskID == task.id {
             HStack(spacing: 8) {
                 if let due = task.dueAt { DueBadge(date: due, completed: task.completed) }
                 // 已设置的状态常显；未设置项统一收进“…”详情，避免一排悬停按钮挤压任务标题。
-                if task.estimatedMinutes != nil {
-                    DurationPill(minutes: task.estimatedMinutes) { store.setEstimate(task.id, minutes: $0) }
+                DurationPill(minutes: task.estimatedMinutes, emptyLabel: "估时") {
+                    store.setEstimate(task.id, minutes: $0)
                 }
                 // 完成后提醒已无意义（提醒本身也会随完成撤销），让位给「实际用时」控件。
                 if task.completed {
@@ -793,7 +791,6 @@ private struct QuadrantTaskRow: View {
                 }
                 Spacer(minLength: 0)
             }.padding(.leading, 28)
-            }
             // RFC-0001 T5：打勾完成后就地弹出一排预设时长，点一下即记，点 ✕ 跳过。
             if task.completed, showActualPrompt, task.actualMinutes == nil {
                 CompletionTimeChips(

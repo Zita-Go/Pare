@@ -87,7 +87,7 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         let confirm = store.addTask("确认明天的预约", to: .importantUrgent, estimatedMinutes: 5)!
         let trip = store.addTask("整理周末旅行计划", to: .importantNotUrgent,
                                  addToToday: true, estimatedMinutes: 30)!
-        store.addTask("读完一章书并记下想法", to: .importantNotUrgent, estimatedMinutes: 20)
+        store.addTask("读完一章书并记下想法", to: .importantNotUrgent)
         let reply = store.addTask("回复活动时间确认", to: .urgentNotImportant, estimatedMinutes: 5)!
         store.addTask("整理收藏夹", to: .neither, estimatedMinutes: 15)
         let done = store.addTask("预约年度体检", to: .importantNotUrgent,

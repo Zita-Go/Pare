@@ -1242,7 +1242,11 @@ private struct TodayPlannerRow: View {
                 }
             }
             Spacer(minLength: 6)
-            if let minutes = task.estimatedMinutes {
+            if !task.completed {
+                DurationPill(minutes: task.estimatedMinutes, emptyLabel: "估时") {
+                    store.setEstimate(task.id, minutes: $0)
+                }
+            } else if let minutes = task.estimatedMinutes {
                 Text(DurationLabel.short(minutes)).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
             }
             if !task.completed { FocusTimerButton(store: store, task: task, showsLabel: true) }

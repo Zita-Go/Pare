@@ -87,10 +87,13 @@ struct TaskCheckbox: View {
 /// the capture popover.
 struct DurationPill: View {
     let minutes: Int?
+    var emptyLabel: String? = nil
     let onSelect: (Int?) -> Void
 
     /// Common planning durations (single source of truth, reused by menus).
     static let presets: [Int] = [5, 10, 15, 25, 30, 45, 60, 90, 120]
+
+    private var showsEmptyPrompt: Bool { minutes == nil && emptyLabel != nil }
 
     var body: some View {
         Menu {
@@ -106,18 +109,25 @@ struct DurationPill: View {
                 Image(systemName: "clock").font(.system(size: 10))
                 if let m = minutes {
                     Text(DurationLabel.short(m)).font(Theme.font(11, weight: .medium)).lineLimit(1)
+                } else if let emptyLabel {
+                    Text(emptyLabel).font(Theme.font(11, weight: .medium)).lineLimit(1)
                 }
             }
-            .foregroundColor(minutes == nil ? Theme.textDim : Theme.amber)
-            .padding(.horizontal, minutes == nil ? 4 : 6)
+            .foregroundColor(minutes == nil
+                             ? (showsEmptyPrompt ? Theme.amber.opacity(0.88) : Theme.textDim)
+                             : Theme.amber)
+            .padding(.horizontal, minutes == nil && emptyLabel == nil ? 4 : 6)
             .padding(.vertical, 2)
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(minutes == nil ? Color.clear : Theme.amberSoft)
+                    .fill(minutes == nil ? (showsEmptyPrompt ? Theme.amberSoft.opacity(0.55) : Color.clear)
+                                         : Theme.amberSoft)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(minutes == nil ? Theme.border : Theme.amber.opacity(0.35), lineWidth: 1)
+                    .stroke(minutes == nil
+                            ? (showsEmptyPrompt ? Theme.amber.opacity(0.38) : Theme.border)
+                            : Theme.amber.opacity(0.35), lineWidth: 1)
             )
         }
         .menuStyle(.borderlessButton)

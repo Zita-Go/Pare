@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Zita-Go/Pare/releases/download/v2.7.0/Pare-2.7.0-macos-arm64.zip"><strong>下载 Pare 2.7.0（预发布）</strong></a>
+  <a href="https://github.com/Zita-Go/Pare/releases/download/v2.7.1/Pare-2.7.1-macos-arm64.zip"><strong>下载 Pare 2.7.1（预发布）</strong></a>
   · <a href="#一分钟开始使用">开始使用</a>
   · <a href="docs/guide.md">完整指南</a>
 </p>
@@ -62,6 +62,8 @@ Pare 是一个常驻 macOS 菜单栏的个人规划工具。念头出现时先�
 ## 看清轻重，但不给今天塞满
 
 四象限负责整理，今日计划负责取舍。任务可以设置下一步、完成标准、估时、截止日期和提醒；“加入今天”与任务所在象限彼此独立。
+
+已有任务可以直接拖到其它象限；右键“移到其它象限”和选中后按数字键 `1–4` 也能完成同一操作。
 
 ![四象限：左侧是两条待整理内容，右侧按重要与紧急分为四格，任务标题与时长分行显示](docs/images/matrix.png)
 
@@ -130,8 +132,8 @@ AI 可以：
 
 当前提供 **Apple Silicon（M 系列）预发布版**，需要 macOS 13 或更高版本。
 
-1. 下载 [Pare-2.7.0-macos-arm64.zip](https://github.com/Zita-Go/Pare/releases/download/v2.7.0/Pare-2.7.0-macos-arm64.zip)。
-2. 可用 [SHA256SUMS.txt](https://github.com/Zita-Go/Pare/releases/download/v2.7.0/SHA256SUMS.txt) 核对文件。
+1. 下载 [Pare-2.7.1-macos-arm64.zip](https://github.com/Zita-Go/Pare/releases/download/v2.7.1/Pare-2.7.1-macos-arm64.zip)。
+2. 可用 [SHA256SUMS.txt](https://github.com/Zita-Go/Pare/releases/download/v2.7.1/SHA256SUMS.txt) 核对文件。
 3. 解压后，把 `Pare.app` 拖入「应用程序」文件夹，再从那里启动。
 4. 首次打开后，在「设置 → 通用」开启通知并发送测试提醒。
 
@@ -139,7 +141,7 @@ AI 可以：
 
 ### macOS 拦截打开时
 
-当前安装包尚未使用 Developer ID 签名和 Apple 公证。请确认文件来自本仓库并核对 SHA-256，然后在 Finder 中右键 Pare，选择「打开」。[查看 2.7.0 版本说明](docs/releases/v2.7.0.md)。
+当前安装包尚未使用 Developer ID 签名和 Apple 公证。请确认文件来自本仓库并核对 SHA-256，然后在 Finder 中右键 Pare，选择「打开」。[查看 2.7.1 版本说明](docs/releases/v2.7.1.md)。
 
 ## 你的内容由你控制
 
@@ -169,4 +171,4 @@ open dist/Pare.app
 
 长期使用时仍应把构建得到的 `Pare.app` 拖入「应用程序」。
 
-[完整使用指南](docs/guide.md) · [2.7.0 版本说明](docs/releases/v2.7.0.md) · [开发与截图方法](docs/development.md) · [发布验收记录](Tests/RELEASE_ACCEPTANCE.md)
+[完整使用指南](docs/guide.md) · [2.7.1 版本说明](docs/releases/v2.7.1.md) · [开发与截图方法](docs/development.md) · [发布验收记录](Tests/RELEASE_ACCEPTANCE.md)

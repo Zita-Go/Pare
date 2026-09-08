@@ -169,6 +169,18 @@ final class UIContractTests: XCTestCase {
                        "时间轴应留在今日计划内部，避免增加第五个顶层工作区")
     }
 
+    func testEstimateEntryRemainsVisibleBeforeAValueExists() throws {
+        let components = try source("Sources/Pare/Components.swift")
+        let organize = try source("Sources/Pare/OrganizeView.swift")
+        let planning = try source("Sources/Pare/PlanningViews.swift")
+        XCTAssertTrue(components.contains("var emptyLabel: String? = nil"))
+        XCTAssertTrue(components.contains("else if let emptyLabel"))
+        XCTAssertTrue(organize.contains("DurationPill(minutes: task.estimatedMinutes, emptyLabel: \"估时\")"),
+                      "象限任务没有估时时也必须显示估时入口")
+        XCTAssertTrue(planning.contains("DurationPill(minutes: task.estimatedMinutes, emptyLabel: \"估时\")"),
+                      "今日清单没有估时时也必须显示估时入口")
+    }
+
     func testAIResultsPutActionBeforeExpandableAnalysis() throws {
         let ai = try source("Sources/Pare/AIViews.swift")
         let cards = try XCTUnwrap(ai.range(of: "ForEach($suggestions)"))
