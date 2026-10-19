@@ -89,22 +89,15 @@ struct DurationPill: View {
     let minutes: Int?
     var emptyLabel: String? = nil
     let onSelect: (Int?) -> Void
+    @State private var pickerPresented = false
 
-    /// Common planning durations (single source of truth, reused by menus).
+    /// Common planning durations (single source of truth, reused by pickers).
     static let presets: [Int] = [5, 10, 15, 25, 30, 45, 60, 90, 120]
 
     private var showsEmptyPrompt: Bool { minutes == nil && emptyLabel != nil }
 
     var body: some View {
-        Menu {
-            ForEach(Self.presets, id: \.self) { m in
-                Button(DurationLabel.short(m)) { onSelect(m) }
-            }
-            if minutes != nil {
-                Divider()
-                Button("清除时长", role: .destructive) { onSelect(nil) }
-            }
-        } label: {
+        Button { pickerPresented = true } label: {
             HStack(spacing: 3) {
                 Image(systemName: "clock").font(.system(size: 10))
                 if let m = minutes {
@@ -130,12 +123,39 @@ struct DurationPill: View {
                             : Theme.amber.opacity(0.35), lineWidth: 1)
             )
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
         .fixedSize()
         .help("预估时长")
         .accessibilityLabel("预估时长")
         .accessibilityValue(minutes.map { DurationLabel.short($0) } ?? "未设置")
+        .popover(isPresented: $pickerPresented, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("预估时长")
+                    .font(Theme.font(12, weight: .semibold))
+                    .foregroundColor(Theme.text)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(Self.presets, id: \.self) { m in
+                        Button(DurationLabel.short(m)) { select(m) }
+                            .buttonStyle(SecondaryActionStyle())
+                    }
+                }
+                if minutes != nil {
+                    Divider().overlay(Theme.hairline)
+                    Button("清除时长") { select(nil) }
+                        .buttonStyle(.plain)
+                        .font(Theme.font(11, weight: .medium))
+                        .foregroundColor(Theme.qUrgent)
+                }
+            }
+            .padding(12)
+            .frame(width: 224)
+            .background(Theme.bg)
+        }
+    }
+
+    private func select(_ value: Int?) {
+        onSelect(value)
+        pickerPresented = false
     }
 }
 

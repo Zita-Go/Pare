@@ -187,6 +187,15 @@ final class UIContractTests: XCTestCase {
         XCTAssertLessThan(estimate.lowerBound, details.lowerBound,
                           "估时应留在标题行，不能为所有任务强制增加第二行")
         XCTAssertEqual(String(row).components(separatedBy: "emptyLabel: \"估时\"").count - 1, 1)
+
+        let pillStart = try XCTUnwrap(components.range(of: "struct DurationPill"))
+        let pillEnd = try XCTUnwrap(components.range(of: "enum ReminderFormat"))
+        let pill = components[pillStart.lowerBound..<pillEnd.lowerBound]
+        XCTAssertFalse(pill.contains("Menu {"),
+                       "每条任务常驻原生 Menu 会触发 SwiftUI AppKitPopUpAdaptor 更新循环")
+        XCTAssertTrue(pill.contains("Button { pickerPresented = true }"))
+        XCTAssertTrue(pill.contains(".popover(isPresented: $pickerPresented"),
+                      "估时选项应只在点击后按需创建")
     }
 
     func testAIResultsPutActionBeforeExpandableAnalysis() throws {
