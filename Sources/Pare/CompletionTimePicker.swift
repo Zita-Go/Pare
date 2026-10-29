@@ -66,15 +66,10 @@ struct CompletionTimeChips: View {
 struct ActualTimePill: View {
     let minutes: Int
     let onSelect: (Int?) -> Void
+    @State private var pickerPresented = false
 
     var body: some View {
-        Menu {
-            ForEach(DurationPill.presets, id: \.self) { m in
-                Button(DurationLabel.short(m)) { onSelect(m) }
-            }
-            Divider()
-            Button("清除实际用时", role: .destructive) { onSelect(nil) }
-        } label: {
+        Button { pickerPresented = true } label: {
             HStack(spacing: 3) {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 10))
                 Text(DurationLabel.short(minutes))
@@ -86,12 +81,24 @@ struct ActualTimePill: View {
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.amberSoft))
             .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Theme.amber.opacity(0.45), lineWidth: 1))
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
         .fixedSize()
         .help("实际用时")
         .accessibilityLabel("实际用时")
         .accessibilityValue(DurationLabel.short(minutes))
+        .popover(isPresented: $pickerPresented) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("实际用时").font(Theme.font(12, weight: .semibold))
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(DurationPill.presets, id: \.self) { m in
+                        Button(DurationLabel.short(m)) { onSelect(m); pickerPresented = false }
+                            .buttonStyle(SecondaryActionStyle())
+                    }
+                }
+                Button("清除实际用时") { onSelect(nil); pickerPresented = false }
+                    .buttonStyle(.plain).foregroundColor(Theme.qUrgent)
+            }.padding(12).frame(width: 224).foregroundColor(Theme.text).background(Theme.bg)
+        }
     }
 }
 

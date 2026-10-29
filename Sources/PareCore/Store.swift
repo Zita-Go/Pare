@@ -23,8 +23,7 @@ public final class Store: ObservableObject {
     @Published public private(set) var parallelRuns: [ParallelTaskRun] = []
     /// A short-lived, UI-friendly description of the last destructive action.
     @Published public private(set) var undoMessage: String?
-    /// Non-fatal persistence diagnostics surfaced in Settings instead of
-    /// silently making a damaged store look empty.
+    /// Persistence diagnostics surfaced wherever the user is working.
     @Published public private(set) var persistenceIssue: String?
     /// Reminder preferences. Persisted alongside the data.
     @Published public private(set) var settings: Settings = .default
@@ -40,6 +39,9 @@ public final class Store: ObservableObject {
     let calendar: Calendar
     private var loading = false
     private var persistenceLocked = false
+    private var hasUnsavedChanges = false
+    private var unsupportedSchemaVersion: Int?
+    public var isPersistenceReadOnly: Bool { persistenceLocked }
     /// Last successfully decoded/encoded generation. Reusing it for `.bak`
     /// avoids reading and decoding the whole JSON synchronously on every click.
     private var lastSavedData: Data?
@@ -60,12 +62,12 @@ public final class Store: ObservableObject {
         load()
     }
 
-    /// `~/Library/Application Support/Pare/store.json`, creating the folder.
+    /// `~/Library/Application Support/Pare/store.json`. The application creates
+    /// its directory while acquiring the single-instance lock, before loading.
     public static func defaultFileURL() -> URL {
         let base = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = base.appendingPathComponent("Pare", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("store.json")
     }
 
@@ -97,7 +99,7 @@ public final class Store: ObservableObject {
             switch self {
             case .invalidBackup: return "这个文件不是有效的 Pare 备份，数据没有改变。"
             case .unsupportedVersion(let version): return "这个备份来自更新的数据格式（v\(version)），请先升级 Pare。"
-            case .cannotWrite(let detail): return "无法写入备份：\(detail)"
+            case .cannotWrite(let detail): return "无法写入数据：\(detail)"
             }
         }
     }
@@ -117,14 +119,22 @@ public final class Store: ObservableObject {
             let data = try Data(contentsOf: fileURL)
             snap = try decodeSnapshot(data, using: dec)
             lastSavedData = data
+            hasUnsavedChanges = false
             persistenceLocked = false
+            unsupportedSchemaVersion = nil
             persistenceIssue = nil
+        } catch DataTransferError.unsupportedVersion(let version) {
+            unsupportedSchemaVersion = version
+            persistenceLocked = true
+            persistenceIssue = "数据来自更新的 Pare（格式 v\(version)）。请升级 Pare；原文件和自动备份已保留，当前禁止写入。"
+            return
         } catch {
             do {
                 let data = try Data(contentsOf: backupURL)
                 snap = try decodeSnapshot(data, using: dec)
                 lastSavedData = data
                 persistenceLocked = false
+                unsupportedSchemaVersion = nil
                 persistenceIssue = "主数据文件无法读取，已从自动备份恢复。"
                 rewriteRecoveredData = true
             } catch {
@@ -176,10 +186,12 @@ public final class Store: ObservableObject {
     }
 
     private func decodeSnapshot(_ data: Data, using decoder: JSONDecoder) throws -> Snapshot {
-        let snapshot = try decoder.decode(Snapshot.self, from: data)
-        let version = snapshot.schemaVersion ?? 1
+        // Check the version before decoding fields whose structure may have
+        // changed in a newer app. A new schema is not a corrupt old snapshot.
+        struct Header: Decodable { var schemaVersion: Int? }
+        let version = try decoder.decode(Header.self, from: data).schemaVersion ?? 1
         guard version <= 4 else { throw DataTransferError.unsupportedVersion(version) }
-        return snapshot
+        return try decoder.decode(Snapshot.self, from: data)
     }
 
     private func currentSnapshot() -> Snapshot {
@@ -198,8 +210,13 @@ public final class Store: ObservableObject {
         return enc
     }
 
-    private func save(createBackup: Bool = true) {
-        guard !loading, !persistenceLocked else { return }
+    @discardableResult
+    public func retrySaving() -> Bool { save() }
+
+    @discardableResult
+    private func save(createBackup: Bool = true) -> Bool {
+        guard !loading, !persistenceLocked else { return false }
+        hasUnsavedChanges = true
         do {
             let data = try encoder().encode(currentSnapshot())
             if createBackup, let previous = lastSavedData {
@@ -207,9 +224,12 @@ public final class Store: ObservableObject {
             }
             try data.write(to: fileURL, options: .atomic)
             lastSavedData = data
+            hasUnsavedChanges = false
             if persistenceIssue?.contains("无法保存") == true { persistenceIssue = nil }
+            return true
         } catch {
             persistenceIssue = "无法保存数据：\(error.localizedDescription)"
+            return false
         }
     }
 
@@ -229,6 +249,9 @@ public final class Store: ObservableObject {
     }
 
     public func exportData(to destination: URL) throws {
+        if let version = unsupportedSchemaVersion {
+            throw DataTransferError.unsupportedVersion(version)
+        }
         do {
             try encoder().encode(currentSnapshot()).write(to: destination, options: .atomic)
         } catch {
@@ -237,19 +260,48 @@ public final class Store: ObservableObject {
     }
 
     public func importData(from source: URL) throws {
+        if let version = unsupportedSchemaVersion {
+            throw DataTransferError.unsupportedVersion(version)
+        }
         let data = try Data(contentsOf: source)
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         let snapshot: Snapshot
         do { snapshot = try decodeSnapshot(data, using: dec) }
         catch let error as DataTransferError { throw error }
         catch { throw DataTransferError.invalidBackup }
-        try? backupCurrentFileIfHealthy()
+        // An imported backup cannot tell us when a personal focus session
+        // actually stopped. Preserve its recorded work, but never resume it.
+        var imported = snapshot
+        imported.activeTimer = nil
+        var previousBackup: Data?
+        var backedUpCurrentFile = false
+        do {
+            let encoded = try encoder().encode(imported)
+            if FileManager.default.fileExists(atPath: backupURL.path) {
+                previousBackup = try Data(contentsOf: backupURL)
+            }
+            try backupCurrentFileIfHealthy()
+            backedUpCurrentFile = true
+            try encoded.write(to: fileURL, options: .atomic)
+            lastSavedData = encoded
+        } catch {
+            var detail = error.localizedDescription
+            // In particular, restoring `.bak` must not destroy that recovery
+            // source when writing the primary fails. Keep it retryable.
+            if backedUpCurrentFile, let previousBackup {
+                do { try previousBackup.write(to: backupURL, options: .atomic) }
+                catch { detail += "；还原自动备份失败：\(error.localizedDescription)" }
+            }
+            persistenceIssue = "无法保存导入数据，当前内容没有改变：\(detail)"
+            throw DataTransferError.cannotWrite(detail)
+        }
         loading = true
-        apply(snapshot)
+        apply(imported)
         loading = false
         persistenceLocked = false
         persistenceIssue = nil
-        save(createBackup: false)
+        hasUnsavedChanges = false
+        clearUndo()
     }
 
     @discardableResult
@@ -258,6 +310,10 @@ public final class Store: ObservableObject {
         do {
             try importData(from: backupURL)
             return true
+        } catch DataTransferError.cannotWrite {
+            // importData already published the write failure and any backup
+            // rollback failure; preserve that detail for retry and Settings.
+            return false
         } catch {
             persistenceIssue = error.localizedDescription
             return false
@@ -271,6 +327,7 @@ public final class Store: ObservableObject {
     /// stay in their quadrants — nothing is deleted or lost.
     @discardableResult
     public func rolloverIfNeeded(now: Date = Date()) -> Bool {
+        guard !persistenceLocked else { return false }
         let today = calendar.startOfDay(for: now)
         if let last = lastActiveDay, calendar.isDate(last, inSameDayAs: today) {
             return false
@@ -298,14 +355,41 @@ public final class Store: ObservableObject {
 
     // MARK: - Capture (随手记)
 
+    public enum CaptureResult: Equatable {
+        case inbox
+        case reminder(Date)
+    }
+
     @discardableResult
     public func capture(_ text: String) -> Bool {
-        let parsed = CaptureParser.parse(text, calendar: calendar)
+        captureWithResult(text) != nil
+    }
+
+    /// A reminder capture becomes an actionable task immediately. Success is
+    /// returned only after it is durable, so the UI can safely clear the draft.
+    @discardableResult
+    public func captureWithResult(_ text: String, now: Date = Date()) -> CaptureResult? {
+        let parsed = CaptureParser.parse(text, now: now, calendar: calendar)
         let t = parsed.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return false }
-        inbox.insert(InboxItem(text: t, suggestedRemindAt: parsed.remindAt), at: 0)
-        save()
-        return true
+        guard !t.isEmpty, !persistenceLocked else { return nil }
+        if let date = parsed.remindAt, date > now {
+            let task = TaskItem(text: t, quadrant: .importantNotUrgent,
+                                createdAt: now, remindAt: date)
+            tasks.insert(task, at: 0)
+            guard save() else {
+                tasks.removeAll { $0.id == task.id }
+                return nil
+            }
+            return .reminder(date)
+        }
+        let item = InboxItem(text: parsed.remindAt == nil ? t : text.trimmingCharacters(in: .whitespacesAndNewlines),
+                             createdAt: now)
+        inbox.insert(item, at: 0)
+        guard save() else {
+            inbox.removeAll { $0.id == item.id }
+            return nil
+        }
+        return .inbox
     }
 
     public func deleteInbox(_ id: UUID) {
@@ -711,6 +795,29 @@ public final class Store: ObservableObject {
 
     // MARK: - Focus timer
 
+    /// Called once by the application at launch. Loading a snapshot alone
+    /// preserves its contents; only the app knows it is recovering a session.
+    @discardableResult
+    public func recoverInterruptedFocus() -> String? {
+        guard let timer = activeTimer else { return nil }
+        let title = tasks.first { $0.id == timer.taskID }?.text ?? "上次任务"
+        activeTimer = nil
+        let saved = save()
+        let detail = "无法确认离开期间的专注时长，未自动计入；可在任务详情补记实际用时。"
+        return saved
+            ? "已暂停上次未结束的专注「\(title)」。\(detail)"
+            : "已在当前会话暂停「\(title)」，但暂停状态尚未保存。\(detail)"
+    }
+
+    /// A failed quit can be cancelled and retried. The session is accumulated
+    /// once in memory, then subsequent attempts only retry the pending write.
+    @discardableResult
+    public func prepareForTermination(now: Date = Date()) -> Bool {
+        guard activeTimer != nil else { return !hasUnsavedChanges || save() }
+        _ = finishTimer(now: now)
+        return save()
+    }
+
     @discardableResult
     public func startTimer(_ taskID: UUID, now: Date = Date(), targetMinutes: Int? = nil) -> Bool {
         guard let taskIndex = tasks.firstIndex(where: { $0.id == taskID && !$0.completed }),
@@ -732,10 +839,15 @@ public final class Store: ObservableObject {
     /// short intentional session records one minute instead of disappearing.
     @discardableResult
     public func stopTimer(now: Date = Date()) -> Int? {
+        let minutes = finishTimer(now: now)
+        save()
+        return minutes
+    }
+
+    private func finishTimer(now: Date) -> Int? {
         guard let timer = activeTimer,
               let index = tasks.firstIndex(where: { $0.id == timer.taskID }) else {
             activeTimer = nil
-            save()
             return nil
         }
         let seconds = max(0, now.timeIntervalSince(timer.startedAt))
@@ -746,7 +858,6 @@ public final class Store: ObservableObject {
             + [ProgressSession(startedAt: timer.startedAt, endedAt: now,
                                minutes: minutes, targetMinutes: timer.targetMinutes)]
         tasks[index].lastProgressAt = now
-        save()
         return minutes
     }
 

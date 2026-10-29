@@ -217,7 +217,9 @@ private struct SettingsView: View {
                 actionButton("导出备份") { exportBackup() }
                 actionButton("导入备份") { importBackup() }
                 actionButton("恢复自动备份") {
-                    dataMessage = store.restoreAutomaticBackup() ? "已恢复自动备份 ✓" : "没有可恢复的自动备份"
+                    dataMessage = store.restoreAutomaticBackup()
+                        ? "已恢复自动备份 ✓"
+                        : (store.persistenceIssue ?? "没有可恢复的自动备份")
                 }
             }
             if let dataMessage {

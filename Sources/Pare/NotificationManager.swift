@@ -25,6 +25,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private var cancellable: AnyCancellable?
     private var refreshCancellable: AnyCancellable?
     private var pendingReschedule: DispatchWorkItem?
+    private let submissionQueue = ReminderSubmissionQueue()
+    private var isFlushingForTermination = false
 
     // Category / action identifiers.
     private static let taskCategory   = "PARE_TASK"
@@ -157,6 +159,12 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     // MARK: - Scheduling
 
     private func scheduleRescheduleSoon() {
+        if isFlushingForTermination {
+            // Join the active flush immediately. The plan itself is read after
+            // an async hop, once objectWillChange's mutation has completed.
+            reschedule()
+            return
+        }
         pendingReschedule?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.reschedule() }
         pendingReschedule = work
@@ -166,53 +174,116 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// Recompute the plan and mirror it into the notification center. Safe to
     /// call often; it only touches requests it owns.
     func reschedule() {
-        let planned = store.plannedReminders(now: Date())
-        center.getPendingNotificationRequests { [weak self] existing in
-            guard let self else { return }
-            let stale = existing.map(\.identifier).filter(self.isOurs)
-            if !stale.isEmpty { self.center.removePendingNotificationRequests(withIdentifiers: stale) }
-
-            let cal = Calendar.current
-            for r in planned {
-                let comps = cal.dateComponents([.year, .month, .day, .hour, .minute, .second], from: r.fireDate)
-                let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-                let content = UNMutableNotificationContent()
-                content.title = r.title
-                content.body = r.body
-                content.sound = .default
-                if let taskID = r.taskID {
-                    content.userInfo = ["taskID": taskID.uuidString]
-                }
-                switch r.kind {
-                case .task:
-                    content.categoryIdentifier = Self.taskCategory
-                case .implementation:
-                    content.categoryIdentifier = Self.momentumCategory
-                case .timerCheckpoint:
-                    content.categoryIdentifier = Self.timerCategory
-                case .parallelCheck:
-                    content.categoryIdentifier = Self.parallelCategory
-                case .schedule:
-                    content.categoryIdentifier = Self.scheduleCategory
-                case .weeklyReview:
-                    content.categoryIdentifier = Self.weeklyCategory
-                case .plan, .review:
-                    content.categoryIdentifier = Self.dailyCategory
-                }
-                let request = UNNotificationRequest(identifier: r.identifier, content: content, trigger: trigger)
-                self.center.add(request) { err in
-                    if let err { Self.diag("add \(r.identifier) failed: \(err.localizedDescription)") }
-                }
-            }
-            let next = planned.map(\.fireDate).min().map { String(describing: $0) } ?? "none"
-            Self.diag("scheduled \(planned.count) reminder(s); next=\(next)")
+        pendingReschedule?.cancel()
+        pendingReschedule = nil
+        guard !store.isPersistenceReadOnly else { return }
+        submissionQueue.enqueue { [weak self] completion in
+            guard let self else { completion(.success(())); return }
+            self.submitCurrentPlan(completion: completion)
         }
+    }
+
+    /// Bypass the capture debounce and wait for the latest complete batch.
+    /// Completion is always asynchronous on the main queue and time-bounded.
+    func flushForTermination(timeout: TimeInterval = 5,
+                             completion: @escaping (Result<Void, Error>) -> Void) {
+        pendingReschedule?.cancel()
+        pendingReschedule = nil
+        isFlushingForTermination = true
+        submissionQueue.flush({ [weak self] finish in
+            guard let self else { finish(.success(())); return }
+            self.submitCurrentPlan(completion: finish)
+        }, timeout: timeout) { [weak self] result in
+            self?.isFlushingForTermination = false
+            completion(result)
+        }
+    }
+
+    private func submitCurrentPlan(completion: @escaping (Result<Void, Error>) -> Void) {
+        // A newer or unreadable store must not erase reminders scheduled by a
+        // healthy copy. A deliberate lack of notification permission is not a
+        // quit error, and never causes another permission prompt here.
+        guard !store.isPersistenceReadOnly else { completion(.success(())); return }
+        center.getNotificationSettings { [weak self] settings in
+            DispatchQueue.main.async {
+                guard let self, !self.store.isPersistenceReadOnly,
+                      settings.authorizationStatus != .denied,
+                      settings.authorizationStatus != .notDetermined else {
+                    completion(.success(()))
+                    return
+                }
+                let planned = self.store.plannedReminders(now: Date())
+                self.replacePlannedRequests(planned, completion: completion)
+            }
+        }
+    }
+
+    private func replacePlannedRequests(_ planned: [PlannedReminder],
+                                         completion: @escaping (Result<Void, Error>) -> Void) {
+        center.getPendingNotificationRequests { [weak self] existing in
+            DispatchQueue.main.async {
+                guard let self, !self.store.isPersistenceReadOnly else {
+                    completion(.success(()))
+                    return
+                }
+                let plannedIDs = Set(planned.map(\.identifier))
+                let stale = existing.map(\.identifier).filter { self.isOurs($0) && !plannedIDs.contains($0) }
+                if !stale.isEmpty { self.center.removePendingNotificationRequests(withIdentifiers: stale) }
+
+                // add replaces a matching identifier. Do not first remove good
+                // requests, or delete live test/sleep/attention notifications.
+                var remaining = planned.count
+                var firstError: Error?
+                let finishBatch = {
+                    // Removal has no completion API. Reading pending requests
+                    // after all submissions keeps that work inside this batch.
+                    self.center.getPendingNotificationRequests { _ in
+                        if let firstError { completion(.failure(firstError)) }
+                        else { completion(.success(())) }
+                    }
+                }
+                guard remaining > 0 else { finishBatch(); return }
+                for reminder in planned {
+                    self.center.add(self.request(for: reminder)) { error in
+                        DispatchQueue.main.async {
+                            if let error {
+                                if firstError == nil { firstError = error }
+                                Self.diag("add \(reminder.identifier) failed: \(error.localizedDescription)")
+                            }
+                            remaining -= 1
+                            if remaining == 0 { finishBatch() }
+                        }
+                    }
+                }
+                let next = planned.map(\.fireDate).min().map { String(describing: $0) } ?? "none"
+                Self.diag("submitting \(planned.count) reminder(s); next=\(next)")
+            }
+        }
+    }
+
+    private func request(for reminder: PlannedReminder) -> UNNotificationRequest {
+        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: reminder.fireDate)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+        let content = UNMutableNotificationContent()
+        content.title = reminder.title
+        content.body = reminder.body
+        content.sound = .default
+        if let taskID = reminder.taskID { content.userInfo = ["taskID": taskID.uuidString] }
+        switch reminder.kind {
+        case .task: content.categoryIdentifier = Self.taskCategory
+        case .implementation: content.categoryIdentifier = Self.momentumCategory
+        case .timerCheckpoint: content.categoryIdentifier = Self.timerCategory
+        case .parallelCheck: content.categoryIdentifier = Self.parallelCategory
+        case .schedule: content.categoryIdentifier = Self.scheduleCategory
+        case .weeklyReview: content.categoryIdentifier = Self.weeklyCategory
+        case .plan, .review: content.categoryIdentifier = Self.dailyCategory
+        }
+        return UNNotificationRequest(identifier: reminder.identifier, content: content, trigger: trigger)
     }
 
     private func isOurs(_ id: String) -> Bool {
         id == "daily.plan" || id == Self.reviewIdentifier || id == Self.weeklyIdentifier
-            || id.hasPrefix("task.") || id == Self.testIdentifier || id == "timer.sleep"
-            || id.hasPrefix("attention.drift") || id.hasPrefix("implementation.")
+            || id.hasPrefix("task.") || id.hasPrefix("implementation.")
             || id.hasPrefix("parallel.check.")
             || id.hasPrefix("schedule.")
             || id == "timer.checkpoint"

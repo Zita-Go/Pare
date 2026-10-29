@@ -5,7 +5,7 @@ import PareCore
 private enum WorkspaceMode: String, CaseIterable {
     case matrix = "四象限"
     case today = "今日计划"
-    case library = "想法与历史"
+    case library = "搜索与记录"
     case goals = "目标与偏好"
 }
 
@@ -54,28 +54,46 @@ struct OrganizeView: View {
     @State private var showAssistant = false
     @State private var assistantWorkflow: AIWorkflow = .plan
     @State private var assistantTask: TaskItem?
+    @State private var inboxExpanded: Bool? = nil
+    @State private var searchFocusRequest = 0
 
     var body: some View {
         HStack(spacing: 0) {
             if inboxVisible {
-                InboxColumn(store: store, focus: focus)
-                    .frame(width: 288)
+                InboxColumn(store: store, focus: focus, onCollapse: { inboxExpanded = false })
+                    .frame(width: 240)
+                    .disabled(store.isPersistenceReadOnly)
                     .transition(.move(edge: .leading).combined(with: .opacity))
             } else {
-                CollapsedInboxRail(store: store)
-                    .frame(width: 64)
+                CollapsedInboxRail(store: store, onExpand: { inboxExpanded = true })
+                    .frame(width: 44)
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
             Rectangle().fill(Theme.hairline).frame(width: 1)
-            VStack(spacing: 14) {
+            VStack(spacing: 10) {
                 topBar
+                if let issue = store.persistenceIssue {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle")
+                        Text(issue).fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 4)
+                        if !store.isPersistenceReadOnly {
+                            Button("重试保存") { _ = store.retrySaving() }.buttonStyle(.plain)
+                        }
+                        Button("打开设置", action: onOpenSettings).buttonStyle(.plain)
+                    }
+                    .font(Theme.font(11)).foregroundColor(Theme.qUrgent)
+                    .padding(9).background(Theme.qUrgent.opacity(0.08))
+                    .accessibilityElement(children: .contain)
+                }
                 if shouldShowSummary {
                     TodaySummaryCard(store: store, expanded: $summaryState.expanded)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 workspaceContent
+                    .disabled(store.isPersistenceReadOnly)
             }
-            .padding(18)
+            .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 880, minHeight: 580, alignment: .top)
@@ -91,9 +109,13 @@ struct OrganizeView: View {
         .sheet(isPresented: $showAssistant) {
             AIAssistantView(store: store, workflow: assistantWorkflow, task: assistantTask)
         }
+        .onChange(of: workspace) { mode in
+            if mode != .matrix { inboxExpanded = false }
+            focus.selection = nil
+        }
     }
 
-    private var inboxVisible: Bool { !store.inbox.isEmpty }
+    private var inboxVisible: Bool { inboxExpanded ?? (workspace == .matrix && !store.inbox.isEmpty) }
 
     private var shouldShowSummary: Bool {
         summaryState.expanded
@@ -101,7 +123,7 @@ struct OrganizeView: View {
     }
 
     private var topBar: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 7) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .center, spacing: 10) {
                     topTitle
@@ -119,12 +141,12 @@ struct OrganizeView: View {
                         .frame(maxWidth: 400)
                 }
             }
-            if store.todayTotal > 0 {
+            if workspace == .matrix, store.todayTotal > 0 {
                 ProgressBar(fraction: Double(store.todayCompleted) / Double(max(1, store.todayTotal)))
                     .animation(.easeOut(duration: 0.35), value: store.todayCompleted)
             }
             // RFC-0001 T4: 今日排太多时的一句软提示 —— 只提示、不阻止添加，随件数 / 时长跨阈值出现与消退。
-            if let overload = store.todayOverload() {
+            if workspace == .matrix, let overload = store.todayOverload() {
                 overloadHint(overload)
             }
         }
@@ -133,10 +155,10 @@ struct OrganizeView: View {
     private var topTitle: some View {
         HStack(alignment: .firstTextBaseline, spacing: 9) {
             Text("整理")
-                .font(Theme.font(22, weight: .semibold))
+                .font(Theme.font(18, weight: .semibold))
                 .foregroundColor(Theme.text)
             Text(PareFormat.today())
-                .font(Theme.font(13))
+                .font(Theme.font(11))
                 .foregroundColor(Theme.textDim)
                 .lineLimit(1)
         }
@@ -144,7 +166,17 @@ struct OrganizeView: View {
     }
 
     private var topActions: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
+            Button {
+                workspace = .library
+                searchFocusRequest += 1
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .frame(width: 28, height: 28).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).foregroundColor(Theme.textDim)
+            .keyboardShortcut("f", modifiers: .command)
+            .help("搜索全部内容（⌘F）").accessibilityLabel("搜索全部内容")
             Button {
                 assistantTask = nil; assistantWorkflow = .plan
                 if workspace == .matrix, case .task(let id)? = focus.selection,
@@ -156,17 +188,19 @@ struct OrganizeView: View {
                 showAssistant = true
             } label: {
                 Label("AI 助手", systemImage: "sparkles")
-                    .font(Theme.font(12, weight: .semibold)).foregroundColor(Theme.bg)
+                    .font(Theme.font(12, weight: .semibold)).foregroundColor(Theme.amber)
                     .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.amber))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.amberSoft))
             }.buttonStyle(.plain).help("按当前任务上下文打开 AI；未选中任务时帮助安排今天")
             weeklyReviewButton
+            if workspace == .matrix {
             Text(store.todayTotal > 0 ? progressString : "今天未安排")
                 .font(Theme.font(store.todayTotal > 0 ? 14 : 12,
                                  weight: store.todayTotal > 0 ? .medium : .regular))
                 .foregroundColor(store.todayTotal > 0 ? Theme.amber : Theme.textDim)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+            }
             settingsButton
         }
     }
@@ -194,7 +228,11 @@ struct OrganizeView: View {
         switch workspace {
         case .matrix: quadrantGrid
         case .today: TodayPlannerView(store: store)
-        case .library: LibraryView(store: store)
+        case .library:
+            LibraryView(store: store, searchFocusRequest: searchFocusRequest, onShowInbox: {
+                workspace = .matrix
+                inboxExpanded = true
+            })
         case .goals: GoalPlanningView(store: store)
         }
     }
@@ -312,7 +350,7 @@ struct OrganizeView: View {
     /// 所有可被键盘选中的项，按视觉顺序拍平：待整理 → 象限1 → 象限2 → 象限3 → 象限4。
     /// 每次读取实时数据，天然跟随增删与排序变化。
     private var navItems: [OrganizeSelection] {
-        var items: [OrganizeSelection] = store.inbox.map { .inbox($0.id) }
+        var items: [OrganizeSelection] = inboxVisible ? store.inbox.map { .inbox($0.id) } : []
         for q in Quadrant.allCases {
             items += store.tasks(in: q).map { .task($0.id) }
         }
@@ -412,22 +450,27 @@ private struct WorkspaceSwitcher: View {
 
 private struct CollapsedInboxRail: View {
     @ObservedObject var store: Store
+    let onExpand: () -> Void
 
     var body: some View {
         VStack(spacing: 10) {
+            Button(action: onExpand) {
+            VStack(spacing: 8) {
             Image(systemName: "tray")
                 .font(.system(size: 16, weight: .medium))
             Text("\(store.inboxCount)")
                 .font(Theme.font(11, weight: .bold))
                 .foregroundColor(Theme.amber)
+            }.frame(width: 36, height: 56).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("展开待整理，\(store.inboxCount) 条")
         }
         .foregroundColor(Theme.textDim)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 22)
         .background(Color.black.opacity(0.12))
-        .help("暂无待整理")
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("待整理为空")
+        .help("展开待整理")
     }
 }
 
@@ -436,6 +479,7 @@ private struct CollapsedInboxRail: View {
 private struct InboxColumn: View {
     @ObservedObject var store: Store
     @ObservedObject var focus: OrganizeFocus
+    var onCollapse: () -> Void = {}
     @State private var showAI = false
 
     var body: some View {
@@ -453,6 +497,11 @@ private struct InboxColumn: View {
                     .background(Capsule().fill(Theme.amberSoft))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("待整理 \(store.inboxCount) 条")
+                Button(action: onCollapse) {
+                    Image(systemName: "sidebar.left").frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }.buttonStyle(.plain).foregroundColor(Theme.textDim)
+                    .accessibilityLabel("收起待整理").help("收起待整理")
             }
             Text("拖进右边的象限，或选中后按 1–4 归位")
                 .font(Theme.font(11))
@@ -514,7 +563,7 @@ private struct InboxCard: View {
                 if let date = item.suggestedRemindAt {
                     HStack(spacing: 3) {
                         Image(systemName: "bell.fill")
-                        Text(ReminderFormat.short(date))
+                        Text("待启用 · \(ReminderFormat.short(date))")
                     }
                     .font(Theme.font(10, weight: .medium))
                     .foregroundColor(Theme.amber)
@@ -760,11 +809,12 @@ private struct QuadrantTaskRow: View {
                 DurationPill(minutes: task.estimatedMinutes, emptyLabel: "估时") {
                     store.setEstimate(task.id, minutes: $0)
                 }
-                if task.isToday || hovering {
+                if !task.completed {
                     Button { store.toggleToday(task.id) } label: {
                         Image(systemName: task.isToday ? "sun.max.fill" : "sun.max")
                             .font(.system(size: 12))
                             .foregroundColor(task.isToday ? Theme.amber : Theme.textDim)
+                            .frame(width: 26, height: 26).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help(task.isToday ? "移出今天" : "加入今天")
@@ -775,7 +825,7 @@ private struct QuadrantTaskRow: View {
             // Only real secondary state gets another line. Estimate and Today
             // stay above so short cards never hide them behind the add field.
             if task.dueAt != nil || task.completed || task.remindAt != nil
-                || hovering || store.activeTimer?.taskID == task.id
+                || isSelected || store.activeTimer?.taskID == task.id
                 || store.parallelRuns.contains(where: { $0.taskID == task.id }) {
             HStack(spacing: 8) {
                 if let due = task.dueAt { DueBadge(date: due, completed: task.completed) }
@@ -785,10 +835,10 @@ private struct QuadrantTaskRow: View {
                 } else if task.remindAt != nil {
                     ReminderPill(date: task.remindAt) { store.setRemind(task.id, at: $0) }
                 }
-                if !task.completed, (hovering || store.activeTimer?.taskID == task.id) {
+                if !task.completed, (isSelected || store.activeTimer?.taskID == task.id) {
                     FocusTimerButton(store: store, task: task)
                 }
-                if !task.completed, (hovering || store.parallelRuns.contains(where: { $0.taskID == task.id })) {
+                if !task.completed, (isSelected || store.parallelRuns.contains(where: { $0.taskID == task.id })) {
                     ParallelRunButton(store: store, task: task)
                 }
                 Spacer(minLength: 0)

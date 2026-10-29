@@ -156,7 +156,8 @@ final class ProductivityTests: XCTestCase {
         try Data("bad-backup".utf8).write(to: url.appendingPathExtension("bak"), options: .atomic)
         let store = Store(fileURL: url, calendar: calendar())
         XCTAssertNotNil(store.persistenceIssue)
-        XCTAssertTrue(store.capture("不能覆盖旧文件"))
+        XCTAssertFalse(store.capture("不能覆盖旧文件"))
+        XCTAssertTrue(store.inbox.isEmpty)
         XCTAssertEqual(String(data: try Data(contentsOf: url), encoding: .utf8), "bad-primary")
     }
 

@@ -107,19 +107,21 @@ struct DurationPill: View {
                 }
             }
             .foregroundColor(minutes == nil
-                             ? (showsEmptyPrompt ? Theme.amber.opacity(0.88) : Theme.textDim)
+                             ? Theme.textDim
                              : Theme.amber)
             .padding(.horizontal, minutes == nil && emptyLabel == nil ? 4 : 6)
-            .padding(.vertical, 2)
+            .padding(.vertical, 4)
+            .frame(minHeight: 24)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(minutes == nil ? (showsEmptyPrompt ? Theme.amberSoft.opacity(0.55) : Color.clear)
+                    .fill(minutes == nil ? (showsEmptyPrompt ? Theme.panel.opacity(0.4) : Color.clear)
                                          : Theme.amberSoft)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .stroke(minutes == nil
-                            ? (showsEmptyPrompt ? Theme.amber.opacity(0.38) : Theme.border)
+                            ? Theme.border.opacity(0.6)
                             : Theme.amber.opacity(0.35), lineWidth: 1)
             )
         }
@@ -206,17 +208,10 @@ enum ReminderPresets {
 struct ReminderPill: View {
     let date: Date?
     let onSelect: (Date?) -> Void
+    @State private var pickerPresented = false
 
     var body: some View {
-        Menu {
-            ForEach(ReminderPresets.all(), id: \.label) { preset in
-                Button(preset.label) { onSelect(preset.date) }
-            }
-            if date != nil {
-                Divider()
-                Button("清除提醒", role: .destructive) { onSelect(nil) }
-            }
-        } label: {
+        Button { pickerPresented = true } label: {
             HStack(spacing: 3) {
                 Image(systemName: date == nil ? "bell" : "bell.fill").font(.system(size: 10))
                 if let d = date {
@@ -235,12 +230,24 @@ struct ReminderPill: View {
                     .stroke(date == nil ? Theme.border : Theme.amber.opacity(0.35), lineWidth: 1)
             )
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
         .fixedSize()
         .help("提醒时间")
         .accessibilityLabel("提醒时间")
         .accessibilityValue(date.map { ReminderFormat.short($0) } ?? "未设置")
+        .popover(isPresented: $pickerPresented) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("提醒时间").font(Theme.font(12, weight: .semibold))
+                ForEach(ReminderPresets.all(), id: \.label) { preset in
+                    Button(preset.label) { onSelect(preset.date); pickerPresented = false }
+                        .buttonStyle(SecondaryActionStyle())
+                }
+                if date != nil {
+                    Button("清除提醒") { onSelect(nil); pickerPresented = false }
+                        .buttonStyle(.plain).foregroundColor(Theme.qUrgent)
+                }
+            }.padding(12).foregroundColor(Theme.text).background(Theme.bg)
+        }
     }
 }
 

@@ -18,6 +18,7 @@ struct CaptureView: View {
     @AppStorage("pareCapturePureMode") private var pureMode = false
     /// 记下成功瞬间的确认脉冲：输入框描边闪一下琥珀微光再淡出，给"记进去了"的即时反馈。
     @State private var justCaptured = false
+    @State private var captureMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -34,7 +35,10 @@ struct CaptureView: View {
         .frame(width: 372)
         .background(FrostBackground(tint: 0.90))
         // 每次唤出面板都聚焦输入框：focusTick 首次订阅即发一次、之后每次 show 递增。
-        .onReceive(chrome.$focusTick) { _ in focused = true }
+        .onReceive(chrome.$focusTick) { _ in
+            focused = true
+            captureMessage = nil
+        }
         .onReceive(chrome.$suggestedDraft) { value in
             guard let value else { return }
             draft = value
@@ -73,6 +77,9 @@ struct CaptureView: View {
                 .tint(Theme.amber)
                 .focused($focused)
                 .onSubmit(submit)
+                .onChange(of: draft) { value in
+                    if !value.isEmpty { captureMessage = nil }
+                }
                 .padding(.horizontal, 13)
                 .padding(.vertical, 12)
                 .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Theme.panel.opacity(0.7)))
@@ -91,9 +98,13 @@ struct CaptureView: View {
                 .animation(.easeOut(duration: 0.15), value: focused)
                 .accessibilityLabel("随手记输入框")
                 .accessibilityHint("输入一句话，回车记下")
-            Text("回车记下 · 点别处关闭")
+            Text(captureMessage ?? "回车记下 · 点别处关闭")
                 .font(Theme.font(11))
-                .foregroundColor(Theme.textFaint)
+                .foregroundColor(captureMessage == nil ? Theme.textFaint : Theme.amber)
+            if let issue = store.persistenceIssue {
+                Text(issue).font(Theme.font(11)).foregroundColor(Theme.qUrgent)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -218,13 +229,19 @@ struct CaptureView: View {
     }
 
     private func submit() {
-        if store.capture(draft) {
+        if let result = store.captureWithResult(draft) {
+            switch result {
+            case .inbox: captureMessage = "已记下 · 待整理"
+            case .reminder(let date): captureMessage = "已设置提醒 · \(ReminderFormat.short(date))"
+            }
             draft = ""
             // 记下确认脉冲：先亮起，下个 runloop 再放大淡出（同 TaskCheckbox 的一次性手法）。
             justCaptured = true
             DispatchQueue.main.async {
                 withAnimation(.easeOut(duration: 0.5)) { justCaptured = false }
             }
+        } else if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            captureMessage = "未保存，输入已保留"
         }
         focused = true
     }

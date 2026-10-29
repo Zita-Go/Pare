@@ -30,10 +30,9 @@ final class UIContractTests: XCTestCase {
         let planning = try source("Sources/Pare/PlanningViews.swift")
         XCTAssertTrue(organize.contains("四象限"))
         XCTAssertTrue(organize.contains("今日计划"))
-        XCTAssertTrue(organize.contains("想法与历史"))
+        XCTAssertTrue(organize.contains("搜索与记录"))
         XCTAssertTrue(organize.contains("CollapsedInboxRail"))
         XCTAssertTrue(organize.contains("quadrantRowHeights"))
-        XCTAssertFalse(organize.contains("inboxManuallyExpanded"))
         XCTAssertFalse(organize.contains("rotationEffect(.degrees(-90))"))
         XCTAssertFalse(organize.contains("Text(quadrant.hint)"),
                        "行动提示应只保留在 help/VoiceOver，不再常驻象限标题")

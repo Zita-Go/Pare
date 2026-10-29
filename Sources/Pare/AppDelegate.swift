@@ -3,7 +3,12 @@ import PareCore
 
 /// Wires everything together and owns the single shared `Store`.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let store = Store(fileURL: Store.defaultFileURL())
+    let store: Store
+
+    init(fileURL: URL) {
+        store = Store(fileURL: fileURL)
+        super.init()
+    }
 
     private var statusItemController: StatusItemController!
     private var popoverController: PopoverController!
@@ -18,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
     private var sleepStoppedTimer: (task: String, minutes: Int)?
+    private var didFinishLaunching = false
+    private var pendingReopen = false
+    private var terminationAttempt: UUID?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menu-bar-only apps don't create a Dock tile, but Notification Center
@@ -28,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
         }
+        let interruptedFocusNotice = store.recoverInterruptedFocus()
         store.rolloverIfNeeded()
 
         popoverController = PopoverController(store: store, onOpenOrganize: { [weak self] in
@@ -82,6 +91,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onFinish: { [weak self] in self?.onboardingWindowController = nil })
             onboardingWindowController?.present()
         }
+        didFinishLaunching = true
+        if pendingReopen {
+            pendingReopen = false
+            openOrganize()
+        }
+        if let interruptedFocusNotice {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let alert = NSAlert()
+                alert.messageText = "上次专注已暂停"
+                alert.informativeText = interruptedFocusNotice
+                alert.addButton(withTitle: "打开整理")
+                alert.addButton(withTitle: "稍后")
+                NSApp.activate(ignoringOtherApps: true)
+                if alert.runModal() == .alertFirstButtonReturn { self.openOrganize() }
+            }
+        }
+    }
+
+    func requestReopen() {
+        guard didFinishLaunching else { pendingReopen = true; return }
+        openOrganize()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        requestReopen()
+        return true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if terminationAttempt != nil { return .terminateLater }
+        guard store.prepareForTermination() else {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "更改尚未保存"
+            alert.informativeText = "\(store.persistenceIssue ?? "暂时无法写入数据。")\n可以先取消退出，修复数据位置后重试保存；直接退出会丢失尚未保存的更改。"
+            alert.addButton(withTitle: "取消退出")
+            alert.addButton(withTitle: "仍然退出")
+            NSApp.activate(ignoringOtherApps: true)
+            return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+        }
+        guard let notificationManager else { return .terminateNow }
+        let attempt = UUID()
+        terminationAttempt = attempt
+        notificationManager.flushForTermination { [weak self] result in
+            guard let self, self.terminationAttempt == attempt else { return }
+            let shouldQuit: Bool
+            switch result {
+            case .success:
+                shouldQuit = true
+            case .failure(let error):
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = "提醒尚未确认提交"
+                alert.informativeText = "任务数据已保存。\(error.localizedDescription)\n取消退出后可再次尝试；仍然退出可能导致新提醒未能按时出现。"
+                alert.addButton(withTitle: "取消退出")
+                alert.addButton(withTitle: "仍然退出")
+                NSApp.activate(ignoringOtherApps: true)
+                shouldQuit = alert.runModal() == .alertSecondButtonReturn
+            }
+            self.terminationAttempt = nil
+            sender.reply(toApplicationShouldTerminate: shouldQuit)
+        }
+        return .terminateLater
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
