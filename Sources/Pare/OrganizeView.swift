@@ -315,11 +315,12 @@ struct OrganizeView: View {
     }
 
     private func quadrantRowHeights(total: CGFloat) -> (top: CGFloat, bottom: CGFloat) {
-        let available = max(240, total - 12)
-        let topCount = store.tasks(in: .importantUrgent).filter { !$0.completed }.count
-            + store.tasks(in: .importantNotUrgent).filter { !$0.completed }.count
-        let bottomCount = store.tasks(in: .urgentNotImportant).filter { !$0.completed }.count
-            + store.tasks(in: .neither).filter { !$0.completed }.count
+        let available = max(0, total - 12)
+        // Completed tasks remain visible and need the same scrollable space.
+        let topCount = store.tasks(in: .importantUrgent).count
+            + store.tasks(in: .importantNotUrgent).count
+        let bottomCount = store.tasks(in: .urgentNotImportant).count
+            + store.tasks(in: .neither).count
         if bottomCount == 0, topCount > 0 {
             let bottom = min(120, available * 0.28)
             return (available - bottom, bottom)
@@ -328,13 +329,21 @@ struct OrganizeView: View {
             let top = min(120, available * 0.28)
             return (top, available - top)
         }
+        let topShare: CGFloat
         if topCount >= max(2, bottomCount * 2) {
-            return (available * 0.64, available * 0.36)
+            topShare = 0.64
+        } else if bottomCount >= max(2, topCount * 2) {
+            topShare = 0.36
+        } else {
+            topShare = 0.5
         }
-        if bottomCount >= max(2, topCount * 2) {
-            return (available * 0.36, available * 0.64)
-        }
-        return (available * 0.5, available * 0.5)
+        // Reserve room for the header, add field and a task's secondary actions
+        // before giving the busier row more space. Compact windows split evenly
+        // when neither populated row can afford to shrink further.
+        let minimumPopulatedRow = min(200, available / 2)
+        let top = min(available - minimumPopulatedRow,
+                      max(minimumPopulatedRow, available * topShare))
+        return (top, available - top)
     }
 
     private var progressString: String {
