@@ -190,12 +190,12 @@ public final class Store: ObservableObject {
         // changed in a newer app. A new schema is not a corrupt old snapshot.
         struct Header: Decodable { var schemaVersion: Int? }
         let version = try decoder.decode(Header.self, from: data).schemaVersion ?? 1
-        guard version <= 4 else { throw DataTransferError.unsupportedVersion(version) }
+        guard version <= 5 else { throw DataTransferError.unsupportedVersion(version) }
         return try decoder.decode(Snapshot.self, from: data)
     }
 
     private func currentSnapshot() -> Snapshot {
-        Snapshot(schemaVersion: 4, inbox: inbox, tasks: tasks,
+        Snapshot(schemaVersion: 5, inbox: inbox, tasks: tasks,
                  archive: archive, thoughts: thoughts, activeTimer: activeTimer,
                  parallelRuns: parallelRuns,
                  lastActiveDay: lastActiveDay, settings: settings,
@@ -272,6 +272,7 @@ public final class Store: ObservableObject {
         // An imported backup cannot tell us when a personal focus session
         // actually stopped. Preserve its recorded work, but never resume it.
         var imported = snapshot
+        imported.schemaVersion = 5
         imported.activeTimer = nil
         var previousBackup: Data?
         var backedUpCurrentFile = false
@@ -403,58 +404,149 @@ public final class Store: ObservableObject {
     @discardableResult
     public func keepAsThought(inboxID: UUID, now: Date = Date()) -> ThoughtItem? {
         guard let index = inbox.firstIndex(where: { $0.id == inboxID }) else { return nil }
-        let item = inbox.remove(at: index)
+        let item = inbox[index]
         let thought = ThoughtItem(text: item.text, createdAt: item.createdAt, updatedAt: now)
-        thoughts.insert(thought, at: 0)
-        save()
+        guard persistIdeaMutation({
+            inbox.remove(at: index)
+            thoughts.insert(thought, at: 0)
+        }) else { return nil }
         return thought
     }
 
+    @discardableResult
     public func addThought(_ text: String, notes: String? = nil, now: Date = Date()) -> ThoughtItem? {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return nil }
         let thought = ThoughtItem(text: t, notes: Self.nonBlank(notes), createdAt: now, updatedAt: now)
-        thoughts.insert(thought, at: 0)
-        save()
+        guard persistIdeaMutation({ thoughts.insert(thought, at: 0) }) else { return nil }
         return thought
     }
 
     public func updateThought(_ id: UUID, text: String, notes: String?, reviewAt: Date? = nil,
                               now: Date = Date()) {
-        guard let index = thoughts.firstIndex(where: { $0.id == id }) else { return }
+        guard let idea = thoughts.first(where: { $0.id == id }) else { return }
+        updateIdea(id, text: text, notes: notes, nextQuestion: idea.nextQuestion,
+                   stage: idea.stage, reviewAt: reviewAt, now: now)
+    }
+
+    @discardableResult
+    public func updateIdea(_ id: UUID, text: String, notes: String?, nextQuestion: String?,
+                           stage: IdeaStage, reviewAt: Date?, now: Date = Date()) -> Bool {
+        guard let index = thoughts.firstIndex(where: { $0.id == id }) else { return false }
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
-        thoughts[index].text = t
-        thoughts[index].notes = Self.nonBlank(notes)
-        thoughts[index].updatedAt = now
-        thoughts[index].reviewAt = reviewAt
-        save()
+        guard !t.isEmpty else { return false }
+        return persistIdeaMutation {
+            thoughts[index].text = t
+            thoughts[index].notes = Self.nonBlank(notes)
+            thoughts[index].nextQuestion = Self.nonBlank(nextQuestion)
+            thoughts[index].stage = stage
+            thoughts[index].updatedAt = now
+            thoughts[index].reviewAt = reviewAt
+        }
     }
 
-    public func deleteThought(_ id: UUID) {
-        guard let index = thoughts.firstIndex(where: { $0.id == id }) else { return }
-        let thought = thoughts.remove(at: index)
+    @discardableResult
+    public func addIdeaEntry(ideaID: UUID, text: String, kind: IdeaEntryKind = .note,
+                             now: Date = Date()) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, let index = thoughts.firstIndex(where: { $0.id == ideaID }) else { return false }
+        return persistIdeaMutation {
+            thoughts[index].entries.append(IdeaEntry(text: t, kind: kind, createdAt: now))
+            thoughts[index].updatedAt = now
+        }
+    }
+
+    @discardableResult
+    public func deleteThought(_ id: UUID) -> Bool {
+        guard let index = thoughts.firstIndex(where: { $0.id == id }) else { return false }
+        let thought = thoughts[index]
+        guard persistIdeaMutation({ thoughts.remove(at: index) }) else { return false }
         stageUndo(.thought(thought, index), message: "已删除一个想法")
-        save()
+        return true
     }
 
-    /// Promote a clarified idea into an actionable quadrant task while keeping
-    /// the notes that led to it.
+    /// Compatibility entry point: derive an action without consuming the idea.
     @discardableResult
     public func promoteThought(_ id: UUID, to quadrant: Quadrant = .importantNotUrgent,
                                addToToday: Bool = false, now: Date = Date()) -> TaskItem? {
-        guard let index = thoughts.firstIndex(where: { $0.id == id }) else { return nil }
-        let thought = thoughts.remove(at: index)
-        let task = TaskItem(text: thought.text, quadrant: quadrant, createdAt: now,
+        guard let thought = thoughts.first(where: { $0.id == id }) else { return nil }
+        return createTaskFromIdea(ideaID: id, title: thought.text, quadrant: quadrant,
+                                  addToToday: addToToday, now: now)
+    }
+
+    @discardableResult
+    public func createTaskFromIdea(ideaID: UUID, title: String, quadrant: Quadrant = .importantNotUrgent,
+                                    addToToday: Bool = false, now: Date = Date()) -> TaskItem? {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, let index = thoughts.firstIndex(where: { $0.id == ideaID }) else { return nil }
+        let thought = thoughts[index]
+        let task = TaskItem(text: t, quadrant: quadrant, createdAt: now,
                             isToday: addToToday, lastProgressAt: now, note: thought.notes,
                             todayOrder: addToToday ? nextTodayOrder() : nil)
-        tasks.append(task)
-        save()
+        guard persistIdeaMutation({
+            tasks.append(task)
+            thoughts[index].linkedTaskIDs.append(task.id)
+            thoughts[index].updatedAt = now
+        }) else { return nil }
         return task
     }
 
+    @discardableResult
+    public func linkTaskToIdea(ideaID: UUID, taskID: UUID, now: Date = Date()) -> Bool {
+        guard let index = thoughts.firstIndex(where: { $0.id == ideaID }),
+              !thoughts[index].linkedTaskIDs.contains(taskID),
+              tasks.contains(where: { $0.id == taskID }) || archive.contains(where: { $0.id == taskID })
+        else { return false }
+        return persistIdeaMutation {
+            thoughts[index].linkedTaskIDs.append(taskID)
+            thoughts[index].updatedAt = now
+        }
+    }
+
+    @discardableResult
+    public func unlinkTaskFromIdea(ideaID: UUID, taskID: UUID, now: Date = Date()) -> Bool {
+        guard let index = thoughts.firstIndex(where: { $0.id == ideaID }),
+              thoughts[index].linkedTaskIDs.contains(taskID) else { return false }
+        return persistIdeaMutation {
+            thoughts[index].linkedTaskIDs.removeAll { $0 == taskID }
+            thoughts[index].updatedAt = now
+        }
+    }
+
+    public func ideaLinkedTasks(_ id: UUID) -> [TaskItem] {
+        guard let idea = thoughts.first(where: { $0.id == id }) else { return [] }
+        var seen = Set<UUID>()
+        return idea.linkedTaskIDs.compactMap { taskID in
+            guard seen.insert(taskID).inserted else { return nil }
+            return tasks.first { $0.id == taskID } ?? archive.first { $0.id == taskID }
+        }
+    }
+
+    public func ideas(for taskID: UUID) -> [ThoughtItem] {
+        thoughts.filter { $0.linkedTaskIDs.contains(taskID) }
+    }
+
+    /// Idea drafts stay in the editor until a complete action is durable.
+    /// Preserve pending changes from other features if this action rolls back.
+    private func persistIdeaMutation(_ mutation: () -> Void) -> Bool {
+        guard !loading, !persistenceLocked else { return false }
+        let previousThoughts = thoughts
+        let previousTasks = tasks
+        let previousInbox = inbox
+        let previouslyUnsaved = hasUnsavedChanges
+        mutation()
+        guard save() else {
+            thoughts = previousThoughts
+            tasks = previousTasks
+            inbox = previousInbox
+            hasUnsavedChanges = previouslyUnsaved
+            return false
+        }
+        return true
+    }
+
     public func thoughtsDueForReview(now: Date = Date()) -> [ThoughtItem] {
-        thoughts.filter { ($0.reviewAt ?? .distantFuture) <= now }
+        thoughts.filter { $0.stage != .archived && ($0.reviewAt ?? .distantFuture) <= now }
             .sorted { ($0.reviewAt ?? .distantPast) < ($1.reviewAt ?? .distantPast) }
     }
 

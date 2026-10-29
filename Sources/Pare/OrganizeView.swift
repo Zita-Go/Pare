@@ -6,7 +6,7 @@ private enum WorkspaceMode: String, CaseIterable {
     case matrix = "四象限"
     case today = "今日计划"
     case library = "搜索与记录"
-    case goals = "目标与偏好"
+    case goals = "想法与项目"
 }
 
 /// Matrix drag values carry their origin so a quadrant can distinguish a raw
@@ -56,6 +56,7 @@ struct OrganizeView: View {
     @State private var assistantTask: TaskItem?
     @State private var inboxExpanded: Bool? = nil
     @State private var searchFocusRequest = 0
+    @State private var showLongTermGoals = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -108,6 +109,13 @@ struct OrganizeView: View {
         .animation(.easeOut(duration: 0.2), value: inboxVisible)
         .sheet(isPresented: $showAssistant) {
             AIAssistantView(store: store, workflow: assistantWorkflow, task: assistantTask)
+        }
+        .sheet(isPresented: $showLongTermGoals) {
+            VStack(alignment: .trailing, spacing: 12) {
+                Button("关闭") { showLongTermGoals = false }
+                    .buttonStyle(SecondaryActionStyle()).keyboardShortcut(.cancelAction)
+                GoalPlanningView(store: store)
+            }.padding(18).frame(width: 640, height: 560).background(Theme.bg)
         }
         .onChange(of: workspace) { mode in
             if mode != .matrix { inboxExpanded = false }
@@ -233,7 +241,7 @@ struct OrganizeView: View {
                 workspace = .matrix
                 inboxExpanded = true
             })
-        case .goals: GoalPlanningView(store: store)
+        case .goals: IdeaWorkspaceView(store: store, onOpenGoals: { showLongTermGoals = true })
         }
     }
 

@@ -11,6 +11,7 @@ struct TaskDetailsButton: View {
     @ObservedObject var store: Store
     let task: TaskItem
     var showsLabel = false
+    var allowsIdeaNavigation = true
     @State private var presented = false
 
     var body: some View {
@@ -35,7 +36,8 @@ struct TaskDetailsButton: View {
         .accessibilityLabel("编辑任务详情")
         .accessibilityHint("打开任务详情")
         .popover(isPresented: $presented, arrowEdge: .trailing) {
-            TaskDetailView(store: store, task: task, isPresented: $presented)
+            TaskDetailView(store: store, task: task, isPresented: $presented,
+                           allowsIdeaNavigation: allowsIdeaNavigation)
         }
     }
 }
@@ -44,6 +46,7 @@ private struct TaskDetailView: View {
     @ObservedObject var store: Store
     let task: TaskItem
     @Binding var isPresented: Bool
+    let allowsIdeaNavigation: Bool
 
     @State private var title: String
     @State private var nextAction: String
@@ -68,11 +71,13 @@ private struct TaskDetailView: View {
     @State private var applicationBundleID: String
     @State private var applicationName: String
     @State private var showScheduling: Bool
+    @State private var sourceIdea: ThoughtItem?
 
-    init(store: Store, task: TaskItem, isPresented: Binding<Bool>) {
+    init(store: Store, task: TaskItem, isPresented: Binding<Bool>, allowsIdeaNavigation: Bool = true) {
         self.store = store
         self.task = task
         self._isPresented = isPresented
+        self.allowsIdeaNavigation = allowsIdeaNavigation
         _title = State(initialValue: task.text)
         _nextAction = State(initialValue: task.nextAction ?? "")
         _definitionOfDone = State(initialValue: task.definitionOfDone ?? "")
@@ -113,6 +118,19 @@ private struct TaskDetailView: View {
             Divider().overlay(Theme.hairline)
             ScrollView {
             VStack(alignment: .leading, spacing: 13) {
+                if allowsIdeaNavigation, !store.ideas(for: task.id).isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("关联想法与项目").font(Theme.font(11)).foregroundColor(Theme.textDim)
+                        ForEach(store.ideas(for: task.id)) { idea in
+                            Button { sourceIdea = idea } label: {
+                                Label(idea.text, systemImage: "lightbulb")
+                                    .font(Theme.font(12)).foregroundColor(Theme.amber)
+                                    .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 4).contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityLabel("打开来源想法：\(idea.text)")
+                        }
+                    }
+                }
                 field("任务", text: $title, prompt: "要完成什么？")
                 field("下一步", text: $nextAction, prompt: "最小、具体的下一步动作")
                 field("完成标准", text: $definitionOfDone, prompt: "做到什么程度就可以结束？")
@@ -186,6 +204,9 @@ private struct TaskDetailView: View {
         }
         .frame(width: 420, height: 620)
         .background(Theme.bg)
+        .sheet(item: $sourceIdea) { idea in
+            IdeaDetailView(store: store, ideaID: idea.id, sourceTaskID: task.id)
+        }
     }
 
     private var dateSection: some View {
@@ -1543,6 +1564,7 @@ struct LibraryView: View {
     var onShowInbox: () -> Void = {}
     @State private var query = ""
     @State private var scope: LibraryScope = .all
+    @State private var selectedIdea: ThoughtItem?
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -1588,7 +1610,9 @@ struct LibraryView: View {
                             }
                             if !filteredThoughts.isEmpty {
                                 groupHeading("想法", count: filteredThoughts.count)
-                                ForEach(filteredThoughts) { ThoughtRow(store: store, thought: $0) }
+                                ForEach(filteredThoughts) { idea in
+                                    ThoughtRow(thought: idea, onOpen: { selectedIdea = idea })
+                                }
                             }
                             if !filteredArchive.isEmpty {
                                 groupHeading("历史", count: filteredArchive.count)
@@ -1597,7 +1621,9 @@ struct LibraryView: View {
                         case .inbox:
                             ForEach(filteredInbox) { inboxRow($0) }
                         case .thoughts:
-                            ForEach(filteredThoughts) { ThoughtRow(store: store, thought: $0) }
+                            ForEach(filteredThoughts) { idea in
+                                ThoughtRow(thought: idea, onOpen: { selectedIdea = idea })
+                            }
                         case .deadlines:
                             DeadlineList(store: store, tasks: filteredDeadlines)
                         case .tasks:
@@ -1613,6 +1639,9 @@ struct LibraryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear { if searchFocusRequest > 0 { activateSearch() } }
         .onChange(of: searchFocusRequest) { _ in activateSearch() }
+        .sheet(item: $selectedIdea) { idea in
+            IdeaDetailView(store: store, ideaID: idea.id)
+        }
     }
 
     private func activateSearch() {
@@ -1629,7 +1658,10 @@ struct LibraryView: View {
         store.inbox.filter { matches($0.text) }
     }
     private var filteredThoughts: [ThoughtItem] {
-        store.thoughts.filter { matches($0.text + " " + ($0.notes ?? "")) }
+        store.thoughts.filter {
+            matches([$0.text, $0.notes ?? "", $0.nextQuestion ?? "",
+                     $0.entries.map(\.text).joined(separator: " ")].joined(separator: " "))
+        }
     }
     private var filteredTasks: [TaskItem] {
         store.tasks.filter { !$0.completed && matches(searchableText($0)) }
@@ -1790,25 +1822,25 @@ private struct ArchiveRow: View {
 }
 
 private struct ThoughtRow: View {
-    @ObservedObject var store: Store
     let thought: ThoughtItem
-    @State private var presented = false
+    let onOpen: () -> Void
     var body: some View {
-        Button { presented = true } label: {
+        Button(action: onOpen) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "lightbulb.fill").foregroundColor(Theme.amber)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(thought.text).font(Theme.font(13, weight: .medium)).foregroundColor(Theme.text)
+                    Text(thought.stage.title).font(Theme.font(10)).foregroundColor(Theme.textDim)
                     if let notes = thought.notes {
                         Text(notes).font(Theme.font(11)).foregroundColor(Theme.textDim).lineLimit(2)
                     }
-                    if let reviewAt = thought.reviewAt {
+                    if thought.stage != .archived, let reviewAt = thought.reviewAt {
                         HStack(spacing: 3) {
                             Image(systemName: reviewAt <= Date() ? "bell.fill" : "calendar.badge.clock")
-                            Text("回看 \(DueBadge.shortDate(reviewAt))")
+                            Text(reviewAt <= Date() ? "可以回看" : "回看 \(DueBadge.shortDate(reviewAt))")
                         }
                         .font(Theme.font(10, weight: .medium))
-                        .foregroundColor(reviewAt <= Date() ? Theme.qUrgent : Theme.amber)
+                        .foregroundColor(Theme.textDim)
                     }
                 }
                 Spacer()
@@ -1817,70 +1849,6 @@ private struct ThoughtRow: View {
             .padding(11).contentShape(Rectangle()).panel(corner: 10)
         }
         .buttonStyle(.plain)
-        .popover(isPresented: $presented, arrowEdge: .trailing) {
-            ThoughtEditor(store: store, thought: thought, isPresented: $presented)
-        }
-    }
-}
-
-private struct ThoughtEditor: View {
-    @ObservedObject var store: Store
-    let thought: ThoughtItem
-    @Binding var isPresented: Bool
-    @State private var title: String
-    @State private var notes: String
-    @State private var hasReview: Bool
-    @State private var reviewAt: Date
-
-    init(store: Store, thought: ThoughtItem, isPresented: Binding<Bool>) {
-        self.store = store; self.thought = thought; self._isPresented = isPresented
-        _title = State(initialValue: thought.text)
-        _notes = State(initialValue: thought.notes ?? "")
-        _hasReview = State(initialValue: thought.reviewAt != nil)
-        _reviewAt = State(initialValue: thought.reviewAt ?? Date().addingTimeInterval(86_400))
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            Text("继续想").font(Theme.font(16, weight: .semibold)).foregroundColor(Theme.text)
-            TextField("这个想法是什么？", text: $title)
-                .textFieldStyle(.plain).font(Theme.font(14)).foregroundColor(Theme.text)
-                .padding(9).overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border))
-            Text("可以写：我想达成什么？为什么重要？还缺什么证据？下一次何时再看？")
-                .font(Theme.font(11)).foregroundColor(Theme.textDim)
-            TextEditor(text: $notes)
-                .font(Theme.font(13)).foregroundColor(Theme.text).scrollContentBackground(.hidden)
-                .padding(7).frame(height: 150)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.18)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border))
-            Toggle("安排下次回看", isOn: $hasReview)
-                .toggleStyle(.switch).tint(Theme.amber).font(Theme.font(12))
-            if hasReview {
-                DatePicker("", selection: $reviewAt, displayedComponents: [.date, .hourAndMinute])
-                    .labelsHidden().datePickerStyle(.field)
-            }
-            HStack {
-                Button("删除", role: .destructive) { store.deleteThought(thought.id); isPresented = false }
-                    .buttonStyle(.plain).foregroundColor(Theme.qUrgent)
-                Button("转为任务") {
-                    store.updateThought(thought.id, text: title, notes: notes,
-                                        reviewAt: hasReview ? reviewAt : nil)
-                    _ = store.promoteThought(thought.id)
-                    isPresented = false
-                }
-                .buttonStyle(.plain).foregroundColor(Theme.amber)
-                Spacer()
-                Button("保存") {
-                    store.updateThought(thought.id, text: title, notes: notes,
-                                        reviewAt: hasReview ? reviewAt : nil)
-                    isPresented = false
-                }
-                .buttonStyle(.plain).foregroundColor(Theme.bg)
-                .padding(.horizontal, 14).padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.amber))
-            }
-        }
-        .padding(16).frame(width: 400).background(Theme.bg)
     }
 }
 

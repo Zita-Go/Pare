@@ -59,7 +59,8 @@ final class UIContractTests: XCTestCase {
         XCTAssertFalse(planning.contains("showsLabel || isActive"),
                        "紧凑计时按钮不应因运行中而强行展开文字")
         XCTAssertTrue(planning.contains("已逾期"))
-        XCTAssertTrue(planning.contains("安排下次回看"))
+        let ideas = try source("Sources/Pare/IdeaWorkspaceView.swift")
+        XCTAssertTrue(ideas.contains("回看"))
         XCTAssertTrue(planning.contains("今天只赢一件"))
         XCTAssertTrue(planning.contains("开始 5 分钟"))
         XCTAssertTrue(planning.contains("我卡住了"))

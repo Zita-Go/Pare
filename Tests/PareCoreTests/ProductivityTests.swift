@@ -53,7 +53,8 @@ final class ProductivityTests: XCTestCase {
         let promoted = reloaded.promoteThought(reloaded.thoughts[0].id)!
         XCTAssertEqual(promoted.quadrant, .importantNotUrgent)
         XCTAssertEqual(promoted.note, "目标 / 证据 / 下一步")
-        XCTAssertTrue(reloaded.thoughts.isEmpty)
+        XCTAssertEqual(reloaded.thoughts.first?.id, thought.id)
+        XCTAssertEqual(reloaded.thoughts.first?.linkedTaskIDs, [promoted.id])
     }
 
     func testUndoDeleteAndClear() {

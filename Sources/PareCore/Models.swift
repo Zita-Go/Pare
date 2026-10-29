@@ -145,8 +145,48 @@ public struct InboxItem: Identifiable, Codable, Hashable {
     }
 }
 
-/// A captured idea that should remain thinkable instead of being forced into
-/// the task system. Thoughts are intentionally light: a title and free notes.
+public enum IdeaStage: String, Codable, CaseIterable, Hashable {
+    case seed, exploring, building, parked, archived
+
+    public var title: String {
+        switch self {
+        case .seed: return "萌芽"
+        case .exploring: return "探索"
+        case .building: return "推进"
+        case .parked: return "暂放"
+        case .archived: return "归档"
+        }
+    }
+}
+
+public enum IdeaEntryKind: String, Codable, CaseIterable, Hashable {
+    case note, finding, decision
+
+    public var title: String {
+        switch self {
+        case .note: return "记录"
+        case .finding: return "发现"
+        case .decision: return "决定"
+        }
+    }
+}
+
+public struct IdeaEntry: Identifiable, Codable, Hashable {
+    public var id: UUID
+    public var text: String
+    public var kind: IdeaEntryKind
+    public var createdAt: Date
+
+    public init(id: UUID = UUID(), text: String, kind: IdeaEntryKind = .note, createdAt: Date = Date()) {
+        self.id = id
+        self.text = text
+        self.kind = kind
+        self.createdAt = createdAt
+    }
+}
+
+/// An idea retains its evolving context while several concrete actions can
+/// move through the task system independently.
 public struct ThoughtItem: Identifiable, Codable, Hashable {
     public var id: UUID
     public var text: String
@@ -156,15 +196,43 @@ public struct ThoughtItem: Identifiable, Codable, Hashable {
     /// Optional date to intentionally bring the idea back into the morning
     /// planning nudge, without turning it into a task or standalone alert.
     public var reviewAt: Date?
+    public var stage: IdeaStage
+    public var entries: [IdeaEntry]
+    public var linkedTaskIDs: [UUID]
+    public var nextQuestion: String?
 
     public init(id: UUID = UUID(), text: String, notes: String? = nil,
-                createdAt: Date = Date(), updatedAt: Date = Date(), reviewAt: Date? = nil) {
+                createdAt: Date = Date(), updatedAt: Date = Date(), reviewAt: Date? = nil,
+                stage: IdeaStage = .seed, entries: [IdeaEntry] = [],
+                linkedTaskIDs: [UUID] = [], nextQuestion: String? = nil) {
         self.id = id
         self.text = text
         self.notes = notes
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.reviewAt = reviewAt
+        self.stage = stage
+        self.entries = entries
+        self.linkedTaskIDs = linkedTaskIDs
+        self.nextQuestion = nextQuestion
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, text, notes, createdAt, updatedAt, reviewAt, stage, entries, linkedTaskIDs, nextQuestion
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        text = try container.decode(String.self, forKey: .text)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        reviewAt = try container.decodeIfPresent(Date.self, forKey: .reviewAt)
+        stage = try container.decodeIfPresent(IdeaStage.self, forKey: .stage) ?? .seed
+        entries = try container.decodeIfPresent([IdeaEntry].self, forKey: .entries) ?? []
+        linkedTaskIDs = try container.decodeIfPresent([UUID].self, forKey: .linkedTaskIDs) ?? []
+        nextQuestion = try container.decodeIfPresent(String.self, forKey: .nextQuestion)
     }
 }
 

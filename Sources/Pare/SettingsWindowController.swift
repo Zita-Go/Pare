@@ -153,6 +153,7 @@ private struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             case .ai:
                 settingsGroup("AI 连接（可选）") { AIConfigurationView() }
+                settingsGroup("规划偏好") { AgentPreferencesView(store: store) }
                 settingsGroup("本地历史与背景") { AIHistorySettingsView(store: store) }
             case .data:
                 settingsGroup("启动与数据备份") { startupAndDataCard }

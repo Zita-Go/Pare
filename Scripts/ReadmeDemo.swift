@@ -127,6 +127,13 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         store.capture("找个时间整理书桌")
         store.capture("给旅行相册加一页手绘地图")
         _ = store.addThought("每周留一个不排计划的下午", notes: "散步、阅读，或者什么都不做。")
+        if let idea = store.addThought("探索适合自己的研究流程", notes: "从真实问题出发，逐步整理成可以复用的方法。") {
+            _ = store.updateIdea(idea.id, text: idea.text, notes: idea.notes,
+                                 nextQuestion: "什么样的记录能帮助下一次开始？", stage: .exploring,
+                                 reviewAt: now.addingTimeInterval(7 * 86_400))
+            _ = store.addIdeaEntry(ideaID: idea.id, text: "先把一次探索缩小到一个问题，不要求一次完成整个方向。", kind: .finding)
+            _ = store.linkTaskToIdea(ideaID: idea.id, taskID: report.id)
+        }
         if parallelDemo {
             store.startParallelRun(trip.id, now: now.addingTimeInterval(-38 * 60),
                                    nextCheckAt: now.addingTimeInterval(7 * 60))
