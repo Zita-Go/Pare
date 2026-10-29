@@ -22,6 +22,8 @@ struct IntelligentAssistantView: View {
     @State private var generationID: UUID?
     @State private var errorMessage: String?
     @State private var notice: String?
+    @State private var noticeKind: FeedbackKind = .info
+    @FocusState private var instructionFocused: Bool
     @State private var showScope = false
     @State private var showCustomMinutes = false
     @State private var showSupplement = false
@@ -90,6 +92,7 @@ struct IntelligentAssistantView: View {
         .onChange(of: instruction) { _ in if work == nil && proposal == nil { rebuildPreview() } }
         .onChange(of: service.configurationRevision) { _ in
             invalidateContext(); loadScope(); rebuildPreview()
+            noticeKind = .info
             notice = "服务配置已更新，请检查参考范围后重新生成。"
         }
         .sheet(isPresented: $showSettings) {
@@ -102,12 +105,14 @@ struct IntelligentAssistantView: View {
 
     private var header: some View {
         HStack {
-            Text(intent.title).font(Theme.font(20, weight: .semibold))
+            Label(intent.title, systemImage: "sparkles").font(Theme.Typography.title)
             Spacer()
-            Button { showSettings = true } label: { Image(systemName: "gearshape") }.help("AI 连接设置")
-            Button("关闭") { cancelRequest(); dismiss() }
+            Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                .buttonStyle(IconActionStyle()).help("AI 连接设置").accessibilityLabel("AI 连接设置")
+            Button("关闭") { cancelRequest(); dismiss() }.buttonStyle(TertiaryActionStyle())
         }.buttonStyle(.plain).padding(.horizontal, 20).padding(.vertical, 16)
-        .overlay(alignment: .bottom) { Divider() }
+        .background(Theme.surface.opacity(0.45))
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.separator).frame(height: 1) }
     }
 
     private var requiredContent: String {
@@ -123,7 +128,7 @@ struct IntelligentAssistantView: View {
             HStack {
                 Text(displayRequest?.contextSummary ?? "本次参考范围").font(Theme.font(11, weight: .medium))
                 Spacer()
-                Button(showScope ? "收起" : "调整参考") { showScope.toggle() }.buttonStyle(.plain)
+                Button(showScope ? "收起" : "调整参考") { showScope.toggle() }.buttonStyle(TertiaryActionStyle())
             }
             Text("发送到 \(service.configuration.baseURL)")
                 .font(Theme.font(10)).textSelection(.enabled)
@@ -154,6 +159,7 @@ struct IntelligentAssistantView: View {
                     Button("记住当前服务的范围") {
                         var remembered = options; remembered.selectedGoalIDs = []
                         service.rememberIntelligenceContext(remembered)
+                        noticeKind = .success
                         notice = "已记住当前服务的范围；目标每次另行选择。"
                     }
                     Spacer()
@@ -161,6 +167,7 @@ struct IntelligentAssistantView: View {
                         service.forgetIntelligenceContext()
                         options = IntelligenceContextOptions(includeIdeaRecords: false, includeLinkedTasks: false)
                         invalidateContext(); rebuildPreview()
+                        noticeKind = .info
                         notice = "已清除当前服务的授权记忆，旧结果已作废。"
                     }
                 }.font(Theme.font(10))
@@ -184,13 +191,16 @@ struct IntelligentAssistantView: View {
                 ForEach([15, 30, 60, 120], id: \.self) { minutes in
                     Button { availableMinutes = minutes; showCustomMinutes = false } label: {
                         Text("\(minutes) 分钟")
-                            .foregroundColor(availableMinutes == minutes ? Theme.bg : Theme.textDim)
+                            .foregroundColor(availableMinutes == minutes ? Theme.text : Theme.textDim)
                             .padding(.horizontal, 10).padding(.vertical, 7)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(availableMinutes == minutes ? Theme.amber : Theme.panel))
+                            .background(RoundedRectangle(cornerRadius: Theme.Radius.control).fill(availableMinutes == minutes ? Theme.surfaceRaised : Theme.surface))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                                .stroke(availableMinutes == minutes ? Theme.focus.opacity(0.6) : .clear, lineWidth: 1)
+                                .allowsHitTesting(false))
                     }.buttonStyle(.plain)
                         .accessibilityAddTraits(availableMinutes == minutes ? .isSelected : [])
                 }
-                Button("自定义") { showCustomMinutes.toggle() }
+                Button("自定义") { showCustomMinutes.toggle() }.buttonStyle(TertiaryActionStyle())
             }
             if showCustomMinutes {
                 HStack {
@@ -311,7 +321,7 @@ struct IntelligentAssistantView: View {
                 selectedActionIDs = plan.selecting($0, from: selectedActionIDs)
             })) {
                 Text(headline)
-                    .font(Theme.font(15, weight: .semibold))
+                    .font(Theme.font(15, weight: .medium))
             }.disabled(currentProposalWasAdopted || requiresFreshProposal || work != nil)
             if plan.actions.count > 1, headline != sourceTitle(action) {
                 Text("任务：\(sourceTitle(action))")
@@ -325,7 +335,7 @@ struct IntelligentAssistantView: View {
                     .font(Theme.font(11)).foregroundColor(Theme.amber)
             }
             if !action.nextAction.isEmpty {
-                Text(action.nextAction).font(Theme.font(15, weight: .medium)).textSelection(.enabled)
+                Text(action.nextAction).font(Theme.font(15, weight: .medium)).lineSpacing(4).textSelection(.enabled)
             }
             if !action.text.isEmpty { Text(action.text).font(Theme.font(13)).textSelection(.enabled) }
             if let minutes = action.plannedMinutes {
@@ -455,7 +465,9 @@ struct IntelligentAssistantView: View {
         VStack(alignment: .leading, spacing: 8) {
             if proposal == nil { Text("这次想补充什么？").font(Theme.font(12, weight: .medium)) }
             TextField(intent == .unblock ? "例如：不知道第一段怎么写" : "例如：先找一个容易开始的办法（可不填）", text: $instruction, axis: .vertical)
-                .lineLimit(2...5).textFieldStyle(.roundedBorder).disabled(work != nil)
+                .lineLimit(2...5).textFieldStyle(.plain).font(Theme.Typography.body)
+                .focused($instructionFocused)
+                .padding(10).inputSurface(focused: instructionFocused).disabled(work != nil)
             if instruction.count > 1000 {
                 Text("补充内容请控制在 1000 字以内。").font(Theme.font(11)).foregroundColor(Theme.qUrgent)
             }
@@ -479,12 +491,13 @@ struct IntelligentAssistantView: View {
             Button("再小一点") { generate(followUp: "请把上一个建议缩小，给一个更容易开始且允许停止的动作。") }
             Button("换一种思路") { generate(followUp: "上一种思路不适合，请结合相同事实换一种具体办法。") }
             Text("点击会请求新建议").font(Theme.font(10)).foregroundColor(Theme.textDim)
-        }.font(Theme.font(12)).disabled(generationUnavailable)
+        }.font(Theme.font(12)).buttonStyle(SecondaryActionStyle()).disabled(generationUnavailable)
     }
 
     private var restartButton: some View {
         Button("重新开始这一轮") {
             invalidateContext(); rebuildPreview()
+            noticeKind = .info
             notice = "已清除本轮旧要求与模型摘要；当前补充仍保留。"
         }.font(Theme.font(11)).disabled(work != nil)
     }
@@ -518,15 +531,14 @@ struct IntelligentAssistantView: View {
         VStack(alignment: .leading, spacing: 8) {
             if let errorMessage {
                 HStack(alignment: .top, spacing: 8) {
-                    Label(errorMessage, systemImage: "exclamationmark.circle")
-                        .font(Theme.font(11)).foregroundColor(Theme.qUrgent).textSelection(.enabled)
+                    FeedbackBanner(text: errorMessage, kind: .error)
                     Spacer(minLength: 0)
                     if errorOffersConnectionSettings {
-                        Button("检查连接") { showSettings = true }.font(Theme.font(11))
+                        Button("检查连接") { showSettings = true }.buttonStyle(SecondaryActionStyle())
                     }
                 }
             }
-            if let notice { Text(notice).font(Theme.font(11)).foregroundColor(Theme.amber) }
+            if let notice { FeedbackBanner(text: notice, kind: noticeKind) }
             if let proposal, !proposal.actions.isEmpty, !currentProposalWasAdopted {
                 Text(selectionSummary(proposal)).font(Theme.font(11, weight: .medium))
                 if intent == .today,
@@ -544,7 +556,8 @@ struct IntelligentAssistantView: View {
                 Spacer()
                 if work != nil {
                     ProgressView().controlSize(.small)
-                    Button("取消请求") { cancelRequest(); notice = "已取消，输入与已有建议仍保留。" }
+                    Button("取消请求") { cancelRequest(); noticeKind = .info; notice = "已取消，输入与已有建议仍保留。" }
+                        .buttonStyle(SecondaryActionStyle())
                 } else if currentProposalWasUndone || requiresFreshProposal {
                     Button(service.configuration.enabled ? "重新生成建议" : "连接 AI") {
                         if service.configuration.enabled { generate() } else { showSettings = true }
@@ -561,7 +574,9 @@ struct IntelligentAssistantView: View {
                         .disabled(generationUnavailable || (proposal != nil && instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
                 }
             }
-        }.padding(.horizontal, 16).padding(.vertical, 12).overlay(alignment: .top) { Divider() }
+        }.padding(.horizontal, 16).padding(.vertical, 12)
+            .background(Theme.surface.opacity(0.5))
+            .overlay(alignment: .top) { Rectangle().fill(Theme.separator).frame(height: 1) }
     }
 
     private func undoPanel(_ id: UUID) -> some View {
@@ -572,7 +587,7 @@ struct IntelligentAssistantView: View {
             Button(currentProposalWasAdopted ? "撤销本次采纳" : "撤销上次采纳") {
                 do {
                     try store.undoIntelligenceAdoption(id)
-                    receiptID = nil; undoneRequestID = adoptedRequestID; errorMessage = nil
+                    receiptID = nil; undoneRequestID = adoptedRequestID; errorMessage = nil; noticeKind = .info
                     if proposal != nil && !currentProposalWasAdopted {
                         // Undo changed the facts used by this newer proposal. Keep explicit
                         // instructions, but require a fresh request against the restored data.
@@ -586,7 +601,7 @@ struct IntelligentAssistantView: View {
                             nextAction: task.nextAction ?? "", definitionOfDone: task.definitionOfDone ?? ""))
                     }
                 } catch { presentError(error) }
-            }.font(Theme.font(11)).disabled(work != nil)
+            }.buttonStyle(TertiaryActionStyle()).disabled(work != nil)
                 .help("撤销会检查后续编辑；有冲突时保留后来修改的内容。")
         }
     }
@@ -651,7 +666,7 @@ struct IntelligentAssistantView: View {
         catch { presentError(error); return }
         // Keep the currently reviewed proposal and its matching request until
         // a replacement succeeds. A failed/cancelled follow-up loses no work.
-        pendingRequest = input; errorMessage = nil; notice = nil
+        pendingRequest = input; errorMessage = nil; notice = nil; noticeKind = .info
         let retainedInstructions = nextUserInstructions(followUp: followUp)
         let token = UUID(); generationID = token
         work = Task { @MainActor in
@@ -680,7 +695,7 @@ struct IntelligentAssistantView: View {
         do {
             let receipt = try store.applyIntelligenceProposal(proposal, request: request, selectedActionIDs: selectedActionIDs)
             receiptID = receipt.id; adoptedRequestID = proposal.requestID
-            notice = "已保存选中的操作。"; errorMessage = nil
+            noticeKind = .success; notice = "已保存选中的操作。"; errorMessage = nil
             if let action = proposal.actions.first(where: { $0.kind == .updateTaskNextStep && selectedActionIDs.contains($0.id) }) {
                 onAdoptNextStep?(action)
             }
@@ -688,6 +703,7 @@ struct IntelligentAssistantView: View {
     }
 
     private func presentError(_ error: Error) {
+        notice = nil; noticeKind = .info
         errorOffersConnectionSettings = false
         if let issue = error as? IntelligenceError {
             switch issue {
@@ -715,7 +731,7 @@ struct IntelligentAssistantView: View {
     private func confirmMemory(_ text: String) {
         do {
             _ = try store.confirmPreference(text: text, ideaID: memoryIdeaID, source: "用户确认 AI 提议")
-            memoryConfirmed = true
+            memoryConfirmed = true; noticeKind = .success
             notice = options.includeMemories ? "偏好已保存在本地，当前参考范围已允许发送。" : "偏好已保存在本地；本服务尚未启用发送。"
         } catch { presentError(error) }
     }
@@ -728,7 +744,7 @@ struct IntelligentAssistantView: View {
             let taskID = intent == .unblock ? subjectID : (intent == .today ? action?.sourceID : nil)
             try store.recordIntelligenceFeedback(requestID: request.id, actionID: action?.id,
                 ideaID: memoryIdeaID, sourceTaskID: taskID, kind: kind)
-            feedbackSaved = kind; notice = "反馈已保存在本地。"
+            feedbackSaved = kind; noticeKind = .success; notice = "反馈已保存在本地。"
         } catch { presentError(error) }
     }
 }

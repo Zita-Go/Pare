@@ -29,18 +29,18 @@ struct DailyAllocationPill: View {
     var body: some View {
         Button { selectedKind = effectiveKind; presented = true; error = nil } label: {
             Text((effectiveKind == .check ? "检查 " : "今天 ") + (minutes.map(DurationLabel.short) ?? "未定"))
-                .font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
+                .font(Theme.font(11, weight: .medium)).foregroundColor(effectiveKind == .check ? Theme.info : Theme.textDim)
                 .padding(.horizontal, 7).frame(minHeight: 26)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.panel.opacity(0.5)))
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.control).fill(Theme.surface))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).fixedSize()
+        .buttonStyle(CompactPillStyle()).fixedSize()
         .accessibilityLabel(effectiveKind == .check ? "设置今日检查投入" : "设置今日计划投入")
         .accessibilityValue(minutes.map(DurationLabel.short) ?? "未确定")
         .popover(isPresented: $presented) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(effectiveKind == .check ? "今天预计花多久检查？" : "今天准备投入多久？")
-                    .font(Theme.font(13, weight: .semibold))
+                    .font(Theme.font(13, weight: .medium))
                 if let scheduledMinutes {
                     Text("已安排时间块 \(DurationLabel.short(scheduledMinutes))。请在时间轴调整，避免重复计算。")
                         .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -59,10 +59,10 @@ struct DailyAllocationPill: View {
                                 .buttonStyle(SecondaryActionStyle())
                         }
                     }
-                    Button("暂不确定") { save(nil) }.buttonStyle(.plain)
+                    Button("暂不确定") { save(nil) }.buttonStyle(TertiaryActionStyle())
                 }
-                if let error { Text(error).font(Theme.font(11)).foregroundColor(Theme.qUrgent) }
-            }.padding(14).frame(width: 250).foregroundColor(Theme.text).background(Theme.bg)
+                if let error { FeedbackBanner(text: error, kind: .error) }
+            }.padding(14).frame(width: 250).foregroundColor(Theme.text).background(Theme.bg, in: RoundedRectangle(cornerRadius: Theme.Radius.popover, style: .continuous))
         }
     }
 

@@ -2,33 +2,55 @@ import SwiftUI
 import AppKit
 import PareCore
 
-/// Design tokens — "深夜书桌感": a near-black desk, warm off-white ink, and a
-/// single amber accent for completion and today's focus. This version adds a
-/// frosted-glass backdrop and a low-saturation per-quadrant palette so the four
-/// quadrants read at a glance without shouting.
+/// Graphite and sage surfaces, warm readable text, and a restrained gold accent.
+/// Semantic colors distinguish action, completion, errors and information.
 enum Theme {
-    // MARK: Base
-    static let bg        = Color(hex: 0x171D1A)   // 近黑底
-    static let text      = Color(hex: 0xF0EDE6)   // 暖白字
-    static let amber     = Color(hex: 0xE8C87A)   // 琥珀金（完成 / 今日焦点）
-    static let amberSoft = Color(hex: 0xE8C87A).opacity(0.14)
-    static let panel     = Color(hex: 0x2B3630)   // 面板底
-    static let panelHi   = Color(hex: 0x35433B)   // hover / 抬起态
-    static let border    = Color(hex: 0x425149)   // 边界
-    static let hairline  = Color(hex: 0xF0EDE6).opacity(0.07)
-    // Small helper text appears on translucent green panels, where the old
-    // 50%/28% values fell below comfortable contrast. Keep the hierarchy with
-    // two steps, but both now remain readable at 11–13 pt.
-    static let textDim   = Color(hex: 0xB6BDB6)
-    static let textFaint = Color(hex: 0x929F95)
+    static let bg             = Color(hex: 0x191E1C)
+    static let text           = Color(hex: 0xF2F0EA)
+    static let textSecondary  = Color(hex: 0xBDC6C0)
+    static let textTertiary    = Color(hex: 0x9FAAA3)
+    static let surface        = Color(hex: 0x29312D)
+    static let surfaceRaised  = Color(hex: 0x333D37)
+    static let field          = Color(hex: 0x202723)
+    static let hover          = Color.white.opacity(0.055)
+    static let border         = Color(hex: 0x526057)
+    static let separator      = Color(hex: 0xD6DED8).opacity(0.10)
+    static let amber          = Color(hex: 0xE8C87A)
+    static let amberSoft      = amber.opacity(0.12)
+    static let focus          = amber
+    static let success        = Color(hex: 0x99C7AA)
+    static let error          = Color(hex: 0xEFA494)
+    static let info           = Color(hex: 0x9BBFD9)
 
-    static let nsBg = NSColor(hex: 0x171D1A)
+    // Existing call sites keep the same API while sharing one surface hierarchy.
+    static let panel = surface
+    static let panelHi = surfaceRaised
+    static let hairline = separator
+    static let textDim = textSecondary
+    static let textFaint = textTertiary
+    static let nsBg = NSColor(hex: 0x191E1C)
 
-    // MARK: Quadrant accents — 低饱和，压在深色调里，克制不喧宾夺主
-    static let qUrgent   = Color(hex: 0xE2836E)   // 重要·紧急  珊瑚红 · 马上做
-    static let qFocus    = Color(hex: 0xE8C87A)   // 重要·不紧急 琥珀金 · 甜点区
-    static let qDelegate = Color(hex: 0x82A9C9)   // 紧急·不重要 雾蓝 · 可委托
-    static let qTrivial  = Color(hex: 0x8C9A90)   // 不重要     灰绿 · 有空再说
+    static func motion(_ reduceMotion: Bool, duration: Double = 0.16) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: duration)
+    }
+
+    enum Radius {
+        static let control: CGFloat = 8
+        static let card: CGFloat = 12
+        static let popover: CGFloat = 18
+    }
+
+    enum Typography {
+        static let title = Theme.font(20, weight: .medium)
+        static let section = Theme.font(14, weight: .medium)
+        static let body = Theme.font(13)
+        static let secondary = Theme.font(11)
+    }
+
+    static let qUrgent = error
+    static let qFocus = amber
+    static let qDelegate = info
+    static let qTrivial = textTertiary
 
     static func accent(for q: Quadrant) -> Color {
         switch q {
@@ -90,12 +112,13 @@ struct VisualEffectView: NSViewRepresentable {
 /// and `PopoverController`). A faint top-lit gradient adds a little depth.
 struct FrostBackground: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     var tint: Double = 0.6
     var material: NSVisualEffectView.Material = .hudWindow
 
     var body: some View {
         Group {
-            if reduceTransparency { Theme.bg }
+            if reduceTransparency || contrast == .increased { Theme.bg }
             else {
                 VisualEffectView(material: material, blending: .behindWindow)
                     .overlay(Theme.bg.opacity(max(0.88, tint)))
@@ -112,43 +135,63 @@ struct FrostBackground: View {
 
 // MARK: - Reusable surfaces
 
-/// A raised, rounded panel used for cards and wells. Optionally tinted by a
-/// quadrant accent and highlighted (hover / drag-target).
+/// Card surfaces use fill for hierarchy; a stronger boundary is reserved for
+/// selection and increased-contrast settings. The existing API remains intact.
 struct Panel: ViewModifier {
-    var corner: CGFloat = 12
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    var corner: CGFloat = Theme.Radius.card
     var accent: Color? = nil
     var highlighted: Bool = false
-    var fill: Double = 0.5
+    var fill: Double = 0.8
 
     func body(content: Content) -> some View {
         content
             .background(
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .fill(Theme.panel.opacity(fill))
+                    .fill(Theme.surface.opacity(reduceTransparency ? 1 : max(0.72, fill)))
                     .overlay(
                         RoundedRectangle(cornerRadius: corner, style: .continuous)
-                            .fill((accent ?? .clear).opacity(0.05))
+                            .fill((accent ?? .clear).opacity(highlighted ? 0.07 : 0.025))
                     )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .stroke(strokeColor, lineWidth: highlighted ? 1.6 : 1)
+                    .strokeBorder(strokeColor, lineWidth: highlighted ? 1.5 : 1)
+                    .allowsHitTesting(false)
             )
-            .shadow(color: Color.black.opacity(highlighted ? 0.20 : 0.035),
-                    radius: highlighted ? 10 : 3, x: 0, y: highlighted ? 4 : 1)
     }
 
     private var strokeColor: Color {
-        if highlighted { return (accent ?? Theme.amber).opacity(0.9) }
-        return Theme.border.opacity(0.52)
+        if highlighted { return accent ?? Theme.focus }
+        return contrast == .increased ? Theme.textTertiary.opacity(0.75) : Theme.separator
+    }
+}
+
+struct InputSurface: ViewModifier {
+    @Environment(\.colorSchemeContrast) private var contrast
+    var focused: Bool = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .fill(Theme.field))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .strokeBorder(focused ? Theme.focus : Theme.border.opacity(contrast == .increased ? 1 : 0.55),
+                              lineWidth: focused ? 1.5 : 1)
+                .allowsHitTesting(false))
     }
 }
 
 extension View {
-    /// Rounded, raised panel surface. See `Panel`.
-    func panel(corner: CGFloat = 12, accent: Color? = nil,
-               highlighted: Bool = false, fill: Double = 0.5) -> some View {
+    func panel(corner: CGFloat = Theme.Radius.card, accent: Color? = nil,
+               highlighted: Bool = false, fill: Double = 0.8) -> some View {
         modifier(Panel(corner: corner, accent: accent, highlighted: highlighted, fill: fill))
+    }
+
+    /// Surface only. The caller owns its padding, size and actual input focus.
+    func inputSurface(focused: Bool = false) -> some View {
+        modifier(InputSurface(focused: focused))
     }
 }
 

@@ -40,6 +40,7 @@ private enum MatrixDragItem {
 /// menu). Inside a quadrant you can complete, add to today, estimate duration,
 /// set a reminder, or type a new task directly.
 struct OrganizeView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: Store
     /// RFC-0001 T2: 今日小结卡片的展开 / 收起状态，由整理窗控制器持有，好让晚间
     /// `review` 通知点击（或右键「今日小结」入口）把它强制展开。
@@ -105,8 +106,8 @@ struct OrganizeView: View {
         .overlay(alignment: .bottomTrailing) {
             UndoToast(store: store).padding(22)
         }
-        .animation(.easeOut(duration: 0.18), value: store.undoMessage)
-        .animation(.easeOut(duration: 0.2), value: inboxVisible)
+        .animation(Theme.motion(reduceMotion), value: store.undoMessage)
+        .animation(Theme.motion(reduceMotion), value: inboxVisible)
         .sheet(isPresented: $showAssistant) {
             if assistantWorkflow == .organize {
                 AIAssistantView(store: store, workflow: assistantWorkflow, task: assistantTask)
@@ -156,7 +157,7 @@ struct OrganizeView: View {
             }
             if workspace == .matrix, store.todayTotal > 0 {
                 ProgressBar(fraction: Double(store.todayCompleted) / Double(max(1, store.todayTotal)))
-                    .animation(.easeOut(duration: 0.35), value: store.todayCompleted)
+                    .animation(Theme.motion(reduceMotion, duration: 0.24), value: store.todayCompleted)
             }
             // RFC-0001 T4: 今日排太多时的一句软提示 —— 只提示、不阻止添加，随件数 / 时长跨阈值出现与消退。
             if workspace == .matrix, let overload = store.todayOverload() {
@@ -168,7 +169,7 @@ struct OrganizeView: View {
     private var topTitle: some View {
         HStack(alignment: .firstTextBaseline, spacing: 9) {
             Text("整理")
-                .font(Theme.font(18, weight: .semibold))
+                .font(Theme.Typography.title)
                 .foregroundColor(Theme.text)
             Text(PareFormat.today())
                 .font(Theme.font(11))
@@ -185,9 +186,9 @@ struct OrganizeView: View {
                 searchFocusRequest += 1
             } label: {
                 Image(systemName: "magnifyingglass")
-                    .frame(width: 28, height: 28).contentShape(Rectangle())
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain).foregroundColor(Theme.textDim)
+            .buttonStyle(IconActionStyle())
             .keyboardShortcut("f", modifiers: .command)
             .help("搜索全部内容（⌘F）").accessibilityLabel("搜索全部内容")
             Button {
@@ -201,16 +202,14 @@ struct OrganizeView: View {
                 showAssistant = true
             } label: {
                 Label("AI 助手", systemImage: "sparkles")
-                    .font(Theme.font(12, weight: .semibold)).foregroundColor(Theme.amber)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.amberSoft))
-            }.buttonStyle(.plain).help("按当前任务上下文打开 AI；未选中任务时帮助安排今天")
+                    .font(Theme.Typography.body)
+            }.buttonStyle(SecondaryActionStyle()).help("按当前任务上下文打开 AI；未选中任务时帮助安排今天")
             weeklyReviewButton
             if workspace == .matrix {
             Text(store.todayTotal > 0 ? progressString : "今天未安排")
                 .font(Theme.font(store.todayTotal > 0 ? 14 : 12,
                                  weight: store.todayTotal > 0 ? .medium : .regular))
-                .foregroundColor(store.todayTotal > 0 ? Theme.amber : Theme.textDim)
+                .foregroundColor(Theme.textSecondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             }
@@ -221,15 +220,10 @@ struct OrganizeView: View {
     private var settingsButton: some View {
         Button(action: onOpenSettings) {
             Label("设置", systemImage: "gearshape")
-                .font(Theme.font(12, weight: .medium))
-                .foregroundColor(Theme.text)
-                .padding(.horizontal, 9)
-                .frame(minHeight: 28)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel.opacity(0.55)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
+                .font(Theme.Typography.body)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TertiaryActionStyle())
         .fixedSize()
         .keyboardShortcut(",", modifiers: .command)
         .help("打开设置（⌘,）")
@@ -280,12 +274,8 @@ struct OrganizeView: View {
                 Image(systemName: "calendar").font(.system(size: 11))
                 Text("本周回顾").font(Theme.font(12, weight: .medium))
             }
-            .foregroundColor(Theme.textDim)
-            .padding(.horizontal, 9)
-            .frame(minHeight: 28)
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Theme.border, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TertiaryActionStyle())
         .help("打开本周回顾")
         .accessibilityLabel("本周回顾")
         .accessibilityHint("打开本周回顾窗口")
@@ -437,12 +427,12 @@ private struct WorkspaceSwitcher: View {
             ForEach(WorkspaceMode.allCases, id: \.self) { mode in
                 Button { selection = mode } label: {
                     Text(mode.rawValue)
-                        .font(Theme.font(12, weight: .semibold))
-                        .foregroundColor(selection == mode ? Theme.bg : Theme.textDim)
+                        .font(Theme.font(13, weight: selection == mode ? .medium : .regular))
+                        .foregroundColor(selection == mode ? Theme.text : Theme.textSecondary)
                         .frame(maxWidth: .infinity, minHeight: 30)
                         .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(selection == mode ? Theme.amber : Color.clear)
+                            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                                .fill(selection == mode ? Theme.surfaceRaised : Color.clear)
                         )
                         // Keep a small visual seam while leaving the padded
                         // area owned by one of the adjacent buttons.
@@ -455,8 +445,7 @@ private struct WorkspaceSwitcher: View {
             }
         }
         .padding(3)
-        .background(RoundedRectangle(cornerRadius: 9).fill(Theme.panel.opacity(0.65)))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border.opacity(0.45), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.control).fill(Theme.field))
         .help("四象限支持 ↑↓ 选择、1–4 归位、空格完成、esc 取消")
     }
 }
@@ -499,21 +488,21 @@ private struct InboxColumn: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text("待整理")
-                    .font(Theme.font(16, weight: .semibold))
+                    .font(Theme.Typography.section)
                     .foregroundColor(Theme.text)
                 Spacer()
                 Text("\(store.inboxCount)")
-                    .font(Theme.font(12, weight: .semibold))
-                    .foregroundColor(Theme.amber)
+                    .font(Theme.Typography.secondary)
+                    .foregroundColor(Theme.textSecondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(Theme.amberSoft))
+                    .background(Capsule().fill(Theme.surfaceRaised))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("待整理 \(store.inboxCount) 条")
                 Button(action: onCollapse) {
-                    Image(systemName: "sidebar.left").frame(width: 28, height: 28)
+                    Image(systemName: "sidebar.left")
                         .contentShape(Rectangle())
-                }.buttonStyle(.plain).foregroundColor(Theme.textDim)
+                }.buttonStyle(IconActionStyle())
                     .accessibilityLabel("收起待整理").help("收起待整理")
             }
             Text("拖进右边的象限，或选中后按 1–4 归位")
@@ -521,9 +510,10 @@ private struct InboxColumn: View {
                 .foregroundColor(Theme.textDim)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button("✦ 帮我整理") { showAI = true }
-                .buttonStyle(.plain).font(Theme.font(12, weight: .medium))
-                .foregroundColor(Theme.amber).disabled(store.inbox.isEmpty)
+            Button { showAI = true } label: {
+                Label("帮我整理", systemImage: "sparkles")
+            }
+                .buttonStyle(TertiaryActionStyle()).disabled(store.inbox.isEmpty)
                 .sheet(isPresented: $showAI) {
                     AIAssistantView(store: store, workflow: .organize)
                 }
@@ -558,6 +548,7 @@ private struct InboxColumn: View {
 }
 
 private struct InboxCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: Store
     let item: InboxItem
     @ObservedObject var focus: OrganizeFocus
@@ -566,7 +557,7 @@ private struct InboxCard: View {
     private var isSelected: Bool { focus.selection == .inbox(item.id) }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 4) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(item.text)
                     .font(Theme.font(13))
@@ -586,31 +577,28 @@ private struct InboxCard: View {
             Button { _ = store.keepAsThought(inboxID: item.id) } label: {
                 Image(systemName: "lightbulb").font(.system(size: 11, weight: .semibold))
             }
-            .buttonStyle(.plain)
-            .foregroundColor(Theme.amber)
+            .buttonStyle(IconActionStyle(size: 24))
             .help("保留为想法")
             .accessibilityLabel("保留为想法")
-            if hovering {
-                Button { store.deleteInbox(item.id) } label: {
-                    Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(Theme.textDim)
-                .accessibilityLabel("删除")
+            Button { store.deleteInbox(item.id) } label: {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .medium))
             }
+            .buttonStyle(IconActionStyle(size: 24))
+            .help("删除待整理内容")
+            .accessibilityLabel("删除")
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .panel(corner: 10, highlighted: hovering)
+        .panel(corner: Theme.Radius.card, highlighted: hovering)
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Theme.amber, lineWidth: 2)
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .stroke(Theme.focus, lineWidth: 1.5)
                 .opacity(isSelected ? 1 : 0)
         )
         .contentShape(Rectangle())
         .onTapGesture { focus.selection = .inbox(item.id) }
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
+        .animation(Theme.motion(reduceMotion), value: hovering)
         .draggable(MatrixDragItem.inbox(item.id).value)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("待整理：\(item.text)")
@@ -631,6 +619,7 @@ private struct InboxCard: View {
 // MARK: - Quadrant card
 
 private struct QuadrantCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: Store
     let quadrant: Quadrant
     @ObservedObject var focus: OrganizeFocus
@@ -668,8 +657,8 @@ private struct QuadrantCard: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .panel(corner: 14, accent: accent, highlighted: targeted)
-        .animation(.easeOut(duration: 0.12), value: targeted)
+        .panel(corner: Theme.Radius.card, accent: targeted ? accent : nil, highlighted: targeted)
+        .animation(Theme.motion(reduceMotion), value: targeted)
         .dropDestination(for: String.self) { values, _ in
             return handleDrop(values)
         } isTargeted: { targeted = $0 }
@@ -721,7 +710,7 @@ private struct QuadrantCard: View {
                     .background(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(Theme.border, lineWidth: 1))
                     .accessibilityHidden(true)
                 Text(quadrant.title)
-                    .font(Theme.font(13, weight: .semibold))
+                    .font(Theme.Typography.section)
                     .foregroundColor(accent)
                     // RFC-0001: 象限名是四象限地图的核心信息，永远完整显示，
                     // 不再被提示语 / 估时标签挤断（此前会被截成「重要 ·…」）。
@@ -739,7 +728,7 @@ private struct QuadrantCard: View {
                 }
             }
             Rectangle()
-                .fill(accent.opacity(0.3))
+                .fill(Theme.separator)
                 .frame(height: 1)
         }
     }
@@ -751,9 +740,9 @@ private struct QuadrantCard: View {
                 .foregroundColor(accent.opacity(0.75))
             TextField("添加任务", text: $newText)
                 .textFieldStyle(.plain)
-                .font(Theme.font(12))
+                .font(Theme.Typography.body)
                 .foregroundColor(Theme.text)
-                .tint(accent)
+                .tint(Theme.focus)
                 .focused($addFocused)
                 .onSubmit {
                     store.addTask(newText, to: quadrant)
@@ -762,16 +751,8 @@ private struct QuadrantCard: View {
                 .accessibilityLabel("加到「\(quadrant.title)」")
         }
         .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.black.opacity(addFocused ? 0.18 : 0.08))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(addFocused ? accent.opacity(0.55) : Color.clear, lineWidth: 1)
-        )
-        .animation(.easeOut(duration: 0.12), value: addFocused)
+        .padding(.vertical, 7)
+        .inputSurface(focused: addFocused)
     }
 
     private var quadrantEstimatedMinutes: Int {
@@ -795,6 +776,7 @@ private struct QuadrantCard: View {
 }
 
 private struct QuadrantTaskRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: Store
     let task: TaskItem
     let accent: Color
@@ -827,9 +809,9 @@ private struct QuadrantTaskRow: View {
                         Image(systemName: task.isToday ? "sun.max.fill" : "sun.max")
                             .font(.system(size: 12))
                             .foregroundColor(task.isToday ? Theme.amber : Theme.textDim)
-                            .frame(width: 26, height: 26).contentShape(Rectangle())
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(IconActionStyle(tint: task.isToday ? Theme.amber : Theme.textDim, size: 26))
                     .help(task.isToday ? "移出今天" : "加入今天")
                     .accessibilityLabel(task.isToday ? "移出今天" : "加入今天")
                 }
@@ -864,25 +846,26 @@ private struct QuadrantTaskRow: View {
                     onSkip: { showActualPrompt = false }
                 )
                 .padding(.leading, 28)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(hovering ? Theme.panel.opacity(0.55) : Color.clear)
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .fill(isSelected ? Theme.focus.opacity(0.08) : (hovering ? Theme.hover : Color.clear))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(Theme.amber, lineWidth: 2)
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .stroke(Theme.focus, lineWidth: 1.5)
                 .opacity(isSelected ? 1 : 0)
         )
         .contentShape(Rectangle())
         .onTapGesture { focus.selection = .task(task.id) }
         .draggable(MatrixDragItem.task(task.id).value)
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: showActualPrompt)
+        .animation(Theme.motion(reduceMotion), value: showActualPrompt)
+        .animation(Theme.motion(reduceMotion), value: hovering)
         .contextMenu {
             Button(task.isToday ? "移出今天" : "加入今天") { store.toggleToday(task.id) }
             Menu("预估时长") {
@@ -927,7 +910,7 @@ private struct QuadrantTaskRow: View {
         if let actual = task.actualMinutes {
             ActualTimePill(minutes: actual) { store.setActual(task.id, minutes: $0) }
         } else if !showActualPrompt {
-            RecordActualButton { withAnimation(.easeOut(duration: 0.15)) { showActualPrompt = true } }
+            RecordActualButton { withAnimation(Theme.motion(reduceMotion)) { showActualPrompt = true } }
         }
     }
 
@@ -1039,6 +1022,7 @@ final class TodaySummaryState: ObservableObject {
 /// `store.todaySummary()`；偏差区在没有可对比记录（T5 未落地或全部跳过）时
 /// 自动隐藏。深色毛玻璃风格与四象限卡片一致。
 private struct TodaySummaryCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: Store
     @Binding var expanded: Bool
 
@@ -1051,22 +1035,22 @@ private struct TodaySummaryCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
-        .panel(corner: 14, accent: Theme.amber, highlighted: expanded)
-        .animation(.easeOut(duration: 0.2), value: expanded)
+        .panel(corner: Theme.Radius.card)
+        .animation(Theme.motion(reduceMotion), value: expanded)
     }
 
     // MARK: Header (always visible, tap to toggle)
 
     private func header(_ summary: TodaySummary) -> some View {
         Button {
-            withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() }
+            withAnimation(Theme.motion(reduceMotion)) { expanded.toggle() }
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: "moon.stars")
                     .font(.system(size: 13))
                     .foregroundColor(Theme.amber)
                 Text("今日小结")
-                    .font(Theme.font(14, weight: .semibold))
+                    .font(Theme.Typography.section)
                     .foregroundColor(Theme.text)
                     .fixedSize()
                 if !expanded {

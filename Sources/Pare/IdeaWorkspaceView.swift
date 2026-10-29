@@ -12,6 +12,7 @@ struct IdeaWorkspaceView: View {
     @State private var showIntelligence = false
     @State private var intelligenceSubjectID: UUID?
     @State private var intelligenceIntent: IntelligenceIntent = .idea
+    @FocusState private var newTitleFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -25,6 +26,7 @@ struct IdeaWorkspaceView: View {
                 Image(systemName: "lightbulb").foregroundColor(Theme.amber)
                 TextField("记下一个想法，按回车保存", text: $newTitle)
                     .textFieldStyle(.plain).font(Theme.font(13))
+                    .focused($newTitleFocused)
                     .onSubmit(addIdea)
                     .accessibilityLabel("新想法标题")
                 Button("记下", action: addIdea)
@@ -32,13 +34,12 @@ struct IdeaWorkspaceView: View {
                     .disabled(newTitle.ideaTrimmed.isEmpty)
                     .accessibilityLabel("保存新想法")
             }
-            .padding(10).panel(corner: 10)
+            .padding(10).inputSurface(focused: newTitleFocused)
             IntelligenceHintCard(store: store, includeToday: false) { intent, id in
                 intelligenceIntent = intent; intelligenceSubjectID = id; showIntelligence = true
             }
             if let addError {
-                Text(addError).font(Theme.font(11)).foregroundColor(Theme.qUrgent)
-                    .fixedSize(horizontal: false, vertical: true)
+                FeedbackBanner(text: addError, kind: .error)
             }
             HStack {
                 Picker("阶段", selection: $filter) {
@@ -121,10 +122,12 @@ private enum IdeaFilter: String, Identifiable, CaseIterable {
 
 private struct IdeaListCard: View {
     let idea: ThoughtItem
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovered = false
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: idea.stage == .archived ? "archivebox" : "lightbulb")
-                .font(.system(size: 16)).foregroundColor(Theme.amber).padding(.top, 3)
+                .font(.system(size: 16)).foregroundColor(Theme.textSecondary).padding(.top, 3)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
                     Text(idea.text).font(Theme.font(15, weight: .medium))
@@ -153,7 +156,9 @@ private struct IdeaListCard: View {
                 .foregroundColor(Theme.textFaint).padding(.top, 7)
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle()).panel(corner: 12)
+        .contentShape(Rectangle()).panel(corner: Theme.Radius.card, highlighted: hovered)
+        .onHover { hovered = $0 }
+        .animation(Theme.motion(reduceMotion), value: hovered)
     }
 }
 
@@ -185,6 +190,7 @@ struct IdeaDetailView: View {
     @State private var showAllEntries = false
     @State private var showAllLinkedTasks = false
     @State private var expandedEntryIDs: Set<UUID> = []
+    @FocusState private var focusedField: String?
 
     init(store: Store, ideaID: UUID, sourceTaskID: UUID? = nil) {
         self.store = store
@@ -213,12 +219,12 @@ struct IdeaDetailView: View {
                 .help(hasDrafts ? "请先保存当前更改或追加记录，让 AI 参考最新内容" : "参考这个想法和获准的记录，提出下一步探索")
                 .accessibilityLabel("AI 接着想一想")
                 Button(action: requestClose) {
-                    Image(systemName: "xmark").frame(width: 28, height: 28).contentShape(Rectangle())
+                    Image(systemName: "xmark")
                 }
-                .buttonStyle(.plain).foregroundColor(Theme.textDim)
+                .buttonStyle(IconActionStyle())
                 .accessibilityLabel("关闭想法详情")
-            }.padding(20)
-            Divider().overlay(Theme.hairline)
+            }.padding(20).background(Theme.surface.opacity(0.45))
+            Rectangle().fill(Theme.separator).frame(height: 1)
             if metadataConflict, idea != nil {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -247,11 +253,12 @@ struct IdeaDetailView: View {
                 Text("这个想法已不存在。").foregroundColor(Theme.textDim).padding(20)
                 Spacer()
             }
-            Divider().overlay(Theme.hairline)
+            Rectangle().fill(Theme.separator).frame(height: 1)
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     if let feedback {
-                        Text(feedback).foregroundColor(feedbackIsError ? Theme.qUrgent : Theme.amber)
+                        Label(feedback, systemImage: feedbackIsError ? "exclamationmark.circle" : "checkmark.circle")
+                            .foregroundColor(feedbackIsError ? Theme.error : Theme.success)
                             .fixedSize(horizontal: false, vertical: true)
                         if metadataChanged {
                             Text("当前想法或回看设置仍有未保存的更改").foregroundColor(Theme.textDim)
@@ -262,11 +269,13 @@ struct IdeaDetailView: View {
                     }
                 }.font(Theme.font(11)).frame(maxWidth: .infinity, alignment: .leading)
                 Button("关闭", action: requestClose).keyboardShortcut(.cancelAction)
+                    .buttonStyle(TertiaryActionStyle())
                 Button("保存想法信息") { saveMetadata() }
                     .buttonStyle(AIPrimaryButtonStyle())
                     .disabled(idea == nil || title.ideaTrimmed.isEmpty || !metadataChanged || metadataConflict)
                     .accessibilityLabel("保存想法信息与回看设置，不含待追加记录或行动")
             }.padding(.horizontal, 20).padding(.vertical, 14)
+                .background(Theme.surface.opacity(0.45))
         }
         .frame(width: 680, height: 600)
         .background(Theme.bg).foregroundColor(Theme.text)
@@ -347,11 +356,13 @@ struct IdeaDetailView: View {
             }
             TextField("想探索什么？", text: $title, axis: .vertical)
                 .font(Theme.font(16, weight: .medium)).lineLimit(1...3)
-                .textFieldStyle(.plain).padding(10).panel(corner: 8)
+                .textFieldStyle(.plain).focused($focusedField, equals: "title")
+                .padding(10).inputSurface(focused: focusedField == "title")
                 .accessibilityLabel("想法标题")
             fieldLabel("下一步待探索的问题")
             TextField("例如：先找谁聊一聊，能验证哪个假设？", text: $nextQuestion, axis: .vertical)
-                .lineLimit(1...3).textFieldStyle(.plain).padding(10).panel(corner: 8)
+                .lineLimit(1...3).textFieldStyle(.plain).focused($focusedField, equals: "question")
+                .padding(10).inputSurface(focused: focusedField == "question")
                 .accessibilityLabel("下一步待探索的问题")
         }
     }
@@ -363,7 +374,8 @@ struct IdeaDetailView: View {
         )) {
             TextEditor(text: $notes)
                 .font(Theme.font(13)).scrollContentBackground(.hidden)
-                .padding(7).frame(height: 90).panel(corner: 8)
+                .focused($focusedField, equals: "notes")
+                .padding(7).frame(height: 90).inputSurface(focused: focusedField == "notes")
                 .accessibilityLabel("想法描述")
                 .padding(.top, 8)
         } label: {
@@ -387,7 +399,8 @@ struct IdeaDetailView: View {
             Text("新发现和决定在这里单独追加保存，早先的记录会一直保留。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
             TextField("今天多想清楚了什么？", text: $entryText, axis: .vertical)
-                .lineLimit(2...5).textFieldStyle(.plain).padding(10).panel(corner: 8)
+                .lineLimit(2...5).textFieldStyle(.plain).focused($focusedField, equals: "entry")
+                .padding(10).inputSurface(focused: focusedField == "entry")
                 .accessibilityLabel("新的探索记录")
             HStack {
                 Picker("类型", selection: $entryKind) {
@@ -419,7 +432,7 @@ struct IdeaDetailView: View {
                                     expandedEntryIDs.insert(entry.id)
                                 }
                             }
-                            .buttonStyle(.plain).foregroundColor(Theme.amber)
+                            .buttonStyle(CompactPillStyle())
                             .accessibilityLabel(expandedEntryIDs.contains(entry.id)
                                                 ? "收起这条探索记录" : "展开这条探索记录全文")
                             }
@@ -427,7 +440,7 @@ struct IdeaDetailView: View {
                         Text(entry.text).font(Theme.font(12)).lineSpacing(3)
                             .lineLimit(foldsText && !expandedEntryIDs.contains(entry.id) ? 3 : nil)
                             .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                    }.padding(12).frame(maxWidth: .infinity, alignment: .leading).panel(corner: 9)
+                    }.padding(12).frame(maxWidth: .infinity, alignment: .leading).panel(corner: Theme.Radius.card)
                 }
                 if entries.count > 3 {
                     Button(showAllEntries ? "收起历史记录" : "查看全部 \(entries.count) 条记录") {
@@ -460,7 +473,8 @@ struct IdeaDetailView: View {
             DisclosureGroup("创建一个具体行动", isExpanded: $showActionComposer) {
                 VStack(alignment: .leading, spacing: 10) {
                     TextField("例如：约一位使用者聊 20 分钟", text: $actionTitle, axis: .vertical)
-                        .lineLimit(1...3).textFieldStyle(.plain).padding(10).panel(corner: 8)
+                        .lineLimit(1...3).textFieldStyle(.plain).focused($focusedField, equals: "action")
+                        .padding(10).inputSurface(focused: focusedField == "action")
                         .accessibilityLabel("新关联行动的标题")
                     HStack {
                         Toggle("加入今天", isOn: $addToToday).toggleStyle(.checkbox)
@@ -477,7 +491,9 @@ struct IdeaDetailView: View {
             DisclosureGroup("关联已有行动", isExpanded: $showExistingTasks) {
                 VStack(alignment: .leading, spacing: 9) {
                     TextField("搜索现有或已归档的任务", text: $taskSearch)
-                        .textFieldStyle(.roundedBorder).accessibilityLabel("搜索可关联的任务")
+                        .textFieldStyle(.plain).focused($focusedField, equals: "search")
+                        .padding(10).inputSurface(focused: focusedField == "search")
+                        .accessibilityLabel("搜索可关联的任务")
                     if availableTasks.isEmpty {
                         Text(taskSearch.ideaTrimmed.isEmpty ? "没有可关联的任务。" : "没有找到匹配的任务。")
                             .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -492,7 +508,7 @@ struct IdeaDetailView: View {
                                         }.frame(maxWidth: .infinity, alignment: .leading)
                                         Button("关联") { link(task) }
                                             .accessibilityLabel("关联任务：\(task.text)")
-                                    }.padding(9).panel(corner: 8)
+                                    }.padding(9).panel(corner: Theme.Radius.card)
                                 }
                             }
                         }.frame(maxHeight: 180)
@@ -505,7 +521,7 @@ struct IdeaDetailView: View {
     private func linkedTaskRow(_ task: TaskItem) -> some View {
         HStack(alignment: .center, spacing: 10) {
             Image(systemName: archivedTaskIDs.contains(task.id) ? "archivebox" : task.completed ? "checkmark.circle" : "circle")
-                .foregroundColor(task.completed ? Theme.amber : Theme.textDim)
+                .foregroundColor(task.completed ? Theme.success : Theme.textDim)
             VStack(alignment: .leading, spacing: 4) {
                 Text(task.text).font(Theme.font(12)).lineLimit(3)
                 Text(taskStatus(task)).font(Theme.font(10)).foregroundColor(Theme.textDim)
@@ -516,10 +532,10 @@ struct IdeaDetailView: View {
                 TaskDetailsButton(store: store, task: task, allowsIdeaNavigation: false)
             }
             Button("解除关联") { unlink(task) }
-            .buttonStyle(.plain).font(Theme.font(11)).foregroundColor(Theme.textFaint)
+            .buttonStyle(CompactPillStyle()).font(Theme.font(11))
             .help("解除关联，保留任务")
             .accessibilityLabel("解除与任务“\(task.text)”的关联，保留任务")
-        }.padding(10).panel(corner: 9)
+        }.padding(10).panel(corner: Theme.Radius.card)
     }
 
     private var availableTasks: [TaskItem] {

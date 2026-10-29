@@ -97,7 +97,7 @@ final class PopoverController {
         panel.makeKeyAndOrderFront(nil)
 
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.18
+            ctx.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.16
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
         }
@@ -138,7 +138,7 @@ final class PopoverController {
 
         chrome.visible = false
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.16
+            ctx.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.12
             ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
@@ -254,10 +254,9 @@ private final class CapturePanel: NSPanel {
 // MARK: - Animated container
 
 /// Wraps the capture card with the rounded clip, shadow and the present/dismiss
-/// motion — a lively spring with a little travel, depth and a brief blur-in
-/// (the "更炫" tone the user chose). Anchored at the top so it drops in from the
-/// menu bar.
+/// motion. A short fade keeps its position stable when opened from the menu bar.
 private struct CapturePanelContainer<Content: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var chrome: PopoverController.Chrome
     let margin: CGFloat
     private let content: Content
@@ -270,17 +269,15 @@ private struct CapturePanelContainer<Content: View>: View {
 
     var body: some View {
         content
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.popover, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Theme.border.opacity(0.85), lineWidth: 1)
+                RoundedRectangle(cornerRadius: Theme.Radius.popover, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 1)
+                    .allowsHitTesting(false)
             )
-            .shadow(color: .black.opacity(0.42), radius: 26, x: 0, y: 13)
-            .scaleEffect(chrome.visible ? 1 : 0.90, anchor: .top)
-            .offset(y: chrome.visible ? 0 : -16)
+            .shadow(color: .black.opacity(0.28), radius: 20, x: 0, y: 10)
             .opacity(chrome.visible ? 1 : 0)
-            .blur(radius: chrome.visible ? 0 : 6)
             .padding(margin)
-            .animation(.spring(response: 0.42, dampingFraction: 0.70), value: chrome.visible)
+            .animation(Theme.motion(reduceMotion), value: chrome.visible)
     }
 }

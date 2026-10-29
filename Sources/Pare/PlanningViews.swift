@@ -18,20 +18,19 @@ struct TaskDetailsButton: View {
         Button { presented = true } label: {
             if showsLabel {
                 Label("检查", systemImage: "doc.text.magnifyingglass")
-                    .font(Theme.font(11, weight: .medium)).foregroundColor(Theme.text)
-                    .padding(.horizontal, 9).padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel.opacity(0.55)))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border.opacity(0.55)))
+                    .font(Theme.Typography.secondary).foregroundColor(Theme.textSecondary)
+                    .padding(.horizontal, 9).frame(minHeight: 28)
+                    .background(RoundedRectangle(cornerRadius: Theme.Radius.control).fill(Theme.surfaceRaised))
             } else {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Theme.textFaint)
+                    .foregroundColor(Theme.textSecondary)
                     .frame(width: 36, height: 32)
                     .contentShape(Rectangle())
             }
         }
         .contentShape(Rectangle())
-        .buttonStyle(.plain)
+        .buttonStyle(CompactPillStyle())
         .help("编辑任务详情")
         .accessibilityLabel("编辑任务详情")
         .accessibilityHint("打开任务详情")
@@ -72,6 +71,7 @@ private struct TaskDetailView: View {
     @State private var applicationName: String
     @State private var showScheduling: Bool
     @State private var sourceIdea: ThoughtItem?
+    @FocusState private var focusedField: String?
 
     init(store: Store, task: TaskItem, isPresented: Binding<Bool>, allowsIdeaNavigation: Bool = true) {
         self.store = store
@@ -138,13 +138,13 @@ private struct TaskDetailView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("思考与备注").font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
                     TextEditor(text: $note)
-                        .font(Theme.font(13))
+                        .font(Theme.Typography.body)
                         .foregroundColor(Theme.text)
+                        .focused($focusedField, equals: "思考与备注")
                         .scrollContentBackground(.hidden)
                         .padding(7)
                         .frame(height: 82)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.18)))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
+                        .inputSurface(focused: focusedField == "思考与备注")
                 }
 
                 HStack {
@@ -192,10 +192,9 @@ private struct TaskDetailView: View {
                         isPresented = false
                         store.deleteTask(task.id)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundColor(Theme.qUrgent)
+                    .buttonStyle(TertiaryActionStyle(tint: Theme.error))
                     Spacer()
-                    Button("取消") { isPresented = false }.buttonStyle(SecondaryActionStyle())
+                    Button("取消") { isPresented = false }.buttonStyle(TertiaryActionStyle())
                     Button("保存") { save() }
                         .buttonStyle(AIPrimaryButtonStyle())
                         .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -318,10 +317,10 @@ private struct TaskDetailView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(label).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
             TextField(prompt, text: text)
-                .textFieldStyle(.plain).font(Theme.font(13)).foregroundColor(Theme.text)
+                .textFieldStyle(.plain).font(Theme.Typography.body).foregroundColor(Theme.text)
+                .focused($focusedField, equals: label)
                 .padding(.horizontal, 9).padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.18)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
+                .inputSurface(focused: focusedField == label)
         }
     }
 
@@ -397,10 +396,8 @@ struct FocusTimerButton: View {
             if isActive, showsLabel {
                 Button { store.cancelTimer() } label: {
                     Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Theme.textDim).frame(width: 18, height: 18)
-                        .background(Circle().fill(Theme.panelHi))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconActionStyle(size: 24))
                 .help("放弃本次计时，不记录用时")
                 .accessibilityLabel("放弃本次专注计时")
             }
@@ -418,10 +415,11 @@ struct FocusTimerButton: View {
                 Text("这件事完成了吗？").font(Theme.font(12)).foregroundColor(Theme.textDim)
                 HStack {
                     Button("还没") { askComplete = false }
+                        .buttonStyle(TertiaryActionStyle())
                     Spacer()
                     Button("完成") { store.setCompleted(task.id, true); askComplete = false }
+                        .buttonStyle(AIPrimaryButtonStyle())
                 }
-                .buttonStyle(.plain).foregroundColor(Theme.amber)
             }
             .padding(14).frame(width: 230).background(Theme.bg)
         }
@@ -439,10 +437,10 @@ struct FocusTimerButton: View {
                         .font(Theme.font(11, weight: .medium))
                 }
             }
-            .foregroundColor(isActive ? Theme.bg : Theme.amber)
-            .padding(.horizontal, showsLabel ? 8 : 6).padding(.vertical, 4)
-            .background(Capsule().fill(isActive ? Theme.amber : Theme.amberSoft))
-            .overlay(Capsule().stroke(Theme.amber.opacity(0.45), lineWidth: 1))
+            .foregroundColor(isActive ? Theme.bg : Theme.textSecondary)
+            .padding(.horizontal, showsLabel ? 8 : 7).frame(minHeight: 28)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                .fill(isActive ? Theme.amber : Theme.surfaceRaised))
         }
         .buttonStyle(.plain)
         .disabled(task.completed || isParallel)
@@ -501,10 +499,10 @@ struct ParallelRunButton: View {
                         .font(Theme.font(11, weight: .medium))
                 }
             }
-            .foregroundColor(run == nil ? Theme.qDelegate : Theme.bg)
-            .padding(.horizontal, showsLabel ? 8 : 6).padding(.vertical, 4)
-            .background(Capsule().fill(run == nil ? Theme.qDelegate.opacity(0.12) : Theme.qDelegate))
-            .overlay(Capsule().stroke(Theme.qDelegate.opacity(0.55), lineWidth: 1))
+            .foregroundColor(run == nil ? Theme.textSecondary : Theme.info)
+            .padding(.horizontal, showsLabel ? 8 : 7).frame(minHeight: 28)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                .fill(run == nil ? Theme.surfaceRaised : Theme.info.opacity(0.14)))
         }
         .buttonStyle(.plain).fixedSize()
         .disabled(task.completed || focusActive)
@@ -567,9 +565,7 @@ struct ParallelRunButton: View {
                         store.setParallelCheck(task.id, at: Date().addingTimeInterval(Double(minutes) * 60))
                     }
                 }
-                .buttonStyle(.plain).font(Theme.font(10, weight: .medium)).foregroundColor(Theme.qDelegate)
-                .padding(.horizontal, 7).padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Theme.qDelegate.opacity(0.12)))
+                .buttonStyle(TertiaryActionStyle(tint: Theme.info))
             }
         }
     }
@@ -599,6 +595,7 @@ struct TodayPlannerView: View {
     @State private var showIntelligence = false
     @State private var intelligenceIntent: IntelligenceIntent = .today
     @State private var intelligenceSubjectID: UUID?
+    @FocusState private var quickAddFocused: Bool
 
     private var runningIDs: Set<UUID> { Set(store.parallelRuns.map(\.taskID)) }
     private var running: [TaskItem] { store.parallelRunningTasks }
@@ -681,9 +678,9 @@ struct TodayPlannerView: View {
                         Image(systemName: store.activeTimerTask != nil ? "play.fill" : "star.fill")
                         Text(store.activeTimerTask != nil ? "正在专注" : "今天只赢一件")
                     }
-                    .font(Theme.font(10, weight: .semibold)).foregroundColor(Theme.amber)
+                    .font(Theme.Typography.secondary).foregroundColor(Theme.amber)
                     Text(keyTask?.text ?? headerEmptyTitle)
-                        .font(Theme.font(15, weight: .semibold))
+                        .font(Theme.Typography.section)
                         .foregroundColor(keyTask == nil ? Theme.textDim : Theme.text)
                         .lineLimit(1).help(keyTask?.text ?? headerEmptyTitle)
                     if let action = keyTask?.nextAction, !action.isEmpty {
@@ -728,7 +725,7 @@ struct TodayPlannerView: View {
                 }
             }
         }
-        .padding(12).panel(corner: 12, accent: Theme.amber)
+        .padding(14).panel(corner: Theme.Radius.card)
     }
 
     private func elapsedLabel(now: Date) -> String {
@@ -772,22 +769,19 @@ struct TodayPlannerView: View {
             }
         }
         .tint(Theme.qDelegate)
-        .padding(10).panel(corner: 11, accent: Theme.qDelegate)
+        .padding(12).panel(corner: Theme.Radius.card)
     }
 
-    private func momentumButton(_ title: String, icon: String, primary: Bool = false,
+    @ViewBuilder private func momentumButton(_ title: String, icon: String, primary: Bool = false,
                                 action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        let button = Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 10, weight: .semibold))
-                Text(title).font(Theme.font(11, weight: .semibold))
+                Image(systemName: icon).font(.system(size: 11, weight: .medium))
+                Text(title).font(Theme.Typography.body)
             }
-            .foregroundColor(primary ? Theme.bg : Theme.textDim)
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(Capsule().fill(primary ? Theme.amber : Theme.panel.opacity(0.4)))
-            .overlay(Capsule().stroke(primary ? Theme.amber : Theme.border.opacity(0.55), lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        if primary { button.buttonStyle(AIPrimaryButtonStyle()) }
+        else { button.buttonStyle(TertiaryActionStyle()) }
     }
 
     private var remainingText: String {
@@ -809,14 +803,14 @@ struct TodayPlannerView: View {
             Image(systemName: "plus").foregroundColor(Theme.amber)
             TextField("直接加入今天（默认：重要 · 不紧急）", text: $quickTask)
                 .textFieldStyle(.plain).font(Theme.font(13)).foregroundColor(Theme.text)
+                .focused($quickAddFocused)
                 .onSubmit {
                     _ = store.addTask(quickTask, to: .importantNotUrgent, addToToday: true)
                     quickTask = ""
                 }
         }
         .padding(.horizontal, 11).padding(.vertical, 9)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.18)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border, lineWidth: 1))
+        .inputSurface(focused: quickAddFocused)
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -946,7 +940,7 @@ private struct DayTimelineView: View {
                 }
                 .onAppear { scrollToNow(proxy: proxy) }
                 .onChange(of: zoom) { _ in scrollToNow(proxy: proxy) }
-                .panel(corner: 11)
+                .panel(corner: Theme.Radius.card)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
@@ -979,7 +973,7 @@ private struct DayTimelineView: View {
                 Label("现在", systemImage: "location")
                     .font(Theme.font(11, weight: .medium)).foregroundColor(Theme.amber)
             }
-            .buttonStyle(.plain).help("回到现在").accessibilityLabel("回到现在")
+            .buttonStyle(TertiaryActionStyle()).help("回到现在").accessibilityLabel("回到现在")
         }
     }
 
@@ -1004,8 +998,7 @@ private struct DayTimelineView: View {
         }
         .frame(height: 30)
         .padding(.horizontal, 9).padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel.opacity(0.38)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border.opacity(0.7)))
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.surface))
         .contentShape(Rectangle())
         .dropDestination(for: String.self) { values, _ in
             return returnToShelf(values)
@@ -1124,8 +1117,7 @@ private struct TimelineTaskChip: View {
                 Image(systemName: "clock").font(.system(size: 9)).foregroundColor(Theme.textDim)
             }
             .padding(.horizontal, 9).padding(.vertical, 7)
-            .background(Capsule().fill(Theme.panelHi.opacity(0.8)))
-            .overlay(Capsule().stroke((isParallel ? Theme.qDelegate : Theme.accent(for: task.quadrant)).opacity(0.45)))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.control).fill(Theme.surfaceRaised))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1194,7 +1186,7 @@ private struct TimelineTaskBlock: View {
                     .frame(width: 17, height: 17)
             }
             Text(task.text)
-                .font(Theme.font(blockHeight < 24 ? 9 : 11, weight: .semibold)).foregroundColor(Theme.text)
+                .font(Theme.font(blockHeight < 24 ? 9 : 11, weight: .medium)).foregroundColor(Theme.text)
                 .lineLimit(blockHeight >= 40 ? 2 : 1)
             Spacer(minLength: 2)
             if isActive {
@@ -1210,8 +1202,8 @@ private struct TimelineTaskBlock: View {
         .frame(maxWidth: .infinity, minHeight: blockHeight, maxHeight: blockHeight,
                alignment: blockHeight < 24 ? .leading : .topLeading)
         .clipped()
-        .background(RoundedRectangle(cornerRadius: 7).fill(accent.opacity(0.16)))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(accent.opacity(0.72), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.control).fill(accent.opacity(0.13)))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control).stroke(accent.opacity(0.42), lineWidth: 1))
         .overlay(alignment: .bottomTrailing) {
             Capsule().fill(accent.opacity(0.75)).frame(width: 24, height: 3)
                 .padding(.trailing, 5).padding(.bottom, 1)
@@ -1316,9 +1308,9 @@ private struct ParallelRunRow: View {
                 DailyAllocationPill(store: store, task: task)
                 ParallelRunButton(store: store, task: task, showsLabel: true)
                 Button("暂停") { _ = store.pauseParallelRun(task.id, now: context.date) }
-                    .buttonStyle(SecondaryActionStyle())
+                    .buttonStyle(TertiaryActionStyle())
                 Button("完成") { _ = store.completeParallelRun(task.id, now: context.date) }
-                    .buttonStyle(AIPrimaryButtonStyle())
+                    .buttonStyle(SecondaryActionStyle())
                 TaskDetailsButton(store: store, task: task, showsLabel: true)
             }
         }
@@ -1345,12 +1337,12 @@ private struct TodayPlannerRow: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(task.isDailyWin == true ? Theme.amber : Theme.textFaint)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconActionStyle(tint: task.isDailyWin == true ? Theme.amber : Theme.textFaint, size: 24))
                 .help(task.isDailyWin == true ? "取消今日关键任务" : "设为今日关键任务")
                 .accessibilityLabel(task.isDailyWin == true ? "取消今日关键任务" : "设为今日关键任务")
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(task.text).font(Theme.font(14, weight: .medium))
+                Text(task.text).font(Theme.Typography.body)
                     .foregroundColor(task.completed ? Theme.textDim : Theme.text)
                     .strikethrough(task.completed).lineLimit(2)
                 HStack(spacing: 7) {
@@ -1377,7 +1369,7 @@ private struct TodayPlannerRow: View {
             TaskDetailsButton(store: store, task: task)
         }
         .padding(.horizontal, 11).padding(.vertical, 9)
-        .panel(corner: 11, accent: task.isToday ? Theme.amber : nil)
+        .panel(corner: Theme.Radius.card)
         .onDrag { NSItemProvider(object: task.id.uuidString as NSString) }
         .onDrop(of: [UTType.text], isTargeted: nil) { providers in
             guard let destination = index, let provider = providers.first else { return false }
@@ -1399,6 +1391,7 @@ private struct MomentumRescueView: View {
     @State private var nextAction: String
     @State private var definitionOfDone: String
     @State private var showAI = false
+    @FocusState private var focusedField: String?
 
     init(store: Store, task: TaskItem, preset: BlockerReason?, isPresented: Binding<Bool>) {
         self.store = store; self.task = task; self.preset = preset; self._isPresented = isPresented
@@ -1412,17 +1405,19 @@ private struct MomentumRescueView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(preset == .tooLarge ? "拆小一步" : "现在为什么不想推进？")
-                .font(Theme.font(18, weight: .semibold)).foregroundColor(Theme.text)
-            Text(task.text).font(Theme.font(13)).foregroundColor(Theme.amber).lineLimit(2)
+                .font(Theme.Typography.title).foregroundColor(Theme.text)
+            Text(task.text).font(Theme.Typography.body).foregroundColor(Theme.textSecondary).lineLimit(2)
 
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(BlockerReason.allCases, id: \.self) { item in
                     Button { choose(item) } label: {
                         Text(item.title).font(Theme.font(12, weight: .medium))
-                            .foregroundColor(reason == item ? Theme.bg : Theme.text)
+                            .foregroundColor(Theme.text)
                             .frame(maxWidth: .infinity).padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 8)
-                                .fill(reason == item ? Theme.amber : Theme.panel))
+                            .background(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                                .fill(reason == item ? Theme.surfaceRaised : Theme.field))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                                .stroke(reason == item ? Theme.focus : Color.clear, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -1438,8 +1433,10 @@ private struct MomentumRescueView: View {
             compactField("最低完成版本", text: $definitionOfDone,
                          prompt: "做到什么程度，今天就算有进展？")
 
-            Button("✦ 帮我想一个起点") { showAI = true }
-                .buttonStyle(.plain).font(Theme.font(12, weight: .medium)).foregroundColor(Theme.amber)
+            Button { showAI = true } label: {
+                Label("帮我想一个起点", systemImage: "sparkles")
+            }
+                .buttonStyle(TertiaryActionStyle())
                 .sheet(isPresented: $showAI) {
                     IntelligentAssistantView(store: store, intent: .unblock, subjectID: task.id,
                                     initialInstruction: reason?.title ?? "") { item in
@@ -1459,14 +1456,12 @@ private struct MomentumRescueView: View {
 
             HStack {
                 Button("取消") { isPresented = false }
-                    .buttonStyle(.plain).foregroundColor(Theme.textDim)
+                    .buttonStyle(TertiaryActionStyle())
                 Spacer()
                 Button("只保存") { save(start: false) }
-                    .buttonStyle(.plain).foregroundColor(Theme.text)
+                    .buttonStyle(SecondaryActionStyle())
                 Button("保存并开始 5 分钟") { save(start: true) }
-                    .buttonStyle(.plain).foregroundColor(Theme.bg)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 9).fill(Theme.amber))
+                    .buttonStyle(AIPrimaryButtonStyle())
             }
         }
         .padding(18).frame(width: 430).background(Theme.bg)
@@ -1475,11 +1470,11 @@ private struct MomentumRescueView: View {
 
     private func compactField(_ label: String, text: Binding<String>, prompt: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.textDim)
+            Text(label).font(Theme.Typography.secondary).foregroundColor(Theme.textDim)
             TextField(prompt, text: text).textFieldStyle(.plain).font(Theme.font(13))
+                .focused($focusedField, equals: label)
                 .foregroundColor(Theme.text).padding(.horizontal, 9).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel.opacity(0.55)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border.opacity(0.6)))
+                .inputSurface(focused: focusedField == label)
         }
     }
 
@@ -1581,9 +1576,7 @@ struct LibraryView: View {
                 }
             }
             .padding(.horizontal, 10).padding(.vertical, 9)
-            .background(RoundedRectangle(cornerRadius: 9).fill(Color.black.opacity(0.18)))
-            .overlay(RoundedRectangle(cornerRadius: 9)
-                .stroke(searchFocused ? Theme.amber.opacity(0.65) : Theme.border, lineWidth: 1))
+            .inputSurface(focused: searchFocused)
             HStack {
                 SegmentedTabs(values: LibraryScope.allCases, selection: $scope, label: { $0.rawValue })
                     .frame(width: 348)
@@ -1715,12 +1708,12 @@ struct LibraryView: View {
                 .help("到四象限的待整理栏归位")
                 .accessibilityLabel("前往待整理，归位\(item.text)")
         }
-        .padding(11).panel(corner: 10)
+        .padding(11).panel(corner: Theme.Radius.card)
     }
 
     private func groupHeading(_ title: String, count: Int) -> some View {
         Text("\(title) · \(count)")
-            .font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.amber)
+            .font(Theme.Typography.secondary).foregroundColor(Theme.textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 5)
     }
     private func empty(_ message: String) -> some View {
@@ -1787,7 +1780,7 @@ private struct SearchTaskRow: View {
             if let due = task.dueAt { DueBadge(date: due) }
             TaskDetailsButton(store: store, task: task)
         }
-        .padding(11).panel(corner: 10)
+        .padding(11).panel(corner: Theme.Radius.card)
     }
 }
 
@@ -1796,7 +1789,7 @@ private struct ArchiveRow: View {
     let task: TaskItem
     var body: some View {
         HStack(spacing: 9) {
-            Image(systemName: "checkmark.circle.fill").foregroundColor(Theme.amber)
+            Image(systemName: "checkmark.circle.fill").foregroundColor(Theme.success)
             VStack(alignment: .leading, spacing: 3) {
                 Text(task.text).font(Theme.font(13)).foregroundColor(Theme.text).lineLimit(2)
                 Text(task.completedAt.map { Self.formatter.string(from: $0) } ?? "已完成")
@@ -1812,7 +1805,7 @@ private struct ArchiveRow: View {
             }
             .buttonStyle(.plain).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.amber)
         }
-        .padding(11).panel(corner: 10)
+        .padding(11).panel(corner: Theme.Radius.card)
     }
     private static let formatter: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN"); f.dateFormat = "yyyy/M/d HH:mm"; return f
@@ -1844,7 +1837,7 @@ private struct ThoughtRow: View {
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 10)).foregroundColor(Theme.textFaint)
             }
-            .padding(11).contentShape(Rectangle()).panel(corner: 10)
+            .padding(11).contentShape(Rectangle()).panel(corner: Theme.Radius.card)
         }
         .buttonStyle(.plain)
     }
@@ -1857,19 +1850,21 @@ struct UndoToast: View {
     var body: some View {
         if let message = store.undoMessage {
             HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill").foregroundColor(Theme.success)
                 Text(message).font(Theme.font(12)).foregroundColor(Theme.text)
                 Button("撤销") { store.undoLastDeletion() }
-                    .buttonStyle(.plain).font(Theme.font(12, weight: .semibold)).foregroundColor(Theme.amber)
+                    .buttonStyle(TertiaryActionStyle(tint: Theme.amber))
                 Button { store.clearUndo() } label: {
                     Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundColor(Theme.textDim)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconActionStyle(size: 24))
+                .accessibilityLabel("关闭撤销提示")
             }
             .padding(.horizontal, 13).padding(.vertical, 9)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panelHi))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.amber.opacity(0.4)))
-            .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.surfaceRaised))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).stroke(Theme.border))
+            .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+            .transition(.opacity)
         }
     }
 }
