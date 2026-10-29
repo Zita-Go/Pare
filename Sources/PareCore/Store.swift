@@ -19,6 +19,10 @@ public final class Store: ObservableObject {
     @Published public private(set) var goals: [LongTermGoal] = []
     @Published public private(set) var agentPreferences = AgentPreferences()
     @Published public private(set) var planningRuns: [PlanningRun] = []
+    @Published public private(set) var confirmedPreferences: [ConfirmedPreference] = []
+    @Published public private(set) var intelligenceFeedback: [IntelligenceFeedback] = []
+    @Published public private(set) var intelligenceAdoptions: [IntelligenceAdoptionReceipt] = []
+    @Published public private(set) var dailyAllocations: [DailyAllocation] = []
     @Published public private(set) var activeTimer: ActiveTimer?
     @Published public private(set) var parallelRuns: [ParallelTaskRun] = []
     /// A short-lived, UI-friendly description of the last destructive action.
@@ -53,6 +57,7 @@ public final class Store: ObservableObject {
     }
     private var undoPayload: UndoPayload?
     private var undoToken = UUID()
+    private var legacyAIAdoptionLinks: [UUID: UUID] = [:]
 
     // MARK: - Init
 
@@ -88,6 +93,11 @@ public final class Store: ObservableObject {
         var goals: [LongTermGoal]?
         var agentPreferences: AgentPreferences?
         var planningRuns: [PlanningRun]?
+        var confirmedPreferences: [ConfirmedPreference]?
+        var intelligenceFeedback: [IntelligenceFeedback]?
+        var intelligenceAdoptions: [IntelligenceAdoptionReceipt]?
+        var dailyAllocations: [DailyAllocation]?
+        var legacyAIAdoptionLinks: [UUID: UUID]?
     }
 
     public enum DataTransferError: LocalizedError {
@@ -160,6 +170,14 @@ public final class Store: ObservableObject {
             if [.gathering, .thinking, .awaitingReview, .needsClarification].contains(value.phase) { value.phase = .interrupted }
             return value
         }
+        confirmedPreferences = snap.confirmedPreferences ?? []
+        intelligenceFeedback = snap.intelligenceFeedback ?? []
+        intelligenceAdoptions = snap.intelligenceAdoptions ?? []
+        dailyAllocations = snap.dailyAllocations ?? []
+        legacyAIAdoptionLinks = snap.legacyAIAdoptionLinks ?? [:]
+        for summary in aiSummaries where summary.feedback != nil && !intelligenceFeedback.contains(where: { $0.requestID == summary.id }) {
+            mirrorLegacyFeedback(summary)
+        }
         activeTimer = snap.activeTimer
         var seenParallel = Set<UUID>()
         parallelRuns = (snap.parallelRuns ?? []).filter { run in
@@ -190,17 +208,19 @@ public final class Store: ObservableObject {
         // changed in a newer app. A new schema is not a corrupt old snapshot.
         struct Header: Decodable { var schemaVersion: Int? }
         let version = try decoder.decode(Header.self, from: data).schemaVersion ?? 1
-        guard version <= 5 else { throw DataTransferError.unsupportedVersion(version) }
+        guard version <= 6 else { throw DataTransferError.unsupportedVersion(version) }
         return try decoder.decode(Snapshot.self, from: data)
     }
 
     private func currentSnapshot() -> Snapshot {
-        Snapshot(schemaVersion: 5, inbox: inbox, tasks: tasks,
+        Snapshot(schemaVersion: 6, inbox: inbox, tasks: tasks,
                  archive: archive, thoughts: thoughts, activeTimer: activeTimer,
                  parallelRuns: parallelRuns,
                  lastActiveDay: lastActiveDay, settings: settings,
                  aiBackground: aiBackground, aiSummaries: aiSummaries,
-                 goals: goals, agentPreferences: agentPreferences, planningRuns: planningRuns)
+                 goals: goals, agentPreferences: agentPreferences, planningRuns: planningRuns,
+                 confirmedPreferences: confirmedPreferences, intelligenceFeedback: intelligenceFeedback,
+                 intelligenceAdoptions: intelligenceAdoptions, dailyAllocations: dailyAllocations, legacyAIAdoptionLinks: legacyAIAdoptionLinks)
     }
 
     private func encoder() -> JSONEncoder {
@@ -272,7 +292,7 @@ public final class Store: ObservableObject {
         // An imported backup cannot tell us when a personal focus session
         // actually stopped. Preserve its recorded work, but never resume it.
         var imported = snapshot
-        imported.schemaVersion = 5
+        imported.schemaVersion = 6
         imported.activeTimer = nil
         var previousBackup: Data?
         var backedUpCurrentFile = false
@@ -438,6 +458,7 @@ public final class Store: ObservableObject {
         return persistIdeaMutation {
             thoughts[index].text = t
             thoughts[index].notes = Self.nonBlank(notes)
+            if thoughts[index].nextQuestion != Self.nonBlank(nextQuestion) { thoughts[index].nextQuestionUpdatedAt = now }
             thoughts[index].nextQuestion = Self.nonBlank(nextQuestion)
             thoughts[index].stage = stage
             thoughts[index].updatedAt = now
@@ -1116,7 +1137,24 @@ public final class Store: ObservableObject {
 
     public func setAISummaryFeedback(_ id: UUID, feedback: AIUserFeedback?) {
         guard let index = aiSummaries.firstIndex(where: { $0.id == id }) else { return }
-        aiSummaries[index].feedback = feedback; save()
+        let before = currentSnapshot(), previousUnsaved = hasUnsavedChanges
+        aiSummaries[index].feedback = feedback
+        intelligenceFeedback.removeAll { $0.requestID == id }
+        mirrorLegacyFeedback(aiSummaries[index])
+        if !save() { restoreIntelligenceState(before); hasUnsavedChanges = previousUnsaved }
+    }
+
+    private func mirrorLegacyFeedback(_ summary: AISummaryRecord) {
+        guard let feedback = summary.feedback else { return }
+        for sourceID in summary.sourceIDs {
+            let target = legacyAIAdoptionLinks[sourceID] ?? sourceID
+            let isTask = (tasks + archive).contains { $0.id == target }
+            let ideaID = thoughts.contains { $0.id == target } ? target : nil
+            intelligenceFeedback.append(IntelligenceFeedback(requestID: summary.id, actionID: sourceID, ideaID: ideaID,
+                createdTaskID: legacyAIAdoptionLinks[sourceID] != nil && isTask ? target : nil,
+                sourceTaskID: isTask ? target : nil, kind: feedback.helpful ? .helpful : .unsuitable,
+                comment: feedback.comment, date: feedback.date))
+        }
     }
 
     @discardableResult
@@ -1164,20 +1202,31 @@ public final class Store: ObservableObject {
                       tasks.first(where: { $0.id == item.id }) == original else { throw AIApplyError.stale }
             }
         }
+        let before = currentSnapshot()
+        let previousUnsaved = hasUnsavedChanges
         for item in chosen {
             if request.workflow == .organize {
                 guard let index = inbox.firstIndex(where: { $0.id == item.id }) else { continue }
                 let source = inbox.remove(at: index)
                 let note = "原始随手记：\(source.text)"
                 if item.kind == "thought" {
-                    thoughts.insert(ThoughtItem(text: item.title, notes: note,
-                                                createdAt: source.createdAt, updatedAt: now), at: 0)
+                    let idea = ThoughtItem(text: item.title, notes: note, createdAt: source.createdAt, updatedAt: now)
+                    thoughts.insert(idea, at: 0)
+                    legacyAIAdoptionLinks[source.id] = idea.id
+                    for i in intelligenceFeedback.indices where intelligenceFeedback[i].actionID == source.id {
+                        intelligenceFeedback[i].ideaID = idea.id
+                    }
                 } else {
-                    tasks.append(TaskItem(text: item.title, quadrant: Quadrant(rawValue: item.quadrant)!,
-                                          createdAt: now, estimatedMinutes: item.estimatedMinutes,
-                                          remindAt: source.suggestedRemindAt, lastProgressAt: now,
-                                          note: note, nextAction: Self.nonBlank(item.nextAction),
-                                          definitionOfDone: Self.nonBlank(item.definitionOfDone)))
+                    let task = TaskItem(text: item.title, quadrant: Quadrant(rawValue: item.quadrant)!,
+                                        createdAt: now, estimatedMinutes: item.estimatedMinutes,
+                                        remindAt: source.suggestedRemindAt, lastProgressAt: now,
+                                        note: note, nextAction: Self.nonBlank(item.nextAction),
+                                        definitionOfDone: Self.nonBlank(item.definitionOfDone))
+                    tasks.append(task)
+                    legacyAIAdoptionLinks[source.id] = task.id
+                    for i in intelligenceFeedback.indices where intelligenceFeedback[i].actionID == source.id {
+                        intelligenceFeedback[i].createdTaskID = task.id; intelligenceFeedback[i].sourceTaskID = task.id
+                    }
                 }
             } else if let index = tasks.firstIndex(where: { $0.id == item.id }) {
                 tasks[index].nextAction = Self.nonBlank(item.nextAction)
@@ -1193,7 +1242,11 @@ public final class Store: ObservableObject {
         if request.workflow == .plan, let key = chosen.first(where: \.isKeyTask) {
             for index in tasks.indices { tasks[index].isDailyWin = tasks[index].id == key.id }
         }
-        save()
+        guard save() else {
+            restoreIntelligenceState(before)
+            hasUnsavedChanges = previousUnsaved
+            throw IntelligenceError.persistence
+        }
     }
 
     /// Replace the reminder settings and persist. Publishing the change lets the
@@ -1292,5 +1345,313 @@ public final class Store: ObservableObject {
             return nil
         }
         return value
+    }
+}
+
+extension Store {
+    private func restoreIntelligenceState(_ snapshot: Snapshot) {
+        inbox = snapshot.inbox; tasks = snapshot.tasks; thoughts = snapshot.thoughts ?? []
+        aiSummaries = snapshot.aiSummaries ?? []
+        legacyAIAdoptionLinks = snapshot.legacyAIAdoptionLinks ?? [:]
+        confirmedPreferences = snapshot.confirmedPreferences ?? []
+        intelligenceFeedback = snapshot.intelligenceFeedback ?? []
+        intelligenceAdoptions = snapshot.intelligenceAdoptions ?? []
+        dailyAllocations = snapshot.dailyAllocations ?? []
+    }
+    private func intelligenceTransaction<T>(_ body: () throws -> T) throws -> T {
+        let before = currentSnapshot(), previousUnsaved = hasUnsavedChanges
+        do {
+            let value = try body()
+            guard save() else { throw IntelligenceError.persistence }
+            return value
+        } catch {
+            restoreIntelligenceState(before); hasUnsavedChanges = previousUnsaved
+            throw error
+        }
+    }
+
+    public func prepareIntelligenceRequest(intent: IntelligenceIntent, subjectID: UUID? = nil,
+        availableMinutes: Int = 30, energy: String = "一般", instruction: String = "",
+        options: IntelligenceContextOptions = .init(), now: Date = Date()) throws -> IntelligenceRequest {
+        guard (2...480).contains(availableMinutes), instruction.count <= 2000, energy.count <= 100 else { throw IntelligenceError.invalidInput }
+        var evidence: [IntelligenceEvidence] = []
+        func add(id: UUID, kind: String, title: String, body: String, date: Date) {
+            guard !evidence.contains(where: { $0.id == id }) else { return }
+            let revision = intelligenceRevision([kind, title, body, String(date.timeIntervalSince1970)])
+            evidence.append(IntelligenceEvidence(id: id, kind: kind, title: title, body: body, date: date, revision: revision))
+        }
+        let allTasks = tasks + archive
+        var relatedIdeas: [ThoughtItem] = []
+        var relatedTasks: [TaskItem] = []
+        switch intent {
+        case .idea:
+            guard let idea = thoughts.first(where: { $0.id == subjectID }) else { throw IntelligenceError.missingSource }
+            relatedIdeas = [idea]
+            if options.includeLinkedTasks { relatedTasks = allTasks.filter { idea.linkedTaskIDs.contains($0.id) } }
+        case .unblock:
+            guard let task = tasks.first(where: { $0.id == subjectID && !$0.completed }) else { throw IntelligenceError.missingSource }
+            relatedTasks = [task]
+            if options.includeLinkedTasks { relatedIdeas = thoughts.filter { $0.linkedTaskIDs.contains(task.id) } }
+        case .today:
+            // Relation and current commitments first; unrelated tasks are bounded candidates.
+            relatedTasks = tasks.filter { !$0.completed || $0.isDailyWin == true }.sorted {
+                if $0.completed != $1.completed { return !$0.completed }
+                if $0.isToday != $1.isToday { return $0.isToday }
+                if ($0.dueAt != nil) != ($1.dueAt != nil) { return $0.dueAt != nil }
+                return ($0.dueAt ?? $0.createdAt) < ($1.dueAt ?? $1.createdAt)
+            }
+            if options.includeLinkedTasks {
+                let ids = Set(relatedTasks.map(\.id))
+                relatedIdeas = thoughts.filter { !Set($0.linkedTaskIDs).isDisjoint(with: ids) }
+            }
+        }
+        for idea in relatedIdeas {
+            add(id: idea.id, kind: "idea", title: idea.text,
+                body: "描述：\(idea.notes ?? "")\n阶段：\(idea.stage.title)\n下一问题：\(idea.nextQuestion ?? "未确定")", date: idea.updatedAt)
+        }
+        for task in relatedTasks {
+            var body = "象限：\(task.quadrant.title)\n下一步：\(task.nextAction ?? "未确定")\n停止条件：\(task.definitionOfDone ?? "未确定")\n完成：\(task.completed)\n今天：\(task.isToday)\n今日重点：\(task.isDailyWin == true)\n整体估时（非本次投入）：\(task.estimatedMinutes.map(String.init) ?? "未知")"
+            if let due = task.dueAt { body += "\n截止：\(due.ISO8601Format())" }
+            if let run = parallelRuns.first(where: { $0.taskID == task.id }) {
+                body += "\n正在并行运行（不计入个人容量），开始：\(run.startedAt.ISO8601Format())；检查：\(run.nextCheckAt?.ISO8601Format() ?? "未设")"
+            }
+            if activeTimer?.taskID == task.id { body += "\n正在个人专注" }
+            if let scheduled = task.scheduledAt, calendar.isDate(scheduled, inSameDayAs: now) {
+                body += "\n今日时间块：\(scheduled.ISO8601Format())，\(task.scheduledMinutes.map(String.init) ?? "未知")分钟"
+            }
+            if options.includeHistory {
+                body += "\n已记录个人投入：\(task.actualMinutes.map(String.init) ?? "未知")；完成时间：\(task.completedAt?.ISO8601Format() ?? "未记录")"
+                body += "\n用户明确卡点：" + (task.blockerEntries ?? []).suffix(5).map { "\($0.at.ISO8601Format()) \($0.reason.title)" }.joined(separator: "；")
+            }
+            add(id: task.id, kind: "task", title: task.text, body: body, date: task.lastProgressAt ?? task.createdAt)
+        }
+        if options.includeIdeaRecords {
+            for idea in relatedIdeas {
+                for entry in idea.entries.sorted(by: { $0.createdAt > $1.createdAt }) {
+                    add(id: entry.id, kind: "ideaEntry", title: "\(idea.text) · \(entry.kind.title)", body: "来源：\(entry.author ?? "用户记录")\n\(entry.text)", date: entry.createdAt)
+                }
+            }
+        }
+        let taskIDs = Set(relatedTasks.map(\.id))
+        let ideaIDs = intent == .idea ? Set(subjectID.map { [$0] } ?? [])
+            : Set(thoughts.filter { !Set($0.linkedTaskIDs).isDisjoint(with: taskIDs) }.map(\.id))
+        for allocation in dailyAllocations where taskIDs.contains(allocation.taskID) && calendar.isDate(allocation.day, inSameDayAs: now) {
+            add(id: allocation.id, kind: "dailyAllocation", title: "当日\(allocation.kind.title)", body: "taskID: \(allocation.taskID)；确认投入：\(allocation.plannedMinutes.map(String.init) ?? "未知")分钟", date: allocation.day)
+        }
+        for goal in goals where options.selectedGoalIDs.contains(goal.id) {
+            add(id: goal.id, kind: "goal", title: goal.title, body: "\(goal.motivation)；状态：\(goal.status.title)", date: goal.updatedAt)
+        }
+        if options.includeMemories {
+            let applicable = confirmedPreferences.filter { ($0.ideaID == nil || ideaIDs.contains($0.ideaID!)) && ($0.expiresAt == nil || $0.expiresAt! > now) }.sorted { ($0.ideaID != nil ? 0 : 1, -$0.updatedAt.timeIntervalSince1970) < ($1.ideaID != nil ? 0 : 1, -$1.updatedAt.timeIntervalSince1970) }
+            for preference in applicable {
+                add(id: preference.id, kind: "preference", title: preference.scopeLabel, body: "\(preference.text)\n来源：\(preference.source)；有效期：\(preference.expiresAt?.ISO8601Format() ?? "未设")", date: preference.updatedAt)
+            }
+        }
+        if options.includeHistory {
+            for summary in aiSummaries.sorted(by: { $0.date > $1.date }) {
+                let linked = Set(summary.sourceIDs.map { legacyAIAdoptionLinks[$0] ?? $0 })
+                guard !linked.isDisjoint(with: taskIDs) || !linked.isDisjoint(with: ideaIDs) else { continue }
+                add(id: summary.id, kind: "aiSummary", title: summary.workflow.title,
+                    body: "AI 生成的旧分析，不是用户确认的事实：\(summary.summary)\n状态：\(summary.outcome.title)", date: summary.date)
+            }
+            for feedback in intelligenceFeedback.sorted(by: { $0.date > $1.date }) where feedback.ideaID.map(ideaIDs.contains) == true || feedback.createdTaskID.map(taskIDs.contains) == true || feedback.sourceTaskID.map(taskIDs.contains) == true {
+                add(id: feedback.id, kind: "feedback", title: feedback.kind.title, body: "用户对建议的反馈，不代表稳定习惯：\(feedback.comment)", date: feedback.date)
+            }
+        }
+        var request = IntelligenceRequest(intent: intent, subjectID: subjectID, availableMinutes: availableMinutes, energy: energy, instruction: instruction, options: options, evidence: [], now: now, timeZone: calendar.timeZone.identifier)
+        // The manifest detects new authorized facts while unrelated records stay outside this scope.
+        request.scopeRevision = intelligenceRevision(evidence.map { "\($0.kind):\($0.id.uuidString):\($0.revision)" }.sorted())
+        let requiredSourceID = subjectID ?? relatedTasks.first?.id
+        // Never truncate the current subject silently. Confirmed preferences come before optional history.
+        let ordered = evidence.enumerated().sorted { left, right in
+            func priority(_ record: IntelligenceEvidence) -> Int {
+                if record.id == requiredSourceID { return 0 }
+                if record.kind == "preference" { return 1 }
+                if record.kind == "ideaEntry" || record.kind == "feedback" { return 2 }
+                if record.kind == "idea" { return 3 }
+                if record.kind == "task" { return 4 }
+                if record.kind == "aiSummary" { return 6 }
+                return 5
+            }
+            return (priority(left.element), left.offset) < (priority(right.element), right.offset)
+        }.map(\.element)
+        for record in ordered {
+            request.evidence.append(record)
+            do { _ = try request.data() }
+            catch {
+                request.evidence.removeLast(); request.omittedRecordCount += 1
+                if record.id == requiredSourceID || request.evidence.isEmpty { throw IntelligenceError.contextTooLarge }
+            }
+        }
+        // The omission counter can slightly increase serialized size.
+        while (try? request.data()) == nil && request.evidence.count > 1 {
+            request.evidence.removeLast(); request.omittedRecordCount += 1
+        }
+        _ = try request.data()
+        return request
+    }
+
+    public func applyIntelligenceProposal(_ proposal: IntelligenceProposal, request: IntelligenceRequest,
+        selectedActionIDs: Set<UUID>, now: Date = Date()) throws -> IntelligenceAdoptionReceipt {
+        try proposal.validate(for: request)
+        guard !selectedActionIDs.isEmpty, selectedActionIDs.isSubset(of: Set(proposal.actions.map(\.id))) else { throw IntelligenceError.invalidProposal }
+        if let receipt = intelligenceAdoptions.first(where: { $0.requestID == request.id }) {
+            guard receipt.undoneAt == nil, Set(receipt.actionIDs) == selectedActionIDs else { throw IntelligenceError.alreadyApplied }
+            return receipt
+        }
+        guard request.timeZone == calendar.timeZone.identifier,
+              calendar.isDate(request.now, inSameDayAs: now) else { throw IntelligenceError.stale }
+        let refreshed = try prepareIntelligenceRequest(intent: request.intent, subjectID: request.subjectID,
+            availableMinutes: request.availableMinutes, energy: request.energy, instruction: request.instruction, options: request.options, now: now)
+        let currentEvidence = Dictionary(uniqueKeysWithValues: refreshed.evidence.map { ($0.id, $0.revision) })
+        guard request.scopeRevision == refreshed.scopeRevision,
+              request.evidence.allSatisfy({ currentEvidence[$0.id] == $0.revision }) else { throw IntelligenceError.stale }
+        let chosen = proposal.actions.filter { selectedActionIDs.contains($0.id) }
+        guard intelligenceAdoptions.allSatisfy({ Set($0.actionIDs).isDisjoint(with: selectedActionIDs) }) else { throw IntelligenceError.alreadyApplied }
+        if chosen.contains(where: { $0.kind == .setDailyWin }) {
+            let knownIDs = Set(request.evidence.filter { $0.kind == "task" }.map(\.id))
+            guard tasks.filter({ $0.isDailyWin == true }).allSatisfy({ knownIDs.contains($0.id) }) else { throw IntelligenceError.stale }
+        }
+        return try intelligenceTransaction {
+            let beforeTasks = tasks, beforeIdeas = thoughts, beforeAllocations = dailyAllocations
+            var created: [UUID] = [], mapping: [UUID: UUID] = [:]
+            for action in chosen {
+                switch action.kind {
+                case .createLinkedTask:
+                    guard let index = thoughts.firstIndex(where: { $0.id == action.sourceID }) else { throw IntelligenceError.stale }
+                    let task = TaskItem(text: action.title.trimmingCharacters(in: .whitespacesAndNewlines), quadrant: .importantNotUrgent, createdAt: now, nextAction: action.nextAction, definitionOfDone: action.definitionOfDone)
+                    tasks.append(task); thoughts[index].linkedTaskIDs.append(task.id); thoughts[index].updatedAt = now
+                    created.append(task.id); mapping[action.id] = task.id
+                case .updateIdeaNextQuestion:
+                    guard let index = thoughts.firstIndex(where: { $0.id == action.sourceID }) else { throw IntelligenceError.stale }
+                    if thoughts[index].nextQuestion != action.text { thoughts[index].nextQuestionUpdatedAt = now }
+                    thoughts[index].nextQuestion = action.text; thoughts[index].updatedAt = now
+                case .appendAIExplorationRecord:
+                    guard let index = thoughts.firstIndex(where: { $0.id == action.sourceID }) else { throw IntelligenceError.stale }
+                    thoughts[index].entries.append(IdeaEntry(text: action.text, createdAt: now, author: "AI 辅助探索")); thoughts[index].updatedAt = now
+                case .updateTaskNextStep, .setTodaySelection, .setDailyWin:
+                    guard let index = tasks.firstIndex(where: { $0.id == action.sourceID && !$0.completed }) else { throw IntelligenceError.stale }
+                    mapping[action.id] = action.sourceID
+                    if action.kind == .updateTaskNextStep {
+                        tasks[index].nextAction = action.nextAction; tasks[index].definitionOfDone = action.definitionOfDone
+                    } else if action.kind == .setTodaySelection {
+                        guard action.selected || activeTimer?.taskID != action.sourceID else { throw IntelligenceError.outOfScope }
+                        tasks[index].isToday = action.selected
+                        tasks[index].todayOrder = action.selected ? (tasks[index].todayOrder ?? nextTodayOrder()) : nil
+                        if !action.selected { tasks[index].isDailyWin = false; tasks[index].scheduledAt = nil; tasks[index].scheduledMinutes = nil; tasks[index].scheduleReminderLeadMinutes = nil }
+                    } else {
+                        for i in tasks.indices where tasks[i].isDailyWin == true { tasks[i].isDailyWin = false }
+                        tasks[index].isDailyWin = true
+                        tasks[index].isToday = true; tasks[index].todayOrder = tasks[index].todayOrder ?? nextTodayOrder()
+                    }
+                    if action.kind == .setTodaySelection && action.selected {
+                        try upsertDailyAllocation(taskID: action.sourceID, plannedMinutes: action.plannedMinutes, kind: action.allocationKind, now: now)
+                    }
+                    tasks[index].lastProgressAt = now
+                }
+            }
+            let changedTaskIDs = Set(tasks.filter { task in beforeTasks.first { $0.id == task.id } != task }.map(\.id))
+            let changedIdeaIDs = Set(thoughts.filter { idea in beforeIdeas.first { $0.id == idea.id } != idea }.map(\.id))
+            let changedAllocationIDs = Set(dailyAllocations.filter { item in beforeAllocations.first { $0.id == item.id } != item }.map(\.id))
+            let receipt = IntelligenceAdoptionReceipt(requestID: request.id, actionIDs: chosen.map(\.id), createdTaskIDs: created, date: now, timeZone: calendar.timeZone.identifier, actionTaskIDs: mapping,
+                beforeTasks: beforeTasks.filter { changedTaskIDs.contains($0.id) }, afterTasks: tasks.filter { changedTaskIDs.contains($0.id) },
+                beforeIdeas: beforeIdeas.filter { changedIdeaIDs.contains($0.id) }, afterIdeas: thoughts.filter { changedIdeaIDs.contains($0.id) },
+                beforeAllocations: beforeAllocations.filter { changedAllocationIDs.contains($0.id) }, afterAllocations: dailyAllocations.filter { changedAllocationIDs.contains($0.id) })
+            intelligenceAdoptions.append(receipt)
+            return receipt
+        }
+    }
+
+    public func undoIntelligenceAdoption(_ receiptID: UUID, now: Date = Date()) throws {
+        guard let index = intelligenceAdoptions.firstIndex(where: { $0.id == receiptID }), intelligenceAdoptions[index].undoneAt == nil else { throw IntelligenceError.alreadyApplied }
+        let receipt = intelligenceAdoptions[index]
+        if !receipt.afterTasks.isEmpty || !receipt.afterAllocations.isEmpty {
+            guard calendar.isDate(receipt.date, inSameDayAs: now), receipt.timeZone == nil || receipt.timeZone == calendar.timeZone.identifier else { throw IntelligenceError.crossDayUndo }
+        }
+        // Conservative entity-level comparison also protects scheduling and timer edits.
+        guard receipt.afterTasks.allSatisfy({ after in tasks.first { $0.id == after.id } == after }),
+              receipt.afterIdeas.allSatisfy({ after in thoughts.first { $0.id == after.id } == after }),
+              receipt.afterAllocations.allSatisfy({ after in dailyAllocations.first { $0.id == after.id } == after }),
+              !receipt.createdTaskIDs.contains(where: { taskID in
+                  activeTimer?.taskID == taskID || parallelRuns.contains { $0.taskID == taskID }
+                  || goals.contains { $0.taskIDs.contains(taskID) }
+                  || thoughts.contains { idea in idea.linkedTaskIDs.contains(taskID) && !receipt.afterIdeas.contains(where: { $0.id == idea.id }) }
+                  || dailyAllocations.contains { $0.taskID == taskID }
+              }) else { throw IntelligenceError.conflict }
+        try intelligenceTransaction {
+            let taskIDs = Set(receipt.afterTasks.map(\.id)), allocationIDs = Set(receipt.afterAllocations.map(\.id))
+            tasks.removeAll { taskIDs.contains($0.id) }; tasks.append(contentsOf: receipt.beforeTasks)
+            for idea in receipt.beforeIdeas { if let i = thoughts.firstIndex(where: { $0.id == idea.id }) { thoughts[i] = idea } }
+            dailyAllocations.removeAll { allocationIDs.contains($0.id) }; dailyAllocations.append(contentsOf: receipt.beforeAllocations)
+            intelligenceAdoptions[index].undoneAt = now
+        }
+    }
+
+    public func confirmPreference(text: String, ideaID: UUID? = nil, source: String = "用户明确确认", expiresAt: Date? = nil, now: Date = Date()) throws -> ConfirmedPreference {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.count <= 500, source.count <= 500, ideaID == nil || thoughts.contains(where: { $0.id == ideaID }) else { throw IntelligenceError.invalidInput }
+        return try intelligenceTransaction {
+            let preference = ConfirmedPreference(text: text, ideaID: ideaID, source: source, updatedAt: now, expiresAt: expiresAt)
+            confirmedPreferences.append(preference); return preference
+        }
+    }
+    public func updateConfirmedPreference(_ id: UUID, text: String, expiresAt: Date? = nil, now: Date = Date()) throws {
+        guard let index = confirmedPreferences.firstIndex(where: { $0.id == id }), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.count <= 500 else { throw IntelligenceError.invalidInput }
+        try intelligenceTransaction { confirmedPreferences[index].text = text; confirmedPreferences[index].updatedAt = now; confirmedPreferences[index].expiresAt = expiresAt }
+    }
+    public func forgetConfirmedPreference(_ id: UUID) throws {
+        try intelligenceTransaction { confirmedPreferences.removeAll { $0.id == id } }
+    }
+    public func recordIntelligenceFeedback(requestID: UUID, actionID: UUID? = nil, ideaID: UUID? = nil, sourceTaskID: UUID? = nil, kind: IntelligenceFeedbackKind, comment: String = "", now: Date = Date()) throws {
+        guard comment.count <= 500, sourceTaskID == nil || (tasks + archive).contains(where: { $0.id == sourceTaskID }) else { throw IntelligenceError.invalidInput }
+        let receipt = intelligenceAdoptions.first { $0.requestID == requestID }
+        let taskID = actionID.flatMap { receipt?.actionTaskIDs[$0] }
+        try intelligenceTransaction {
+            intelligenceFeedback.append(IntelligenceFeedback(requestID: requestID, actionID: actionID, ideaID: ideaID, createdTaskID: taskID, sourceTaskID: sourceTaskID, kind: kind, comment: comment, date: now))
+        }
+    }
+    private func upsertDailyAllocation(taskID: UUID, plannedMinutes: Int?, kind: DailyAllocationKind, now: Date) throws {
+        guard tasks.contains(where: { $0.id == taskID }), plannedMinutes.map({ (1...1440).contains($0) }) ?? true,
+              !parallelRuns.contains(where: { $0.taskID == taskID }) || kind == .check else { throw IntelligenceError.invalidInput }
+        let day = calendar.startOfDay(for: now)
+        if let index = dailyAllocations.firstIndex(where: { $0.taskID == taskID && calendar.isDate($0.day, inSameDayAs: now) }) {
+            dailyAllocations[index].plannedMinutes = plannedMinutes; dailyAllocations[index].kind = kind
+        } else { dailyAllocations.append(DailyAllocation(taskID: taskID, day: day, plannedMinutes: plannedMinutes, kind: kind)) }
+    }
+    public func setDailyAllocation(taskID: UUID, plannedMinutes: Int?, kind: DailyAllocationKind = .personal, now: Date = Date()) throws {
+        try intelligenceTransaction { try upsertDailyAllocation(taskID: taskID, plannedMinutes: plannedMinutes, kind: kind, now: now) }
+    }
+    public func dailyLoad(now: Date = Date()) -> DailyLoad {
+        calculateDailyLoad(tasks: tasks, allocations: dailyAllocations, now: now)
+    }
+    public func projectedDailyLoad(for proposal: IntelligenceProposal, selectedActionIDs: Set<UUID>, now: Date = Date()) throws -> DailyLoad {
+        guard selectedActionIDs.isSubset(of: Set(proposal.actions.map(\.id))) else { throw IntelligenceError.invalidProposal }
+        var projectedTasks = tasks, projectedAllocations = dailyAllocations
+        for action in proposal.actions where selectedActionIDs.contains(action.id) {
+            guard [.setTodaySelection, .setDailyWin].contains(action.kind) else { continue }
+            guard let index = projectedTasks.firstIndex(where: { $0.id == action.sourceID && !$0.completed }) else { throw IntelligenceError.missingSource }
+            projectedTasks[index].isToday = action.kind == .setDailyWin || action.selected
+            if action.kind == .setTodaySelection && action.selected {
+                projectedAllocations.removeAll { $0.taskID == action.sourceID && calendar.isDate($0.day, inSameDayAs: now) }
+                projectedAllocations.append(DailyAllocation(taskID: action.sourceID, day: calendar.startOfDay(for: now), plannedMinutes: action.plannedMinutes, kind: action.allocationKind))
+            }
+        }
+        return calculateDailyLoad(tasks: projectedTasks, allocations: projectedAllocations, now: now)
+    }
+    private func calculateDailyLoad(tasks: [TaskItem], allocations: [DailyAllocation], now: Date) -> DailyLoad {
+        var result = DailyLoad(personalMinutes: 0, checkMinutes: 0, unknownCount: 0)
+        for task in tasks where task.isToday && !task.completed {
+            let allocation = allocations.first { $0.taskID == task.id && calendar.isDate($0.day, inSameDayAs: now) }
+            let parallel = parallelRuns.contains { $0.taskID == task.id }
+            if parallel {
+                if allocation?.kind == .check, let minutes = allocation?.plannedMinutes { result.checkMinutes += minutes }
+                else { result.unknownCount += 1 }
+            } else if let at = task.scheduledAt, calendar.isDate(at, inSameDayAs: now), let minutes = task.scheduledMinutes {
+                if allocation?.kind == .check { result.checkMinutes += minutes } else { result.personalMinutes += minutes }
+            } else if let minutes = allocation?.plannedMinutes {
+                if allocation?.kind == .check { result.checkMinutes += minutes } else { result.personalMinutes += minutes }
+            } else { result.unknownCount += 1 }
+        }
+        return result
     }
 }

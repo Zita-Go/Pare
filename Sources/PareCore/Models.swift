@@ -175,12 +175,14 @@ public struct IdeaEntry: Identifiable, Codable, Hashable {
     public var id: UUID
     public var text: String
     public var kind: IdeaEntryKind
+    public var author: String?
     public var createdAt: Date
 
-    public init(id: UUID = UUID(), text: String, kind: IdeaEntryKind = .note, createdAt: Date = Date()) {
+    public init(id: UUID = UUID(), text: String, kind: IdeaEntryKind = .note, createdAt: Date = Date(), author: String? = nil) {
         self.id = id
         self.text = text
         self.kind = kind
+        self.author = author
         self.createdAt = createdAt
     }
 }
@@ -200,11 +202,12 @@ public struct ThoughtItem: Identifiable, Codable, Hashable {
     public var entries: [IdeaEntry]
     public var linkedTaskIDs: [UUID]
     public var nextQuestion: String?
+    public var nextQuestionUpdatedAt: Date?
 
     public init(id: UUID = UUID(), text: String, notes: String? = nil,
                 createdAt: Date = Date(), updatedAt: Date = Date(), reviewAt: Date? = nil,
                 stage: IdeaStage = .seed, entries: [IdeaEntry] = [],
-                linkedTaskIDs: [UUID] = [], nextQuestion: String? = nil) {
+                linkedTaskIDs: [UUID] = [], nextQuestion: String? = nil, nextQuestionUpdatedAt: Date? = nil) {
         self.id = id
         self.text = text
         self.notes = notes
@@ -215,10 +218,11 @@ public struct ThoughtItem: Identifiable, Codable, Hashable {
         self.entries = entries
         self.linkedTaskIDs = linkedTaskIDs
         self.nextQuestion = nextQuestion
+        self.nextQuestionUpdatedAt = nextQuestionUpdatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, text, notes, createdAt, updatedAt, reviewAt, stage, entries, linkedTaskIDs, nextQuestion
+        case id, text, notes, createdAt, updatedAt, reviewAt, stage, entries, linkedTaskIDs, nextQuestion, nextQuestionUpdatedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -233,6 +237,7 @@ public struct ThoughtItem: Identifiable, Codable, Hashable {
         entries = try container.decodeIfPresent([IdeaEntry].self, forKey: .entries) ?? []
         linkedTaskIDs = try container.decodeIfPresent([UUID].self, forKey: .linkedTaskIDs) ?? []
         nextQuestion = try container.decodeIfPresent(String.self, forKey: .nextQuestion)
+        nextQuestionUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .nextQuestionUpdatedAt)
     }
 }
 

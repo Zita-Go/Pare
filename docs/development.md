@@ -60,6 +60,17 @@ xcrun swiftc -target arm64-apple-macosx13.0 Scripts/capture-window.swift -o /tmp
 
 ## 代码位置
 
+### 智能助手隔离验收
+
+```bash
+python3 Scripts/intelligence-mock-server.py --port 8766
+bash Scripts/screenshot-demo.sh --parallel-demo --compact --ai-endpoint=http://127.0.0.1:8766/v1
+```
+
+假服务只监听本机，返回固定虚构建议，不调用真实模型。`GET /stats` 返回请求数；打开助手和出现轻提示应不增加次数。`GET /control?mode=error` 可模拟503，恢复用 `mode=success`，还支持malformed/truncated/redirect/oversized/slow；此控制接口仅供隔离验收。`GET /debug` 可查看本轮虚构请求的补充说明，勿将真实用户内容发给测试服务。
+
+完整测试会自行启动随机端口的假服务。界面测试应只保留一个演示实例，结束后关闭演示与假服务，避免多个相同bundle ID干扰窗口定位。固定样例只验证协议、权限和操作，不证明真实模型建议质量。
+
 | 位置 | 内容 |
 | --- | --- |
 | `Sources/PareCore/Models.swift` | 任务、想法、计时与推进记录 |

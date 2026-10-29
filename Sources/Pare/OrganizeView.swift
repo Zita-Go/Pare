@@ -108,7 +108,12 @@ struct OrganizeView: View {
         .animation(.easeOut(duration: 0.18), value: store.undoMessage)
         .animation(.easeOut(duration: 0.2), value: inboxVisible)
         .sheet(isPresented: $showAssistant) {
-            AIAssistantView(store: store, workflow: assistantWorkflow, task: assistantTask)
+            if assistantWorkflow == .organize {
+                AIAssistantView(store: store, workflow: assistantWorkflow, task: assistantTask)
+            } else {
+                IntelligentAssistantView(store: store,
+                    intent: assistantTask == nil ? .today : .unblock, subjectID: assistantTask?.id)
+            }
         }
         .sheet(isPresented: $showLongTermGoals) {
             VStack(alignment: .trailing, spacing: 12) {

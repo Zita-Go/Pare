@@ -177,8 +177,8 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(components.contains("else if let emptyLabel"))
         XCTAssertTrue(organize.contains("DurationPill(minutes: task.estimatedMinutes, emptyLabel: \"估时\")"),
                       "象限任务没有估时时也必须显示估时入口")
-        XCTAssertTrue(planning.contains("DurationPill(minutes: task.estimatedMinutes, emptyLabel: \"估时\")"),
-                      "今日清单没有估时时也必须显示估时入口")
+        XCTAssertTrue(planning.contains("DailyAllocationPill(store: store, task: task)"),
+                      "今日清单必须显示当日投入入口，与整项任务估时分开")
         let rowStart = try XCTUnwrap(organize.range(of: "private struct QuadrantTaskRow"))
         let rowEnd = try XCTUnwrap(organize.range(of: "enum OrganizeSelection"))
         let row = organize[rowStart.lowerBound..<rowEnd.lowerBound]

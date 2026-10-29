@@ -21,6 +21,7 @@ final class AIService: ObservableObject {
     @Published private(set) var configuration: AIConfiguration
     @Published private(set) var isRunning = false
     @Published private(set) var requestCount: Int = 0
+    @Published private(set) var configurationRevision: Int = 0
     private let defaults: UserDefaults
     private let client: AIClient
     private let preferenceKey = "pareAIConfiguration"
@@ -95,11 +96,13 @@ final class AIService: ObservableObject {
         }
         defaults.set(try JSONEncoder().encode(config), forKey: preferenceKey)
         configuration = config
+        configurationRevision += 1
     }
 
     func deleteKey(for config: AIConfiguration) throws {
         let status = SecItemDelete(keyQuery(try config.endpoint().absoluteString) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else { throw AILocalError.keychain(status) }
+        configurationRevision += 1
     }
 
     @MainActor
@@ -119,5 +122,49 @@ final class AIService: ObservableObject {
         isRunning = true
         defer { isRunning = false }
         return try await client.generate(config: config, apiKey: key, input: input)
+    }
+}
+
+extension AIService {
+    /// New idea/relationship permissions are deliberately separate from the old
+    /// notes/history switches, and are scoped to the resolved provider endpoint.
+    func intelligenceContextOptions() -> IntelligenceContextOptions? {
+        guard let endpoint = try? configuration.endpoint(),
+              let data = defaults.data(forKey: "pareIntelligenceContext.v1." + endpoint.absoluteString) else { return nil }
+        return try? JSONDecoder().decode(IntelligenceContextOptions.self, from: data)
+    }
+
+    func rememberIntelligenceContext(_ options: IntelligenceContextOptions) {
+        guard let endpoint = try? configuration.endpoint(), let data = try? JSONEncoder().encode(options) else { return }
+        defaults.set(data, forKey: "pareIntelligenceContext.v1." + endpoint.absoluteString)
+    }
+
+    func forgetIntelligenceContext() {
+        guard let endpoint = try? configuration.endpoint() else { return }
+        defaults.removeObject(forKey: "pareIntelligenceContext.v1." + endpoint.absoluteString)
+    }
+
+    @MainActor
+    func generate(_ input: IntelligenceRequest) async throws -> IntelligenceProposal {
+        guard configuration.enabled else { throw AILocalError.disabled }
+        guard !isRunning else { throw AILocalError.busy }
+        let config = configuration
+        let revision = configurationRevision
+        let endpoint = try config.endpoint()
+        _ = try IntelligenceClient.makeRequest(config: config, apiKey: "", input: input)
+        try Task.checkCancellation()
+        let key = try readKey(account: endpoint.absoluteString)
+        let local = ["127.0.0.1", "localhost", "::1"].contains(endpoint.host ?? "")
+        guard local || !key.isEmpty else { throw AILocalError.missingKey }
+        refreshCount()
+        guard requestCount < config.dailyRequestLimit else { throw AILocalError.dailyLimit }
+        requestCount += 1
+        defaults.set(requestCount, forKey: "pareAIRequestCount")
+        isRunning = true
+        defer { isRunning = false }
+        let result = try await IntelligenceClient().generate(config: config, apiKey: key, input: input)
+        try Task.checkCancellation()
+        guard configuration == config, configurationRevision == revision else { throw AIApplyError.stale }
+        return result
     }
 }

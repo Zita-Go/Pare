@@ -9,6 +9,9 @@ struct IdeaWorkspaceView: View {
     @State private var filter: IdeaFilter = .active
     @State private var selectedIdea: ThoughtItem?
     @State private var addError: String?
+    @State private var showIntelligence = false
+    @State private var intelligenceSubjectID: UUID?
+    @State private var intelligenceIntent: IntelligenceIntent = .idea
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -30,6 +33,9 @@ struct IdeaWorkspaceView: View {
                     .accessibilityLabel("保存新想法")
             }
             .padding(10).panel(corner: 10)
+            IntelligenceHintCard(store: store, includeToday: false) { intent, id in
+                intelligenceIntent = intent; intelligenceSubjectID = id; showIntelligence = true
+            }
             if let addError {
                 Text(addError).font(Theme.font(11)).foregroundColor(Theme.qUrgent)
                     .fixedSize(horizontal: false, vertical: true)
@@ -68,6 +74,9 @@ struct IdeaWorkspaceView: View {
         .foregroundColor(Theme.text).tint(Theme.amber)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .sheet(item: $selectedIdea) { IdeaDetailView(store: store, ideaID: $0.id) }
+        .sheet(isPresented: $showIntelligence) {
+            IntelligentAssistantView(store: store, intent: intelligenceIntent, subjectID: intelligenceSubjectID)
+        }
     }
 
     private var visibleIdeas: [ThoughtItem] {
@@ -124,7 +133,7 @@ private struct IdeaListCard: View {
                     InfoBadge(text: idea.stage.title)
                 }
                 if let latest = idea.entries.max(by: { $0.createdAt < $1.createdAt }) {
-                    Text("\(latest.kind.title) · \(latest.text)")
+                    Text("\(latest.author ?? latest.kind.title) · \(latest.text)")
                         .font(Theme.font(12)).foregroundColor(Theme.textDim).lineLimit(2)
                 } else if let question = idea.nextQuestion {
                     Text("待探索 · \(question)")
@@ -170,6 +179,7 @@ struct IdeaDetailView: View {
     @State private var feedback: String?
     @State private var feedbackIsError = false
     @State private var confirmDiscard = false
+    @State private var showIntelligence = false
     @State private var confirmDeletion = false
 
     init(store: Store, ideaID: UUID, sourceTaskID: UUID? = nil) {
@@ -191,6 +201,13 @@ struct IdeaDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top) {
                 PageHeading(title: "想法详情", subtitle: "让理解逐渐清晰，也把探索过程留下来。")
+                Button { showIntelligence = true } label: {
+                    Label("接着想一想", systemImage: "sparkles")
+                }
+                .buttonStyle(SecondaryActionStyle())
+                .disabled(hasDrafts || idea == nil)
+                .help(hasDrafts ? "请先保存当前更改或追加记录，让 AI 参考最新内容" : "参考这个想法和获准的记录，提出下一步探索")
+                .accessibilityLabel("AI 接着想一想")
                 Button(action: requestClose) {
                     Image(systemName: "xmark").frame(width: 28, height: 28).contentShape(Rectangle())
                 }
@@ -251,6 +268,9 @@ struct IdeaDetailView: View {
         .font(Theme.font(13)).tint(Theme.amber)
         .buttonStyle(SecondaryActionStyle())
         .interactiveDismissDisabled(hasDrafts)
+        .sheet(isPresented: $showIntelligence) {
+            IntelligentAssistantView(store: store, intent: .idea, subjectID: ideaID)
+        }
         .onAppear(perform: synchronizeMetadataIfClean)
         .onChange(of: liveMetadata) { _ in synchronizeMetadataIfClean() }
         .onChange(of: metadataChanged) { _ in synchronizeMetadataIfClean() }
@@ -351,7 +371,8 @@ struct IdeaDetailView: View {
                 ForEach(idea.entries.sorted { $0.createdAt > $1.createdAt }) { entry in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text(entry.kind.title).foregroundColor(Theme.amber)
+                            Text(entry.author.map { "\(entry.kind.title) · \($0)" } ?? entry.kind.title)
+                                .foregroundColor(Theme.amber)
                             Spacer()
                             Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
                                 .foregroundColor(Theme.textFaint)

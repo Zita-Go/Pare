@@ -56,7 +56,7 @@ final class IdeaWorkspaceTests: XCTestCase {
         XCTAssertTrue(store.retrySaving())
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         let persisted = try XCTUnwrap((json["thoughts"] as? [[String: Any]])?.first)
-        XCTAssertEqual(json["schemaVersion"] as? Int, 5)
+        XCTAssertEqual(json["schemaVersion"] as? Int, 6)
         XCTAssertEqual(persisted["stage"] as? String, "seed")
         XCTAssertEqual(persisted["entries"] as? [String], [])
         XCTAssertEqual(persisted["linkedTaskIDs"] as? [String], [])
@@ -237,7 +237,7 @@ final class IdeaWorkspaceTests: XCTestCase {
         let store = Store(fileURL: url)
         try store.importData(from: imported)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
-        XCTAssertEqual(json["schemaVersion"] as? Int, 5)
+        XCTAssertEqual(json["schemaVersion"] as? Int, 6)
         XCTAssertEqual(Store(fileURL: url).thoughts.first?.text, "Imported idea")
         XCTAssertEqual(Store(fileURL: url).thoughts.first?.stage, .seed)
     }

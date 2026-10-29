@@ -596,6 +596,9 @@ struct TodayPlannerView: View {
     @State private var rescuePreset: BlockerReason?
     @State private var mode: TodayPlannerMode = .list
     @State private var parallelExpanded = false
+    @State private var showIntelligence = false
+    @State private var intelligenceIntent: IntelligenceIntent = .today
+    @State private var intelligenceSubjectID: UUID?
 
     private var runningIDs: Set<UUID> { Set(store.parallelRuns.map(\.taskID)) }
     private var running: [TaskItem] { store.parallelRunningTasks }
@@ -608,6 +611,9 @@ struct TodayPlannerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             modeSwitcher
+            IntelligenceHintCard(store: store) { intent, id in
+                intelligenceIntent = intent; intelligenceSubjectID = id; showIntelligence = true
+            }
             if mode == .timeline {
                 DayTimelineView(store: store)
             } else {
@@ -644,6 +650,9 @@ struct TodayPlannerView: View {
                 MomentumRescueView(store: store, task: task, preset: rescuePreset,
                                    isPresented: rescuePresented)
             }
+        }
+        .sheet(isPresented: $showIntelligence) {
+            IntelligentAssistantView(store: store, intent: intelligenceIntent, subjectID: intelligenceSubjectID)
         }
     }
 
@@ -687,7 +696,7 @@ struct TodayPlannerView: View {
                     .font(Theme.font(10)).foregroundColor(Theme.textDim)
                     .multilineTextAlignment(.trailing).lineLimit(2)
                     .frame(maxWidth: 180, alignment: .trailing)
-                    .help("今日容量 \(DurationLabel.short(store.settings.todayCapacityMinutes))；预估只统计个人行动")
+                    .help("当日计划投入与整项任务估时独立；时间块优先，不重复计入")
             }
             if let task = keyTask, !task.completed {
                 if runningIDs.contains(task.id) {
@@ -785,14 +794,7 @@ struct TodayPlannerView: View {
     }
 
     private var remainingText: String {
-        let minutes = incomplete.reduce(0) { $0 + ($1.estimatedMinutes ?? 0) }
-        let unestimated = incomplete.filter { $0.estimatedMinutes == nil }.count
-        let capacity = DurationLabel.short(store.settings.todayCapacityMinutes)
-        if minutes > 0 {
-            let pending = unestimated > 0 ? " · \(unestimated) 件未估时" : ""
-            return "预估 \(DurationLabel.short(minutes)) / 容量 \(capacity)" + pending
-        }
-        return unestimated > 0 ? "\(unestimated) 件未估时 · 容量 \(capacity)" : "容量 \(capacity)"
+        store.dailyLoad().label + " · 容量 " + DurationLabel.short(store.settings.todayCapacityMinutes)
     }
 
     private var emptyState: some View {
@@ -1314,6 +1316,7 @@ private struct ParallelRunRow: View {
                     }
                 }
                 Spacer(minLength: 8)
+                DailyAllocationPill(store: store, task: task)
                 ParallelRunButton(store: store, task: task, showsLabel: true)
                 Button("暂停") { _ = store.pauseParallelRun(task.id, now: context.date) }
                     .buttonStyle(SecondaryActionStyle())
@@ -1368,9 +1371,7 @@ private struct TodayPlannerRow: View {
             }
             Spacer(minLength: 6)
             if !task.completed {
-                DurationPill(minutes: task.estimatedMinutes, emptyLabel: "估时") {
-                    store.setEstimate(task.id, minutes: $0)
-                }
+                DailyAllocationPill(store: store, task: task)
             } else if let minutes = task.estimatedMinutes {
                 Text(DurationLabel.short(minutes)).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
             }
@@ -1443,8 +1444,8 @@ private struct MomentumRescueView: View {
             Button("✦ 帮我想一个起点") { showAI = true }
                 .buttonStyle(.plain).font(Theme.font(12, weight: .medium)).foregroundColor(Theme.amber)
                 .sheet(isPresented: $showAI) {
-                    AIAssistantView(store: store, workflow: .nextStep, task: task,
-                                    blocker: reason?.title ?? "") { item in
+                    IntelligentAssistantView(store: store, intent: .unblock, subjectID: task.id,
+                                    initialInstruction: reason?.title ?? "") { item in
                         nextAction = item.nextAction
                         definitionOfDone = item.definitionOfDone
                     }
