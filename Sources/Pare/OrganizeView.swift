@@ -203,7 +203,7 @@ struct OrganizeView: View {
             } label: {
                 Label("AI 助手", systemImage: "sparkles")
                     .font(Theme.Typography.body)
-            }.buttonStyle(SecondaryActionStyle()).help("按当前任务上下文打开 AI；未选中任务时帮助安排今天")
+            }.buttonStyle(WarmActionStyle()).help("按当前任务上下文打开 AI；未选中任务时帮助安排今天")
             weeklyReviewButton
             if workspace == .matrix {
             Text(store.todayTotal > 0 ? progressString : "今天未安排")
@@ -262,7 +262,8 @@ struct OrganizeView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.amberSoft))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Theme.amber.opacity(0.3), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .stroke(Theme.amber.opacity(0.3), lineWidth: 1).allowsHitTesting(false))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("今日安排偏多：\(overload.message)")
     }
@@ -429,7 +430,7 @@ private struct WorkspaceSwitcher: View {
     @Binding var selection: WorkspaceMode
 
     var body: some View {
-        // The three controls must form one continuous hit region. A real HStack
+        // The controls must form one continuous hit region. A real HStack
         // spacing here creates a narrow dead strip between tabs: clicking the
         // visual boundary changes nothing even though it looks like one control.
         HStack(spacing: 0) {
@@ -437,12 +438,9 @@ private struct WorkspaceSwitcher: View {
                 Button { selection = mode } label: {
                     Text(mode.rawValue)
                         .font(Theme.font(13, weight: selection == mode ? .medium : .regular))
-                        .foregroundColor(selection == mode ? Theme.text : Theme.textSecondary)
+                        .foregroundColor(selection == mode ? Theme.selectionText : Theme.textSecondary)
                         .frame(maxWidth: .infinity, minHeight: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                                .fill(selection == mode ? Theme.surfaceRaised : Color.clear)
-                        )
+                        .selectionSurface(selected: selection == mode)
                         // Keep a small visual seam while leaving the padded
                         // area owned by one of the adjacent buttons.
                         .padding(.horizontal, 1.5)
@@ -603,6 +601,7 @@ private struct InboxCard: View {
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                 .stroke(Theme.focus, lineWidth: 1.5)
                 .opacity(isSelected ? 1 : 0)
+                .allowsHitTesting(false)
         )
         .contentShape(Rectangle())
         .onTapGesture { focus.selection = .inbox(item.id) }
@@ -647,26 +646,24 @@ private struct QuadrantCard: View {
             if quadrant == .neither, let cleanup = store.quadrantFourCleanup() {
                 cleanupBanner(cleanup)
             }
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    if store.tasks(in: quadrant).isEmpty {
-                        Text("暂无任务")
-                            .font(Theme.font(12)).foregroundColor(Theme.textFaint)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
-                            .padding(.horizontal, 6)
+            if store.tasks(in: quadrant).isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(store.tasks(in: quadrant)) { task in
+                            QuadrantTaskRow(store: store, task: task, accent: accent, focus: focus)
+                        }
                     }
-                    ForEach(store.tasks(in: quadrant)) { task in
-                        QuadrantTaskRow(store: store, task: task, accent: accent, focus: focus)
-                    }
+                    .padding(.top, 1)
                 }
-                .padding(.top, 1)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             addField
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .panel(corner: Theme.Radius.card, accent: targeted ? accent : nil, highlighted: targeted)
+        .quadrantPanel(accent: accent, highlighted: targeted)
         .animation(Theme.motion(reduceMotion), value: targeted)
         .dropDestination(for: String.self) { values, _ in
             return handleDrop(values)
@@ -702,21 +699,48 @@ private struct QuadrantCard: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(accent.opacity(0.10)))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(accent.opacity(0.3), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .stroke(accent.opacity(0.3), lineWidth: 1).allowsHitTesting(false))
+    }
+
+    private var emptyState: some View {
+        // Empty rows can be only 120 points tall. Let the decoration reflow
+        // inside the available space without increasing the card's minimum.
+        ViewThatFits(in: .vertical) {
+            VStack(spacing: 7) {
+                Image(systemName: "leaf")
+                    .font(.system(size: 24, weight: .ultraLight))
+                    .foregroundColor(accent.opacity(0.65))
+                    .accessibilityHidden(true)
+                Text("暂无任务")
+                    .font(Theme.font(12)).foregroundColor(Theme.textFaint)
+            }
+            HStack(spacing: 7) {
+                Image(systemName: "leaf")
+                    .font(.system(size: 14, weight: .light))
+                    .foregroundColor(accent.opacity(0.65))
+                    .accessibilityHidden(true)
+                Text("暂无任务")
+                    .font(Theme.font(12)).foregroundColor(Theme.textFaint)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Circle()
-                    .fill(accent)
-                    .frame(width: 7, height: 7)
+        // The larger number absorbs the old separator spacing so compact
+        // cards keep the same room for their first task and its actions.
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: 7) {
                 // RFC-0001: 象限对应的数字键提示，让全键盘归位一目了然（1–4 = 阅读顺序）。
                 Text("\(quadrant.rawValue + 1)")
-                    .font(Theme.font(10, weight: .bold))
-                    .foregroundColor(Theme.textFaint)
-                    .frame(width: 15, height: 15)
-                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(Theme.border, lineWidth: 1))
+                    .font(Theme.font(12, weight: .medium))
+                    .foregroundColor(accent)
+                    .frame(width: 24, height: 24)
+                    .background(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                        .fill(accent.opacity(0.12)))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                        .strokeBorder(accent.opacity(0.18), lineWidth: 1).allowsHitTesting(false))
                     .accessibilityHidden(true)
                 Text(quadrant.title)
                     .font(Theme.Typography.section)
@@ -868,6 +892,7 @@ private struct QuadrantTaskRow: View {
             RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                 .stroke(Theme.focus, lineWidth: 1.5)
                 .opacity(isSelected ? 1 : 0)
+                .allowsHitTesting(false)
         )
         .contentShape(Rectangle())
         .onTapGesture { focus.selection = .task(task.id) }

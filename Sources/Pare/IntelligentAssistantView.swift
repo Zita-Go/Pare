@@ -321,7 +321,7 @@ struct IntelligentAssistantView: View {
                 selectedActionIDs = plan.selecting($0, from: selectedActionIDs)
             })) {
                 Text(headline)
-                    .font(Theme.font(15, weight: .medium))
+                    .font(Theme.font(primary ? 17 : 15, weight: .medium))
             }.disabled(currentProposalWasAdopted || requiresFreshProposal || work != nil)
             if plan.actions.count > 1, headline != sourceTitle(action) {
                 Text("任务：\(sourceTitle(action))")
@@ -366,7 +366,7 @@ struct IntelligentAssistantView: View {
                 }.font(Theme.font(11))
             }
             actionExplanation(action)
-        }.padding(14).panel(accent: primary ? Theme.amber : nil)
+        }.padding(14).warmPanel(emphasized: primary)
     }
 
     private func actionSelection(_ action: IntelligenceAction) -> Binding<Bool> {

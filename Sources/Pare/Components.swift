@@ -61,6 +61,7 @@ struct TaskCheckbox: View {
 /// Editable form is used in the 整理 window; a read-only variant lives inline in
 /// the capture popover.
 struct DurationPill: View {
+    @Environment(\.colorSchemeContrast) private var contrast
     let minutes: Int?
     var emptyLabel: String? = nil
     let onSelect: (Int?) -> Void
@@ -81,23 +82,20 @@ struct DurationPill: View {
                     Text(emptyLabel).font(Theme.font(11, weight: .medium)).lineLimit(1)
                 }
             }
-            .foregroundColor(minutes == nil
-                             ? Theme.textDim
-                             : Theme.amber)
+            .foregroundColor(Theme.textSecondary)
             .padding(.horizontal, minutes == nil && emptyLabel == nil ? 4 : 6)
             .padding(.vertical, 4)
             .frame(minHeight: 24)
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .fill(minutes == nil ? (showsEmptyPrompt ? Theme.panel.opacity(0.4) : Color.clear)
-                                         : Theme.amberSoft)
+                    .fill(minutes == nil && !showsEmptyPrompt ? Color.clear : Theme.surfaceRaised.opacity(0.35))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .stroke(minutes == nil
-                            ? Theme.border.opacity(0.6)
-                            : Theme.amber.opacity(0.35), lineWidth: 1)
+                    .strokeBorder(contrast == .increased ? Theme.textTertiary.opacity(0.8)
+                                  : Theme.border.opacity(showsEmptyPrompt ? 0.45 : 0.25), lineWidth: 1)
+                    .allowsHitTesting(false)
             )
         }
         .buttonStyle(CompactPillStyle())

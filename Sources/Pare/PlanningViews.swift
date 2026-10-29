@@ -678,11 +678,12 @@ struct TodayPlannerView: View {
                         Image(systemName: store.activeTimerTask != nil ? "play.fill" : "star.fill")
                         Text(store.activeTimerTask != nil ? "正在专注" : "今天只赢一件")
                     }
-                    .font(Theme.Typography.secondary).foregroundColor(Theme.amber)
+                    .font(Theme.Typography.secondary)
+                    .foregroundColor(keyTask == nil ? Theme.textDim : Theme.amber)
                     Text(keyTask?.text ?? headerEmptyTitle)
-                        .font(Theme.Typography.section)
+                        .font(Theme.font(keyTask == nil ? 14 : 17, weight: .medium))
                         .foregroundColor(keyTask == nil ? Theme.textDim : Theme.text)
-                        .lineLimit(1).help(keyTask?.text ?? headerEmptyTitle)
+                        .lineLimit(2).help(keyTask?.text ?? headerEmptyTitle)
                     if let action = keyTask?.nextAction, !action.isEmpty {
                         Text("下一步：\(action)").font(Theme.font(11)).foregroundColor(Theme.textDim)
                             .lineLimit(1).help(action)
@@ -725,7 +726,7 @@ struct TodayPlannerView: View {
                 }
             }
         }
-        .padding(14).panel(corner: Theme.Radius.card)
+        .padding(14).warmPanel(emphasized: keyTask != nil)
     }
 
     private func elapsedLabel(now: Date) -> String {

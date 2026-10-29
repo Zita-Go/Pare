@@ -3,7 +3,7 @@ import SwiftUI
 /// Pointer feedback changes paint only. Geometry and focus remain owned by the
 /// real Button, so a hover never rebuilds rows or adds a keyboard stop.
 struct ActionPaint: ViewModifier {
-    enum Kind { case primary, secondary, tertiary, icon, pill }
+    enum Kind { case primary, warm, secondary, tertiary, icon, pill }
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
@@ -20,6 +20,11 @@ struct ActionPaint: ViewModifier {
                     .fill(fill)
             )
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .strokeBorder(LinearGradient(
+                    colors: [Theme.selectionText.opacity(enabled && (kind == .primary || kind == .warm) ? 0.14 : 0), .clear],
+                    startPoint: .top, endPoint: .bottom), lineWidth: 1)
+                .allowsHitTesting(false))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                 .fill(enabled && pressed ? Color.black.opacity(0.12) : (enabled && hovered ? Theme.hover : .clear))
                 .allowsHitTesting(false))
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
@@ -35,21 +40,26 @@ struct ActionPaint: ViewModifier {
         guard enabled else { return Theme.textTertiary }
         switch kind {
         case .primary: return Theme.bg
+        case .warm: return Theme.amber
         case .secondary: return Theme.text
         case .tertiary, .icon, .pill: return tint
         }
     }
 
-    private var fill: Color {
+    private var fill: LinearGradient {
+        let colors: [Color]
         switch kind {
-        case .primary: return enabled ? Theme.amber : Theme.surfaceRaised
-        case .secondary: return Theme.surfaceRaised
-        case .tertiary, .icon, .pill: return .clear
+        case .primary: colors = enabled ? [Theme.goldTop, Theme.goldBase] : [Theme.surfaceRaised, Theme.surfaceRaised]
+        case .warm: colors = [Theme.warmTop, Theme.warmBase]
+        case .secondary: colors = [Theme.surfaceRaised, Theme.surfaceRaised]
+        case .tertiary, .icon, .pill: colors = [.clear, .clear]
         }
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     private var boundary: Color {
         if contrast == .increased { return Theme.textTertiary.opacity(0.8) }
+        if kind == .warm { return Theme.amber.opacity(0.22) }
         return kind == .secondary ? Theme.separator : .clear
     }
 }
@@ -62,6 +72,18 @@ struct SecondaryActionStyle: ButtonStyle {
             .frame(minHeight: 30)
             .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.control))
             .modifier(ActionPaint(kind: .secondary, pressed: configuration.isPressed))
+    }
+}
+
+/// Same hit area as a secondary action, with quiet warmth for the AI entry.
+struct WarmActionStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Theme.font(12, weight: .medium))
+            .padding(.horizontal, 11).padding(.vertical, 7)
+            .frame(minHeight: 30)
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.control))
+            .modifier(ActionPaint(kind: .warm, pressed: configuration.isPressed))
     }
 }
 
@@ -183,8 +205,8 @@ struct SegmentedTabs<Value: Hashable>: View {
                 Button { selection = value } label: {
                     Text(label(value)).font(Theme.font(12, weight: .medium))
                         .frame(maxWidth: .infinity, minHeight: 30)
-                        .foregroundColor(selection == value ? Theme.text : Theme.textDim)
-                        .background(RoundedRectangle(cornerRadius: Theme.Radius.control).fill(selection == value ? Theme.surfaceRaised : .clear))
+                        .foregroundColor(selection == value ? Theme.selectionText : Theme.textDim)
+                        .selectionSurface(selected: selection == value)
                         .padding(.horizontal, 1.5).contentShape(Rectangle())
                 }.buttonStyle(CompactPillStyle()).accessibilityAddTraits(selection == value ? .isSelected : [])
             }
