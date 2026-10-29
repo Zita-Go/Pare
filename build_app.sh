@@ -8,8 +8,8 @@ cd "$(dirname "$0")"
 
 APP_NAME="Pare"
 BUNDLE_ID="com.zitago.Pare"
-VERSION="2.11.1"
-BUILD="38"
+VERSION="2.12.0"
+BUILD="39"
 ICON_MASTER="Resources/AppIcon.png"
 
 echo "==> swift build -c release"

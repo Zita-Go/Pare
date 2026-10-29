@@ -106,7 +106,7 @@ final class AIService: ObservableObject {
     }
 
     @MainActor
-    func generate(_ input: AIRequest) async throws -> AIDraft {
+    func generate(_ input: AIRequest, historyID: UUID = UUID()) async throws -> AIDraft {
         guard configuration.enabled else { throw AILocalError.disabled }
         guard !isRunning else { throw AILocalError.busy }
         let config = configuration
@@ -121,7 +121,21 @@ final class AIService: ObservableObject {
         defaults.set(requestCount, forKey: "pareAIRequestCount")
         isRunning = true
         defer { isRunning = false }
-        return try await client.generate(config: config, apiKey: key, input: input)
+        let history = AIRequestHistoryController.shared
+        let started = Date()
+        do {
+            let result = try await client.generate(config: config, apiKey: key, input: input, trace: { event in
+                await history.capture(event, id: historyID, kind: input.workflow.title,
+                                      model: config.model, startedAt: started, secret: key)
+            })
+            try Task.checkCancellation()
+            await history.finish(id: historyID, outcome: .succeeded, secret: key)
+            return result
+        } catch {
+            await history.finish(id: historyID, outcome: Self.wasCancelled(error) ? .cancelled : .failed,
+                                 error: error, secret: key)
+            throw error
+        }
     }
 }
 
@@ -162,9 +176,25 @@ extension AIService {
         defaults.set(requestCount, forKey: "pareAIRequestCount")
         isRunning = true
         defer { isRunning = false }
-        let result = try await IntelligenceClient().generate(config: config, apiKey: key, input: input)
-        try Task.checkCancellation()
-        guard configuration == config, configurationRevision == revision else { throw AIApplyError.stale }
-        return result
+        let history = AIRequestHistoryController.shared
+        let started = Date()
+        do {
+            let result = try await IntelligenceClient().generate(config: config, apiKey: key, input: input, trace: { event in
+                await history.capture(event, id: input.id, kind: input.intent.title,
+                                      model: config.model, startedAt: started, secret: key)
+            })
+            try Task.checkCancellation()
+            guard configuration == config, configurationRevision == revision else { throw AIApplyError.stale }
+            await history.finish(id: input.id, outcome: .succeeded, secret: key)
+            return result
+        } catch {
+            await history.finish(id: input.id, outcome: Self.wasCancelled(error) ? .cancelled : .failed,
+                                 error: error, secret: key)
+            throw error
+        }
+    }
+
+    private static func wasCancelled(_ error: Error) -> Bool {
+        Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 }

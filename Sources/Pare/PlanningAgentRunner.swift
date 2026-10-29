@@ -10,7 +10,7 @@ enum PlanningAgentRunner {
                          service: AIService) async throws -> (AIDraft, UUID?) {
         do {
             store.updatePlanningRun(runID, phase: .thinking)
-            let draft = try await service.generate(request)
+            let draft = try await service.generate(request, historyID: runID)
             try Task.checkCancellation()
             let summaryID = try store.recordAISummary(draft, request: request)
             store.updatePlanningRun(runID, phase: draft.question.isEmpty ? .awaitingReview : .needsClarification,

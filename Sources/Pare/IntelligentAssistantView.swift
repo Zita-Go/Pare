@@ -9,6 +9,7 @@ struct IntelligentAssistantView: View {
     var initialInstruction: String = ""
     var onAdoptNextStep: ((IntelligenceAction) -> Void)? = nil
     @ObservedObject private var service = AIService.shared
+    @ObservedObject private var requestHistory = AIRequestHistoryController.shared
     @Environment(\.dismiss) private var dismiss
     @State private var options = IntelligenceContextOptions()
     @State private var availableMinutes = 30
@@ -16,6 +17,7 @@ struct IntelligentAssistantView: View {
     @State private var instruction = ""
     @State private var request: IntelligenceRequest?
     @State private var pendingRequest: IntelligenceRequest?
+    @State private var lastRequestHistoryID: UUID?
     @State private var proposal: IntelligenceProposal?
     @State private var selectedActionIDs: Set<UUID> = []
     @State private var work: Task<Void, Never>?
@@ -65,6 +67,10 @@ struct IntelligentAssistantView: View {
                             if intent == .today { planningControls }
                             inputPanel
                             referencePanel.id("reference")
+                        }
+                        if proposal == nil, let id = lastRequestHistoryID {
+                            AIRequestHistoryEntry(selectedID: id, title: "最近请求详情")
+                                .disabled(work != nil)
                         }
                     }.padding(20)
                 }
@@ -174,7 +180,9 @@ struct IntelligentAssistantView: View {
                 DisclosureGroup(proposal == nil ? "查看本次参考内容" : "查看下次参考内容") {
                     if let request = displayRequest { ForEach(request.evidence) { evidenceRow($0) } }
                 }
-                DisclosureGroup("高级诊断 · 完整发送 JSON 与来源编号") {
+                DisclosureGroup("高级诊断 · 待发送参考数据预览") {
+                    Text("这里只是下一次请求的参考数据，不含系统提示词与服务参数。已发送的固定记录请查看请求详情。")
+                        .font(Theme.font(11))
                     if let request = displayRequest {
                         Text(request.preview).font(.system(size: 10, design: .monospaced))
                             .textSelection(.enabled).padding(.top, 8)
@@ -234,6 +242,11 @@ struct IntelligentAssistantView: View {
         let plans = IntelligencePresentation.plans(for: proposal, intent: intent)
         return VStack(alignment: .leading, spacing: 12) {
             if let first = plans.first { actionCard(first, primary: true) }
+            AIRequestHistoryEntry(selectedID: proposal.requestID, title: "本次请求详情")
+                .disabled(work != nil)
+            if let id = lastRequestHistoryID, id != proposal.requestID, errorMessage != nil {
+                AIRequestHistoryEntry(selectedID: id, title: "最近失败请求详情")
+            }
             if !proposal.clarification.isEmpty {
                 Text(proposal.clarification).font(Theme.font(16, weight: .medium)).foregroundColor(Theme.amber)
                 Text("补充后再生成，当前没有需要采纳的操作。")
@@ -529,6 +542,9 @@ struct IntelligentAssistantView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let issue = requestHistory.persistenceIssue {
+                FeedbackBanner(text: issue, kind: .warning)
+            }
             if let errorMessage {
                 HStack(alignment: .top, spacing: 8) {
                     FeedbackBanner(text: errorMessage, kind: .error)
@@ -666,7 +682,8 @@ struct IntelligentAssistantView: View {
         catch { presentError(error); return }
         // Keep the currently reviewed proposal and its matching request until
         // a replacement succeeds. A failed/cancelled follow-up loses no work.
-        pendingRequest = input; errorMessage = nil; notice = nil; noticeKind = .info
+        pendingRequest = input; lastRequestHistoryID = input.id
+        errorMessage = nil; notice = nil; noticeKind = .info
         let retainedInstructions = nextUserInstructions(followUp: followUp)
         let token = UUID(); generationID = token
         work = Task { @MainActor in

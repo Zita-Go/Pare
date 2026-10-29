@@ -277,18 +277,10 @@ public final class AIClient {
         return request
     }
 
-    public func generate(config: AIConfiguration, apiKey: String, input: AIRequest) async throws -> AIDraft {
+    public func generate(config: AIConfiguration, apiKey: String, input: AIRequest,
+                         trace: AIRequestTraceHandler? = nil) async throws -> AIDraft {
         let request = try Self.makeRequest(config: config, apiKey: apiKey, input: input)
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let response = response as? HTTPURLResponse else { throw AIError.invalidResponse }
-        guard (200..<300).contains(response.statusCode) else { throw AIError.http(response.statusCode) }
-        var data = Data()
-        for try await byte in bytes {
-            try Task.checkCancellation()
-            guard data.count < 128_000 else { throw AIError.responseTooLarge }
-            data.append(byte)
-        }
-        try Task.checkCancellation()
+        let data = try await AIRequestTransport.data(for: request, session: session, trace: trace)
         return try Self.decode(data, for: input)
     }
 
