@@ -63,7 +63,7 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(ideas.contains("回看"))
         XCTAssertTrue(planning.contains("今天只赢一件"))
         XCTAssertTrue(planning.contains("开始 5 分钟"))
-        XCTAssertTrue(planning.contains("我卡住了"))
+        XCTAssertTrue(planning.contains("需要帮助"))
         XCTAssertTrue(planning.contains("如果—那么启动计划"))
         XCTAssertTrue(planning.contains("最低完成版本"))
         let settings = try source("Sources/Pare/SettingsWindowController.swift")

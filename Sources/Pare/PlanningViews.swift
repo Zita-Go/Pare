@@ -709,20 +709,17 @@ struct TodayPlannerView: View {
                     HStack(spacing: 8) {
                         if store.activeTimer?.taskID == task.id {
                             TimelineView(.periodic(from: .now, by: 1)) { context in
-                                momentumButton("暂停 · \(elapsedLabel(now: context.date))", icon: "pause.fill") {
+                                momentumButton("暂停 · \(elapsedLabel(now: context.date))", icon: "pause.fill", primary: true) {
                                     _ = store.stopTimer()
                                 }
                             }
                         } else {
-                            momentumButton("开始 5 分钟", icon: "play.fill") {
+                            momentumButton("开始 5 分钟", icon: "play.fill", primary: true) {
                                 store.setDailyWin(task.id)
                                 _ = store.startTimer(task.id, targetMinutes: 5)
                             }
                         }
-                        momentumButton("拆小一步", icon: "arrow.down.right.and.arrow.up.left") {
-                            rescuePreset = .tooLarge; rescueTaskID = task.id
-                        }
-                        momentumButton("我卡住了", icon: "questionmark.bubble") {
+                        momentumButton("需要帮助", icon: "questionmark.bubble") {
                             rescuePreset = nil; rescueTaskID = task.id
                         }
                         Spacer(minLength: 0)
@@ -778,17 +775,17 @@ struct TodayPlannerView: View {
         .padding(10).panel(corner: 11, accent: Theme.qDelegate)
     }
 
-    private func momentumButton(_ title: String, icon: String,
+    private func momentumButton(_ title: String, icon: String, primary: Bool = false,
                                 action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 10, weight: .semibold))
                 Text(title).font(Theme.font(11, weight: .semibold))
             }
-            .foregroundColor(Theme.amber)
+            .foregroundColor(primary ? Theme.bg : Theme.textDim)
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(Capsule().fill(Theme.amberSoft))
-            .overlay(Capsule().stroke(Theme.amber.opacity(0.4), lineWidth: 1))
+            .background(Capsule().fill(primary ? Theme.amber : Theme.panel.opacity(0.4)))
+            .overlay(Capsule().stroke(primary ? Theme.amber : Theme.border.opacity(0.55), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }

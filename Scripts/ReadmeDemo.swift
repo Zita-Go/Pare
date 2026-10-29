@@ -79,6 +79,11 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         settings.todayCapacityMinutes = 120
         store.updateSettings(settings)
         store.rolloverIfNeeded()
+        if CommandLine.arguments.contains("--usability-demo") {
+            var preferences = store.agentPreferences
+            preferences.planningMinutes = 60
+            store.updateAgentPreferences(preferences)
+        }
 
         let report = store.addTask("完成报告提纲", to: .importantUrgent,
                                    addToToday: true, estimatedMinutes: 25)!
@@ -133,6 +138,15 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
                                  reviewAt: now.addingTimeInterval(7 * 86_400))
             _ = store.addIdeaEntry(ideaID: idea.id, text: "先把一次探索缩小到一个问题，不要求一次完成整个方向。", kind: .finding)
             _ = store.linkTaskToIdea(ideaID: idea.id, taskID: report.id)
+            if CommandLine.arguments.contains("--usability-demo") {
+                for number in 1...5 {
+                    _ = store.addIdeaEntry(ideaID: idea.id, text: "演示记录 \(number)：先验证一个具体问题，再根据结果决定下一步。", kind: .note,
+                                          now: now.addingTimeInterval(Double(number)))
+                }
+                for title in ["访谈一位使用者", "收集三个实际案例", "整理本次观察"] {
+                    _ = store.createTaskFromIdea(ideaID: idea.id, title: title)
+                }
+            }
         }
         if parallelDemo {
             store.startParallelRun(trip.id, now: now.addingTimeInterval(-38 * 60),

@@ -181,6 +181,10 @@ struct IdeaDetailView: View {
     @State private var confirmDiscard = false
     @State private var showIntelligence = false
     @State private var confirmDeletion = false
+    @State private var showNotes = false
+    @State private var showAllEntries = false
+    @State private var showAllLinkedTasks = false
+    @State private var expandedEntryIDs: Set<UUID> = []
 
     init(store: Store, ideaID: UUID, sourceTaskID: UUID? = nil) {
         self.store = store
@@ -232,8 +236,9 @@ struct IdeaDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         currentIdeaSection
-                        explorationSection(idea)
                         linkedActionsSection
+                        notesSection
+                        explorationSection(idea)
                         reviewSection
                         deletionSection
                     }.padding(20)
@@ -257,10 +262,10 @@ struct IdeaDetailView: View {
                     }
                 }.font(Theme.font(11)).frame(maxWidth: .infinity, alignment: .leading)
                 Button("关闭", action: requestClose).keyboardShortcut(.cancelAction)
-                Button("保存更改") { saveMetadata() }
+                Button("保存想法信息") { saveMetadata() }
                     .buttonStyle(AIPrimaryButtonStyle())
                     .disabled(idea == nil || title.ideaTrimmed.isEmpty || !metadataChanged || metadataConflict)
-                    .accessibilityLabel("保存想法与回看设置")
+                    .accessibilityLabel("保存想法信息与回看设置，不含待追加记录或行动")
             }.padding(.horizontal, 20).padding(.vertical, 14)
         }
         .frame(width: 680, height: 600)
@@ -289,7 +294,13 @@ struct IdeaDetailView: View {
     }
 
     private var idea: ThoughtItem? { store.thoughts.first { $0.id == ideaID } }
-    private var linkedTasks: [TaskItem] { store.ideaLinkedTasks(ideaID) }
+    private var linkedTasks: [TaskItem] {
+        let tasks = store.ideaLinkedTasks(ideaID)
+        return tasks.filter { !$0.completed } + tasks.filter(\.completed)
+    }
+    private var visibleLinkedTasks: [TaskItem] {
+        showAllLinkedTasks ? linkedTasks : Array(linkedTasks.prefix(3))
+    }
     private var missingLinkedTaskCount: Int {
         Set(idea?.linkedTaskIDs ?? []).subtracting(Set(linkedTasks.map(\.id))).count
     }
@@ -309,6 +320,9 @@ struct IdeaDetailView: View {
     }
     private var hasDrafts: Bool {
         metadataChanged || !entryText.ideaTrimmed.isEmpty || !actionTitle.ideaTrimmed.isEmpty
+    }
+    private var notesChanged: Bool {
+        notes.ideaTrimmed != (metadataBaseline?.notes ?? "")
     }
 
     private var currentIdeaSection: some View {
@@ -335,11 +349,6 @@ struct IdeaDetailView: View {
                 .font(Theme.font(16, weight: .medium)).lineLimit(1...3)
                 .textFieldStyle(.plain).padding(10).panel(corner: 8)
                 .accessibilityLabel("想法标题")
-            fieldLabel("描述")
-            TextEditor(text: $notes)
-                .font(Theme.font(13)).scrollContentBackground(.hidden)
-                .padding(7).frame(height: 90).panel(corner: 8)
-                .accessibilityLabel("想法描述")
             fieldLabel("下一步待探索的问题")
             TextField("例如：先找谁聊一聊，能验证哪个假设？", text: $nextQuestion, axis: .vertical)
                 .lineLimit(1...3).textFieldStyle(.plain).padding(10).panel(corner: 8)
@@ -347,10 +356,35 @@ struct IdeaDetailView: View {
         }
     }
 
+    private var notesSection: some View {
+        DisclosureGroup(isExpanded: Binding(
+            get: { showNotes || notesChanged },
+            set: { showNotes = $0 }
+        )) {
+            TextEditor(text: $notes)
+                .font(Theme.font(13)).scrollContentBackground(.hidden)
+                .padding(7).frame(height: 90).panel(corner: 8)
+                .accessibilityLabel("想法描述")
+                .padding(.top, 8)
+        } label: {
+            HStack {
+                fieldLabel("描述")
+                if notesChanged {
+                    Text("未保存，保存后可收起")
+                        .font(Theme.font(10)).foregroundColor(Theme.amber)
+                } else if !showNotes, !notes.ideaTrimmed.isEmpty {
+                    Text(notes).font(Theme.font(11)).foregroundColor(Theme.textDim).lineLimit(1)
+                }
+            }
+        }
+    }
+
     private func explorationSection(_ idea: ThoughtItem) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let entries = idea.entries.sorted { $0.createdAt > $1.createdAt }
+        let visibleEntries = showAllEntries ? entries : Array(entries.prefix(3))
+        return VStack(alignment: .leading, spacing: 10) {
             sectionHeading("探索记录", symbol: "text.bubble")
-            Text("把新发现和决定追加在这里，早先的记录会一直保留。")
+            Text("新发现和决定在这里单独追加保存，早先的记录会一直保留。")
                 .font(Theme.font(11)).foregroundColor(Theme.textDim)
             TextField("今天多想清楚了什么？", text: $entryText, axis: .vertical)
                 .lineLimit(2...5).textFieldStyle(.plain).padding(10).panel(corner: 8)
@@ -360,7 +394,7 @@ struct IdeaDetailView: View {
                     ForEach(IdeaEntryKind.allCases, id: \.self) { Text($0.title).tag($0) }
                 }.pickerStyle(.menu).frame(width: 160).accessibilityLabel("探索记录类型")
                 Spacer()
-                Button("追加记录", action: appendEntry)
+                Button("保存并追加记录", action: appendEntry)
                     .disabled(entryText.ideaTrimmed.isEmpty)
                     .accessibilityLabel("保存并追加探索记录")
             }
@@ -368,7 +402,8 @@ struct IdeaDetailView: View {
                 Text("还没有记录。一个观察、一条线索，也值得留下。")
                     .font(Theme.font(11)).foregroundColor(Theme.textDim)
             } else {
-                ForEach(idea.entries.sorted { $0.createdAt > $1.createdAt }) { entry in
+                ForEach(visibleEntries) { entry in
+                    let foldsText = entry.text.count > 140 || entry.text.split(whereSeparator: { $0.isNewline }).count > 3
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text(entry.author.map { "\(entry.kind.title) · \($0)" } ?? entry.kind.title)
@@ -376,10 +411,29 @@ struct IdeaDetailView: View {
                             Spacer()
                             Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
                                 .foregroundColor(Theme.textFaint)
+                            if foldsText {
+                            Button(expandedEntryIDs.contains(entry.id) ? "收起" : "展开全文") {
+                                if expandedEntryIDs.contains(entry.id) {
+                                    expandedEntryIDs.remove(entry.id)
+                                } else {
+                                    expandedEntryIDs.insert(entry.id)
+                                }
+                            }
+                            .buttonStyle(.plain).foregroundColor(Theme.amber)
+                            .accessibilityLabel(expandedEntryIDs.contains(entry.id)
+                                                ? "收起这条探索记录" : "展开这条探索记录全文")
+                            }
                         }.font(Theme.font(10, weight: .medium))
                         Text(entry.text).font(Theme.font(12)).lineSpacing(3)
+                            .lineLimit(foldsText && !expandedEntryIDs.contains(entry.id) ? 3 : nil)
                             .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading).panel(corner: 9)
+                }
+                if entries.count > 3 {
+                    Button(showAllEntries ? "收起历史记录" : "查看全部 \(entries.count) 条记录") {
+                        showAllEntries.toggle()
+                    }
+                    .accessibilityLabel(showAllEntries ? "收起历史记录，仅显示最近三条" : "查看全部 \(entries.count) 条探索记录")
                 }
             }
         }
@@ -397,7 +451,12 @@ struct IdeaDetailView: View {
                     .font(Theme.font(11)).foregroundColor(Theme.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            ForEach(linkedTasks) { task in linkedTaskRow(task) }
+            ForEach(visibleLinkedTasks) { task in linkedTaskRow(task) }
+            if linkedTasks.count > 3 {
+                Button(showAllLinkedTasks ? "收起关联行动" : "查看全部 \(linkedTasks.count) 个行动") {
+                    showAllLinkedTasks.toggle()
+                }
+            }
             DisclosureGroup("创建一个具体行动", isExpanded: $showActionComposer) {
                 VStack(alignment: .leading, spacing: 10) {
                     TextField("例如：约一位使用者聊 20 分钟", text: $actionTitle, axis: .vertical)
