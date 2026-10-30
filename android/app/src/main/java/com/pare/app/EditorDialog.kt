@@ -1,6 +1,18 @@
 package com.pare.app
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -9,9 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -41,97 +51,89 @@ import androidx.compose.ui.window.DialogProperties
 ) {
     var confirmClose by rememberSaveable(draft.entityId) { mutableStateOf(false) }
     var compareLatest by rememberSaveable(draft.entityId) { mutableStateOf(false) }
-    var priorityMenu by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable(draft.entityId) { mutableStateOf(!draft.isNew) }
+    var focusedOnce by rememberSaveable(draft.entityId) { mutableStateOf(false) }
+    val titleFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
     val dismiss: () -> Unit = { if (!saving) { if (draft != original) confirmClose = true else onDiscard() } }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = !saving, dismissOnClickOutside = !saving)) {
-        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
-            val compact = maxHeight < 460.dp
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = if (draft.isNew) Alignment.BottomCenter else Alignment.TopCenter) {
+            if (draft.isNew) Box(Modifier.matchParentSize().clickable(enabled = !saving, indication = null, interactionSource = remember { MutableInteractionSource() }) { dismiss() })
             val errorHeight = (maxHeight * 0.24f).coerceAtMost(132.dp)
             Surface(
-                Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(max = maxHeight),
-                shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                Modifier.widthIn(max = 640.dp).fillMaxWidth().then(if (draft.isNew) Modifier.heightIn(max = maxHeight) else Modifier.fillMaxHeight()).testTag("editor_surface"),
+                shape = if (draft.isNew) RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp) else RectangleShape,
+                color = MaterialTheme.colorScheme.surface
             ) {
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
-                    PareFormHeader(
-                        icon = when (draft.kind) { "task" -> Icons.Default.Check; "idea" -> Icons.Default.Star; else -> Icons.Default.Edit },
-                        label = if (compact) null else when (draft.kind) { "task" -> "把重要的事，向前推进"; "idea" -> "给灵感留个位置"; else -> "先记下，稍后整理" },
-                        title = if (!draft.isNew) "编辑" else when (draft.kind) { "task" -> if (draft.addToToday) "添加今天的任务" else "新建任务"; "idea" -> "记个想法"; else -> "随手记" }
-                    )
+                Column {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = dismiss, enabled = !saving, modifier = Modifier.size(48.dp).testTag("editor_cancel")) {
+                            Icon(if (draft.isNew) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack, if (draft.isNew) "取消" else "返回", modifier = Modifier.size(22.dp))
+                        }
+                        Text(if (draft.isNew) when (draft.kind) { "task" -> "添加任务"; "idea" -> "记录想法"; else -> "随手记" } else when (draft.kind) { "idea" -> "想法详情"; "inbox" -> "随手记详情"; else -> "任务详情" },
+                            style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        if (!draft.isNew) EditorSaveButton(draft, saving, onSave)
+                    }
                     Column(
-                        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(top = 16.dp, bottom = 12.dp),
+                        Modifier.weight(1f, fill = !draft.isNew).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        PareFormField(draft.text, { onDraftChange(draft.copy(text = it)) }, label = "内容", minLines = 2,
-                            enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor_text"))
-                        if (draft.kind != "inbox") PareFormField(draft.note, { onDraftChange(draft.copy(note = it)) }, label = "备注（可选）", minLines = 2,
-                            enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor_note"))
-                        if (draft.kind == "task") {
-                            PareFormField(draft.nextAction, { onDraftChange(draft.copy(nextAction = it)) }, label = "下一步（可选）",
-                                enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor_next_action"))
-                            PareFormField(draft.estimate, { onDraftChange(draft.copy(estimate = it)) }, label = "预计分钟数（可选）", singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = !saving,
-                                isError = draft.estimate.isNotBlank() && draft.estimate.toIntOrNull()?.let { it > 0 } != true,
-                                modifier = Modifier.fillMaxWidth().testTag("editor_estimate"))
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("优先级", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Box {
-                                    OutlinedButton(
-                                        onClick = { priorityMenu = true }, enabled = !saving,
-                                        shape = MaterialTheme.shapes.medium,
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface, containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                        modifier = Modifier.heightIn(min = 48.dp).testTag("editor_priority")
-                                    ) {
-                                        Box(Modifier.size(7.dp).background(pareQuadrantColor(draft.quadrant), CircleShape))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(quadrantLabels.getOrElse(draft.quadrant) { quadrantLabels[1] }, modifier = Modifier.weight(1f, fill = false))
-                                        Spacer(Modifier.width(8.dp))
-                                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "选择优先级", modifier = Modifier.size(18.dp))
-                                    }
-                                    DropdownMenu(expanded = priorityMenu, onDismissRequest = { priorityMenu = false }) {
-                                        quadrantLabels.forEachIndexed { index, label ->
-                                            DropdownMenuItem(
-                                                text = { Text(label) },
-                                                leadingIcon = { Box(Modifier.size(8.dp).background(pareQuadrantColor(index), CircleShape)) },
-                                                trailingIcon = { if (index == draft.quadrant) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
-                                                onClick = { onDraftChange(draft.copy(quadrant = index)); priorityMenu = false },
-                                                modifier = Modifier.heightIn(min = 48.dp).testTag("priority_$index")
-                                            )
-                                        }
-                                    }
-                                }
+                        BasicTextField(
+                            value = draft.text, onValueChange = { onDraftChange(draft.copy(text = it)) }, enabled = !saving,
+                            textStyle = MaterialTheme.typography.headlineSmall.copy(color = MaterialTheme.colorScheme.onSurface),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).focusRequester(titleFocus).testTag("editor_text"),
+                            decorationBox = { field -> Box(Modifier.padding(vertical = 12.dp)) {
+                                if (draft.text.isEmpty()) Text(if (draft.kind == "idea") "记下你的想法" else "准备做什么？", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                field()
+                            } }
+                        )
+                        if (draft.isNew && draft.kind != "inbox") TextButton(
+                            onClick = { expanded = !expanded }, enabled = !saving,
+                            contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("editor_details")
+                        ) {
+                            Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (expanded) "收起更多信息" else "更多信息")
+                        }
+                        if ((!draft.isNew || expanded) && draft.kind != "inbox") {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            if (draft.kind == "task") {
+                                PareFormField(draft.nextAction, { onDraftChange(draft.copy(nextAction = it)) }, label = "下一步（可选）",
+                                    enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor_next_action"))
+                            }
+                            PareFormField(draft.note, { onDraftChange(draft.copy(note = it)) }, label = "备注（可选）", minLines = if (draft.isNew) 2 else 3,
+                                enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor_note"))
+                            if (draft.kind == "task") {
+                                PareFormField(draft.estimate, { onDraftChange(draft.copy(estimate = it)) }, label = "预计分钟数（可选）", singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = !saving,
+                                    isError = draft.estimate.isNotBlank() && draft.estimate.toIntOrNull()?.let { it > 0 } != true,
+                                    modifier = Modifier.fillMaxWidth().testTag("editor_estimate"))
+                                EditorPriority(draft, saving, onDraftChange)
                             }
                         }
                     }
-                    // Errors and actions remain outside the form scroller, including at large font scales.
-                    if (error != null) {
+                    // Keep errors outside the scroller so a failed save is visible from every field.
+                    if (error != null) Column(Modifier.padding(horizontal = 16.dp)) {
                         Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.errorContainer) {
-                            Text(
-                                error, color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodyMedium,
+                            Text(error, color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.fillMaxWidth().heightIn(max = errorHeight).verticalScroll(rememberScrollState()).padding(12.dp)
-                                    .testTag("editor_error").semantics { liveRegion = LiveRegionMode.Polite }
-                            )
+                                    .testTag("editor_error").semantics { liveRegion = LiveRegionMode.Polite })
                         }
-                        if (latestVersion != null) TextButton(onClick = { compareLatest = true }, shape = MaterialTheme.shapes.small,
-                            modifier = Modifier.heightIn(min = 48.dp).testTag("editor_compare_latest")) { Text("查看最新版本") }
-                        Spacer(Modifier.height(12.dp))
+                        if (latestVersion != null) TextButton(onClick = { compareLatest = true }, modifier = Modifier.heightIn(min = 48.dp).testTag("editor_compare_latest")) { Text("查看最新版本") }
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(
-                            onClick = dismiss, enabled = !saving, shape = MaterialTheme.shapes.small,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("editor_cancel")
-                        ) { Text("取消") }
-                        Button(onClick = onSave, enabled = !saving && draft.text.isNotBlank(), shape = MaterialTheme.shapes.small,
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("editor_save")) {
-                            if (saving) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary); Spacer(Modifier.width(6.dp)) }
-                            Text(if (saving) "正在保存" else "保存")
-                        }
+                    if (draft.isNew) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) { EditorSaveButton(draft, saving, onSave) }
                     }
+                }
+            }
+            LaunchedEffect(draft.entityId) {
+                if (draft.isNew && !focusedOnce) {
+                    withFrameNanos { }
+                    titleFocus.requestFocus()
+                    keyboard?.show()
+                    focusedOnce = true
                 }
             }
         }
@@ -173,5 +175,37 @@ import androidx.compose.ui.window.DialogProperties
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable private fun EditorSaveButton(draft: EditorDraft, saving: Boolean, onSave: () -> Unit) {
+    Button(onClick = onSave, enabled = !saving && draft.text.isNotBlank(), shape = MaterialTheme.shapes.small,
+        contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("editor_save")) {
+        if (saving) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(6.dp)) }
+        Text(if (saving) "正在保存" else "保存")
+    }
+}
+
+@Composable private fun EditorPriority(draft: EditorDraft, saving: Boolean, onDraftChange: (EditorDraft) -> Unit) {
+    var priorityMenu by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { priorityMenu = true }, enabled = !saving, contentPadding = PaddingValues(horizontal = 0.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("editor_priority")) {
+            Text("优先级", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.weight(1f))
+            Box(Modifier.size(7.dp).background(pareQuadrantColor(draft.quadrant), CircleShape))
+            Spacer(Modifier.width(8.dp))
+            Text(quadrantLabels.getOrElse(draft.quadrant) { quadrantLabels[1] }, modifier = Modifier.weight(2f), color = MaterialTheme.colorScheme.onSurface)
+            Icon(Icons.Default.KeyboardArrowDown, "选择优先级", modifier = Modifier.size(20.dp))
+        }
+        DropdownMenu(expanded = priorityMenu, onDismissRequest = { priorityMenu = false }) {
+            quadrantLabels.forEachIndexed { index, label ->
+                DropdownMenuItem(text = { Text(label) },
+                    leadingIcon = { Box(Modifier.size(8.dp).background(pareQuadrantColor(index), CircleShape)) },
+                    trailingIcon = { if (index == draft.quadrant) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
+                    onClick = { onDraftChange(draft.copy(quadrant = index)); priorityMenu = false },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("priority_$index"))
+            }
+        }
     }
 }

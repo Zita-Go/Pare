@@ -59,19 +59,9 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
         if(completed) content["completedAt"]=JsonPrimitive(Instant.now().toString()) else content.remove("completedAt")
         StateMachine.edit(s,current.kind,current.id,JsonObject(current.payload!!.toMutableMap().apply {put("content",JsonObject(content))}))
     }
-    fun organize(entity:Entity) {
-        val taskID=uid()
-        edit {s ->
-            val current=s.items.getValue(entity.key)
-            require(!current.deleted)
-            val payload=ContentActions.save(null,"task",current.title(),"",1,taskID,Instant.now()).toMutableMap()
-            val c=payload.getValue("content").jsonObject.toMutableMap()
-            current.content()?.get("suggestedRemindAt")?.let {c["remindAt"]=it}
-            payload["content"]=JsonObject(c)
-            var next=StateMachine.edit(s,"task",taskID,JsonObject(payload))
-            next=StateMachine.edit(next,"inbox",current.id,null,true)
-            StateMachine.group(next,setOf("task:$taskID",current.key))
-        }
+    fun organize(entity:Entity,quadrant:Int,addToToday:Boolean,onResult:(Result<Unit>)->Unit={}) {
+        val taskId=uid()
+        edit(onResult) {s -> organizeInbox(s,entity,quadrant,addToToday,taskId,Instant.now()) }
     }
     fun planningZone(s:SyncState,now:Instant=planningInstant.value)=ContentActions.planId(s,now).substringAfter('@')
     fun planningDate(s:SyncState,now:Instant=planningInstant.value)=ContentActions.planId(s,now).substringBefore('@')

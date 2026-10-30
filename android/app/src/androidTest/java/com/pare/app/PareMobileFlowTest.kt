@@ -26,7 +26,7 @@ class PareMobileFlowTest {
     @Before fun startEmptyOfflinePreview() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         check(context.packageName == "com.pare.app.qa")
-        context.deleteDatabase("pare.db")
+        PareRepository(context).use { it.update { SyncState() } }
         check(context.getSharedPreferences("session-vault", 0).edit().clear().commit())
         scenario = ActivityScenario.launch(MainActivity::class.java)
     }
@@ -59,8 +59,15 @@ class PareMobileFlowTest {
         screenshot("01-today-empty.png")
         compose.onNodeWithTag("today_add_task").performClick()
         waitFor("editor_text")
+        compose.onNodeWithTag("editor_text").assertIsFocused()
         compose.onNodeWithTag("editor_text").performTextReplacement("写出旅行清单的前三项")
+        compose.onNodeWithTag("editor_details").performClick()
         compose.onNodeWithTag("editor_next_action").performScrollTo().performTextReplacement("打开笔记，列出证件和车票")
+        compose.onNodeWithTag("editor_cancel").performClick()
+        compose.onNodeWithTag("draft_keep_close").performClick()
+        compose.onNodeWithTag("resume_draft").performClick()
+        waitFor("editor_text")
+        compose.onNodeWithTag("editor_next_action").assertExists()
         scenario.recreate()
         waitFor("editor_text")
         compose.onNodeWithTag("editor_text").assertTextContains("写出旅行清单的前三项")
@@ -89,6 +96,7 @@ class PareMobileFlowTest {
             content["ordered_task_ids"] = JsonArray(content.getValue("ordered_task_ids").jsonArray + ids.map { JsonPrimitive(it) })
             StateMachine.edit(next, "day_plan", dayPlan.id, JsonObject(mapOf("content" to JsonObject(content))))
         } }
+        compose.onNodeWithTag("more_${originalTask.id}").performClick()
         compose.onNodeWithTag("win_${originalTask.id}").performClick()
         compose.waitUntil(10_000) { PareRepository(context).use { it.read().items.values.any { e -> e.kind == "day_plan" && e.content()?.get("daily_win_task_id")?.jsonPrimitive?.contentOrNull == originalTask.id } } }
         screenshot("02-today-task.png")
@@ -121,6 +129,8 @@ class PareMobileFlowTest {
         saveAndWaitUntilClosed()
         val inbox = PareRepository(context).use { it.read().items.values.first { e -> e.kind == "inbox" && e.title() == "询问周末活动的集合时间" } }
         compose.onNodeWithTag("organize_${inbox.id}").performScrollTo().performClick()
+        compose.onNodeWithTag("organize_priority_0").performClick()
+        compose.onNodeWithTag("organize_confirm").performClick()
         compose.waitUntil(10_000) { PareRepository(context).use { it.read().items.values.any { e -> e.kind == "task" && e.title() == inbox.title() } } }
         screenshot("03-organize.png")
 
@@ -128,14 +138,15 @@ class PareMobileFlowTest {
         compose.onNodeWithTag("add_item").performClick()
         waitFor("editor_text")
         compose.onNodeWithTag("editor_text").performTextReplacement("做一本周末探索手册")
+        compose.onNodeWithTag("editor_details").performClick()
         compose.onNodeWithTag("editor_note").performScrollTo().performTextReplacement("先收集路线和照片，慢慢完善。")
         saveAndWaitUntilClosed()
-        compose.onNodeWithText("萌芽").assertExists()
+        compose.onNodeWithText("萌芽", substring = true).assertExists()
         screenshot("04-ideas.png")
-        compose.onNodeWithTag("account_open").performScrollTo().performClick()
+        compose.onNodeWithTag("account_open").assertIsDisplayed().performClick()
         compose.onNodeWithText("登录").assertExists()
         screenshot("06-account.png", dialog = true)
-        compose.onNodeWithText("关闭").performClick()
+        compose.onNodeWithTag("account_close").performClick()
 
         compose.onNodeWithTag("tab_today").performClick()
         val task = PareRepository(context).use { it.read().items.values.first { e -> e.kind == "task" && e.title() == "写出旅行清单的前三项" } }

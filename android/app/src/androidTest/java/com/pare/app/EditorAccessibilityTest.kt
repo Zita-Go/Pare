@@ -32,6 +32,7 @@ class EditorAccessibilityTest {
             }
         }
         compose.onNodeWithTag("editor_text").performTextReplacement("保存失败时也不丢失的虚构任务")
+        compose.onNodeWithTag("editor_details").performClick()
         compose.onNodeWithTag("editor_next_action").performScrollTo().performTextReplacement("先打开笔记，写一行")
         compose.onNodeWithTag("editor_estimate").performScrollTo().performTextReplacement("15")
         compose.onNodeWithTag("editor_save").assertIsDisplayed().performClick()

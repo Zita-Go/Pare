@@ -6,7 +6,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -35,21 +34,23 @@ import androidx.compose.ui.window.DialogProperties
     var consent by rememberSaveable { mutableStateOf(false) }
     var details by rememberSaveable { mutableStateOf(false) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
-            val availableHeight = maxHeight
+        Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
             Surface(
-                Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(max = availableHeight),
-                shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                Modifier.widthIn(max = 640.dp).fillMaxWidth().fillMaxHeight().testTag("account_surface"),
+                color = MaterialTheme.colorScheme.surface
             ) {
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
-                    PareFormHeader(icon = Icons.Default.AccountCircle, title = "账号与同步", label = if (availableHeight < 460.dp) null else "手机与 Mac，保持一致")
+                Column {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("账号与同步", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                        TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp).testTag("account_close")) { Text("关闭") }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Column(
-                        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(top = 18.dp, bottom = 16.dp),
+                        Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         if (session == null) {
-                            PareFormStatus(title = "本机保存，随时可用", detail = "登录后连接你的其他设备。", icon = Icons.Default.CheckCircle)
+                            Text("本机内容已保存在这台设备。登录可连接其他设备。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 PareFormField(email, { email = it }, label = "邮箱", singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
@@ -136,10 +137,7 @@ import androidx.compose.ui.window.DialogProperties
                             }
                         }
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = onDismiss, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp).testTag("account_close")) { Text("关闭") }
-                    }
+
                 }
             }
         }

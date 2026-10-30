@@ -2,7 +2,6 @@ package com.pare.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
@@ -14,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -28,10 +28,7 @@ class MainActivity : ComponentActivity() {
     private val model: PareViewModel by lazy { ViewModelProvider(this)[PareViewModel::class.java] }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
-        )
+        enableEdgeToEdge()
         setContent { PareTheme { PareScreen(model) } }
     }
     override fun onResume() { super.onResume(); model.onForeground() }
@@ -51,9 +48,13 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     val busy by vm.busy.collectAsState()
     val previewReady by vm.previewReady.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var organizeId by rememberSaveable { mutableStateOf("") }
+    val organizeSave: OrganizeSaveModel = viewModel()
+    LaunchedEffect(organizeSave.saved) { if (organizeSave.saved) { organizeId = ""; organizeSave.reset() } }
     var account by rememberSaveable { mutableStateOf(false) }
     var showCompleted by rememberSaveable { mutableStateOf(false) }
     var editorOpen by rememberSaveable { mutableStateOf(false) }
+    val editorStateHolder = rememberSaveableStateHolder()
     var draft by rememberSaveable(stateSaver = DraftSaver) { mutableStateOf(EditorDraft("", "inbox")) }
     var original by rememberSaveable(stateSaver = DraftSaver) { mutableStateOf(EditorDraft("", "inbox")) }
     var pendingDraft by rememberSaveable(stateSaver = DraftSaver) { mutableStateOf(EditorDraft("", "inbox")) }
@@ -73,6 +74,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
         }
     }
     fun clearDraft() {
+        editorStateHolder.removeState(draft.entityId)
         editorOpen = false
         draft = EditorDraft("", "inbox")
         original = draft
@@ -90,17 +92,25 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     val capture: () -> Unit = { openEditor(kind = when (tab) { 0 -> "task"; 2 -> "idea"; else -> "inbox" }, today = tab == 0) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { PareDock(tab, onTab = { tab = it }, onAdd = capture) }
+        topBar = { Column(Modifier.statusBarsPadding()) { PareHeader(tab, status, busy, session != null, onAccount = { account = true }) } },
+        bottomBar = { PareNavigation(tab, onTab = { tab = it }) },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(onClick = capture, modifier = Modifier.heightIn(min = 56.dp).testTag("add_item"),
+                icon = { Icon(Icons.Default.Add, null) }, text = { Text(listOf("添加任务", "随手记", "记录想法")[tab]) })
+        }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("main_list"),
-            contentPadding = PaddingValues(start = 22.dp, top = 12.dp, end = 22.dp, bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { PareHeader(tab, status, busy, session != null, onAccount = { account = true }) }
+            contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 88.dp)) {
             if (draft.entityId.isNotEmpty() && !editorOpen) item {
                 OutlinedButton(onClick = { editorOpen = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("resume_draft")) { Text("继续编辑草稿") }
             }
+            if (listOf("失败", "超时", "失效", "拒绝", "已停止", "等待联网", "等待重试", "未完成").any { it in status }) item {
+                TextButton(onClick = { account = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_attention")) {
+                    Text(status, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
             if (conflictCount > 0) item {
-                Card(onClick = { account = true }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                Card(onClick = { account = true }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("有 $conflictCount 个版本需要你决定", style = MaterialTheme.typography.titleSmall)
                         Text("两个版本都已保留。点此查看差异。", style = MaterialTheme.typography.bodySmall)
@@ -109,21 +119,21 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             }
             when (tab) {
                 0 -> {
+                    val active = todayTasks.filterNot { it.completed() }
                     item {
-                        Column(Modifier.padding(top = 5.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(planningDayLabel(vm.planningDate(state, planningNow)), style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.secondary)
-                            planningZoneLabel(vm.planningZone(state, planningNow), planningNow)?.let {
-                                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                        val estimated = active.mapNotNull { it.content()?.get("estimatedMinutes")?.jsonPrimitive?.intOrNull }.sum()
+                        val summary = listOfNotNull(planningDayLabel(vm.planningDate(state, planningNow)),
+                            "${active.size} 件待办", if (estimated > 0) "$estimated 分钟" else null).joinToString(" · ")
+                        Text(summary, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp).testTag("today_summary"))
+                        planningZoneLabel(vm.planningZone(state, planningNow), planningNow)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    if (todayTasks.isNotEmpty()) item { TodayOverview(todayTasks) }
-                    val active = todayTasks.filterNot { it.completed() }
-                    if (active.isNotEmpty()) item { SectionLabel("今日清单", active.size) }
                     if (active.isEmpty()) item {
-                        EmptyNote(if (completedTasks.isEmpty()) "今天还很轻" else "给自己一点闲暇",
-                            if (completedTasks.isEmpty()) "留一点空间，从一件做得到的小事开始。" else "安排都完成了，接下来的时间留给自己。") {
+                        EmptyNote(if (completedTasks.isEmpty()) "今天还没有任务" else "今天的任务已完成",
+                            if (completedTasks.isEmpty()) "添加一件今天要做的事。" else "你可以继续添加任务，或回顾已完成的内容。") {
                             TextButton(onClick = capture, modifier = Modifier.heightIn(min = 48.dp).testTag("today_add_task")) {
                                 Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("添加今天的任务")
                             }
@@ -134,39 +144,33 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                     }
                 }
                 1 -> {
+                    val inbox = all.filter { it.kind == "inbox" }
                     item {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.weight(1f)) { SectionLabel("待整理", all.count { it.kind == "inbox" }) }
-                            Spacer(Modifier.width(12.dp))
+                            Box(Modifier.weight(1f)) {
+                                if (inbox.isEmpty()) Text("待整理 · 暂无内容", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                else SectionLabel("待整理", inbox.size)
+                            }
                             TextButton(onClick = { openEditor(kind = "task") }, modifier = Modifier.heightIn(min = 48.dp).testTag("new_task")) {
-                                Icon(Icons.Default.Add, null, Modifier.size(15.dp)); Spacer(Modifier.width(5.dp))
+                                Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
                                 Text("新建任务", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
-                    val inbox = all.filter { it.kind == "inbox" }
-                    if (inbox.isEmpty()) item {
-                        Text("随手记下的事，会在这里等你整理。", style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
-                    }
-                    items(inbox, key = { it.key }) { item -> InboxCard(item, { openEditor(item) }, { vm.organize(item) }) }
+                    items(inbox, key = { it.key }) { item -> InboxCard(item, { openEditor(item) }, { organizeSave.reset(); organizeId = item.id }) }
                     quadrantLabels.forEachIndexed { q, label ->
                         val group = tasks.filter { (it.content()?.get("quadrant")?.jsonPrimitive?.intOrNull ?: 1) == q && !it.completed() }
-                        item {
-                            Column(Modifier.padding(top = 6.dp)) {
-                                SectionLabel(label, group.size, pareQuadrantColor(q))
-                                if (group.isEmpty()) HorizontalDivider(Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                            }
-                        }
+                        if (group.isNotEmpty()) item { SectionLabel(label, group.size, pareQuadrantColor(q)) }
                         items(group, key = { it.key }) { item ->
-                            EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, inToday = item.id in ordered)
+                            EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered)
                         }
                     }
                 }
                 2 -> {
                     val ideas = all.filter { it.kind == "idea" }
-                    item { SectionLabel("想法花园", ideas.size, MaterialTheme.colorScheme.secondary) }
-                    if (ideas.isEmpty()) item { EmptyNote("从一粒种子开始", "记下还没有答案的问题，慢慢探索。", idea = true) }
+
+                    if (ideas.isEmpty()) item { EmptyNote("还没有想法", "记录一个想法，之后可以继续补充。") }
                     items(ideas, key = { it.key }) { item -> IdeaCard(item, onEdit = { openEditor(item) }) }
                 }
             }
@@ -178,12 +182,20 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                     }
                 }
                 if (showCompleted) items(completedTasks, key = { "completed:${it.key}" }) { item ->
-                    EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, inToday = item.id in ordered)
+                    EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered)
                 }
             }
         }
     }
-    if (editorOpen) TaskEditorDialog(draft, original, saveState.saving, saveState.error,
+    if (organizeId.isNotBlank()) {
+        val inbox = state.items["inbox:$organizeId"]
+        OrganizeDialog(inbox, organizeSave.saving, organizeSave.error,
+            onConfirm = { quadrant, today ->
+                if (inbox != null && organizeSave.begin()) vm.organize(inbox, quadrant, today, organizeSave::finish)
+            }, onDismiss = { if (!organizeSave.saving) { organizeId = ""; organizeSave.reset() } })
+    }
+    if (editorOpen) editorStateHolder.SaveableStateProvider(draft.entityId) {
+        TaskEditorDialog(draft, original, saveState.saving, saveState.error,
         onDraftChange = { draft = it; editorSave.clearError() },
         onSave = {
             if (editorSave.begin(draft)) {
@@ -201,6 +213,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                 draft = EditorDraft.from(latest); original = draft; editorSave.reset()
             }
         })
+    }
     if (pendingDraft.entityId.isNotEmpty()) AlertDialog(
         onDismissRequest = { pendingDraft = EditorDraft("", "inbox") },
         title = { Text("还有一份未保存的草稿") },
@@ -210,6 +223,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
         } },
         confirmButton = { TextButton(onClick = { pendingDraft = EditorDraft("", "inbox"); editorOpen = true }, modifier = Modifier.heightIn(min = 48.dp).testTag("draft_switch_continue")) { Text("继续原草稿") } },
         dismissButton = { TextButton(onClick = {
+            editorStateHolder.removeState(draft.entityId)
             draft = pendingDraft; original = pendingDraft
             pendingDraft = EditorDraft("", "inbox")
             editorSave.reset(); editorOpen = true
