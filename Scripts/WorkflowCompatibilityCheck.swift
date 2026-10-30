@@ -24,6 +24,9 @@ import PareCore
                     guard !task.text.isEmpty else { fatalError("Empty task") }
                     counts["tasks", default: 0] += 1
                     counts["blockers", default: 0] += task.blockerEntries?.count ?? 0
+                    counts["focusSessions", default: 0] += task.progressSessions?.count ?? 0
+                    counts["parallelSessions", default: 0] += task.parallelRunSessions?.count ?? 0
+                    if task.remindAt != nil { counts["reminders", default: 0] += 1 }
                 case "day_plan":
                     let plan = try SyncPayload.content(SyncDayPlan.self, payload)
                     try plan.validate()

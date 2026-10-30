@@ -23,11 +23,14 @@ import androidx.compose.ui.unit.sp
 import kotlinx.serialization.json.*
 
 @Composable
-internal fun PareHeader(tab: Int, status: String, busy: Boolean, signedIn: Boolean, onAccount: () -> Unit) {
+internal fun PareHeader(tab: Int, status: String, busy: Boolean, signedIn: Boolean, onAccount: () -> Unit,
+    onAI:(()->Unit)?=null,onReview:(()->Unit)?=null) {
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp, end = 8.dp).testTag("page_topbar"),
         verticalAlignment = Alignment.CenterVertically) {
         Text(listOf("今天", "整理", "想法")[tab], style = MaterialTheme.typography.headlineSmall,
             fontSize = 24.sp, lineHeight = 32.sp, modifier = Modifier.weight(1f))
+        onAI?.let {TextButton(onClick=it,modifier=Modifier.heightIn(min=48.dp).testTag("ai_open")) {Text("AI 助手")}}
+        onReview?.let {TextButton(onClick=it,modifier=Modifier.heightIn(min=48.dp).testTag("review_open")) {Text("回看")}}
         Box {
             IconButton(onClick = onAccount, modifier = Modifier.size(48.dp).testTag("account_open")) {
                 Icon(Icons.Default.Person, if (signedIn) "账号与同步：$status" else "打开账号：$status", Modifier.size(22.dp))
@@ -111,11 +114,14 @@ internal fun IdeaCard(item: Entity, onEdit: () -> Unit) {
 @Composable
 internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComplete: () -> Unit,
     onToday: () -> Unit, onWin: (() -> Unit)? = null, inToday: Boolean = true,
-    planLabel: String? = null, onPlan: (() -> Unit)? = null, onSupport: (() -> Unit)? = null, onOrigin: (() -> Unit)? = null) {
+    planLabel: String? = null, onPlan: (() -> Unit)? = null, onSupport: (() -> Unit)? = null, onOrigin: (() -> Unit)? = null,
+    onExecution:(()->Unit)?=null,onAI:(()->Unit)?=null,onReminder:(()->Unit)?=null,executionLabel:String?=null,
+    executionPaused:Boolean=false,onExecutionToggle:(()->Unit)?=null) {
     val completed = item.completed()
     val content = item.content()
     var menu by remember { mutableStateOf(false) }
     val support = listOfNotNull(
+        executionLabel,
         planLabel ?: content?.get("estimatedMinutes")?.jsonPrimitive?.intOrNull?.let { "总估时 $it 分钟" },
         content?.get("nextAction")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { "下一步：$it" }
             ?: content?.get("note")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
@@ -146,6 +152,10 @@ internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComple
                     Icon(Icons.Default.MoreVert, "更多操作：${item.title()}", Modifier.size(22.dp))
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if(onExecution!=null && !completed) DropdownMenuItem(text={Text(if(executionLabel==null) "专注 / 外部推进" else "管理推进")},
+                        onClick={menu=false;onExecution()},modifier=Modifier.heightIn(min=48.dp).testTag("run_${item.id}"))
+                    if(onAI!=null && !completed) DropdownMenuItem(text={Text("AI 帮我找下一步")},
+                        onClick={menu=false;onAI()},modifier=Modifier.heightIn(min=48.dp).testTag("ai_${item.id}"))
                     if (onPlan != null && !completed) DropdownMenuItem(text = { Text("今天怎么推进") },
                         onClick = { menu = false; onPlan() }, modifier = Modifier.heightIn(min = 48.dp).testTag("plan_${item.id}"))
                     if (onSupport != null && !completed) DropdownMenuItem(text = { Text("我卡住了") },
@@ -156,8 +166,14 @@ internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComple
                         onClick = { menu = false; onWin() }, modifier = Modifier.heightIn(min = 48.dp).testTag("win_${item.id}"))
                     if (onOrigin != null) DropdownMenuItem(text = { Text("查看关联想法") },
                         onClick = { menu = false; onOrigin() }, modifier = Modifier.heightIn(min = 48.dp).testTag("origin_${item.id}"))
+                    if(onReminder!=null && !completed) DropdownMenuItem(text={Text("提醒我")},onClick={menu=false;onReminder()},
+                        modifier=Modifier.heightIn(min=48.dp).testTag("remind_${item.id}"))
                 }
             }
+        }
+        if(executionLabel!=null && !completed && onExecutionToggle!=null) Row(Modifier.fillMaxWidth().padding(start=48.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick=onExecutionToggle,modifier=Modifier.heightIn(min=48.dp).testTag("execution_toggle_${item.id}")) {Text(if(executionPaused) "继续 / 查看" else "暂停")}
+            onExecution?.let {TextButton(onClick=it,modifier=Modifier.heightIn(min=48.dp)) {Text("结束或调整")}}
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }

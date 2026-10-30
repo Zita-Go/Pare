@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notification icons use only alpha; the launcher tile's opaque background would become a white block. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+        android:pathData="M5,3H11C16,3 19,5.5 19,9.5C19,13.8 15.8,16 11,16H8V21H5ZM8,6V13H11C14.3,13 16,11.9 16,9.5C16,7.2 14.3,6 11,6Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M19,17.5A1.75,1.75 0,1 0,19 21A1.75,1.75 0,1 0,19 17.5Z" />
+</vector>

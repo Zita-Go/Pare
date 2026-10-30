@@ -17,11 +17,29 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
     private val connectivity=ForegroundConnectivity(app) {runtime.requestSync(networkReturned=true)}
     private var foregroundPolling:Job?=null
     val state=engine.state
+    val initialized=engine.initialized
     val planningInstant=MutableStateFlow(Instant.now())
     val status=engine.status
     val session=engine.session
     val busy=engine.busy
     val previewReady=engine.previewReady
+    val execution=runtime.execution.state
+    val executionReady=runtime.executionReady
+    val deviceError=runtime.localError
+    val reminderError=runtime.reminderError
+    val notificationTask=MutableStateFlow<String?>(null)
+    fun openNotificationTask(id:String?) {notificationTask.value=id?.takeIf {runCatching {java.util.UUID.fromString(it)}.isSuccess}}
+    fun consumeNotificationTask() {notificationTask.value=null}
+    fun runCommand(command:ExecutionCommand,onResult:(Result<Unit>)->Unit={}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result=runCatching {runtime.execute(command)}
+            if(result.isFailure)deviceError.value=result.exceptionOrNull()?.message ?: "推进操作未完成"
+            withContext(Dispatchers.Main.immediate) {onResult(result)}
+        }
+    }
+    fun editMobileAI(change:(SyncState)->SyncState,onResult:(Result<Unit>)->Unit)=edit(onResult,change)
+    fun saveReminder(taskId:String,expected:TaskReminderBaseline,at:Instant?,recurrence:String?,onResult:(Result<Unit>)->Unit)=
+        edit(onResult) {TaskReminderActions.save(it,taskId,expected,at,recurrence,Instant.now())}
     private fun edit(onResult:(Result<Unit>)->Unit={},block:(SyncState)->SyncState) {
         viewModelScope.launch(Dispatchers.IO) {
             val result=try {engine.edit(block);Result.success(Unit)}
@@ -60,14 +78,15 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
         edit(onResult) {DayPlanActions.allocate(it,taskId,allocation,Instant.now())}
     fun saveSmallStep(taskId:String,nextAction:String,definitionOfDone:String,expected:SmallStepBaseline,allocation:TodayAllocationDraft?=null,blockerReason:String?=null,blockerEntryId:String?=null,onResult:(Result<Unit>)->Unit={}) =
         edit(onResult) {SmallStepActions.save(it,taskId,nextAction,definitionOfDone,expected,allocation,blockerReason,blockerEntryId,Instant.now())}
-    fun complete(entity:Entity) = edit {s ->
-        val current=s.items.getValue(entity.key)
-        val content=current.content()!!.toMutableMap()
-        val completed=!current.completed()
-        content["completed"]=JsonPrimitive(completed)
-        content["lastProgressAt"]=JsonPrimitive(Instant.now().toString())
-        if(completed) content["completedAt"]=JsonPrimitive(Instant.now().toString()) else content.remove("completedAt")
-        StateMachine.edit(s,current.kind,current.id,JsonObject(current.payload!!.toMutableMap().apply {put("content",JsonObject(content))}))
+    fun complete(entity:Entity) {
+      val desired=!entity.completed()
+      viewModelScope.launch(Dispatchers.IO) {
+       try {
+        if(desired && executionReady.value && execution.value.runFor(entity.id)!=null)runtime.execute(ExecutionCommand(entity.id,ExecutionAction.FINISH))
+        engine.edit {CompletionActions.set(it,entity.id,desired,Instant.now())}
+        runtime.requestSync()
+       } catch(e:Exception) {deviceError.value=e.message ?: "完成操作未保存，请重试"}
+      }
     }
     fun organize(entity:Entity,quadrant:Int,addToToday:Boolean,onResult:(Result<Unit>)->Unit={}) {
         val taskId=uid()
@@ -107,14 +126,15 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
     fun pauseSync() {engine.revoke();runtime.persistControl {engine.pause()}}
     fun onForeground() {
         planningInstant.value=Instant.now()
+        runtime.refreshDeviceState()
         connectivity.start()
         runtime.requestSync()
         if(foregroundPolling?.isActive==true) return
         foregroundPolling=viewModelScope.launch {
-            while(isActive) {delay(15_000);planningInstant.value=Instant.now();runtime.requestSync()}
+            while(isActive) {delay(15_000);planningInstant.value=Instant.now();runtime.refreshDeviceState();runtime.requestSync()}
         }
     }
-    fun onBackground() {foregroundPolling?.cancel();foregroundPolling=null;connectivity.stop()}
+    fun onBackground() {foregroundPolling?.cancel();foregroundPolling=null;connectivity.stop();runtime.refreshDeviceState()}
     fun sync(manual:Boolean=false)=runtime.requestSync(manual)
     fun resolve(key:String,local:Boolean)=edit {StateMachine.resolve(it,key,local)}
     fun signOut() {engine.revoke();runtime.persistControl {engine.signOut()}}

@@ -1,6 +1,7 @@
 package com.pare.app
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +18,10 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
@@ -29,8 +34,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        receiveReminder(intent)
         setContent { PareTheme { PareScreen(model) } }
     }
+    private fun receiveReminder(value:Intent?) {
+        if(value?.hasExtra(MobileNotificationRuntime.TASK_ID_EXTRA)==true) {
+            model.openNotificationTask(value.getStringExtra(MobileNotificationRuntime.TASK_ID_EXTRA))
+            value.removeExtra(MobileNotificationRuntime.TASK_ID_EXTRA)
+        }
+    }
+    override fun onNewIntent(intent:Intent) {super.onNewIntent(intent);setIntent(intent);receiveReminder(intent)}
     override fun onResume() { super.onResume(); model.onForeground() }
     override fun onPause() { model.onBackground(); super.onPause() }
 }
@@ -42,6 +55,23 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
 
 @Composable fun PareScreen(vm: PareViewModel) {
     val state by vm.state.collectAsState()
+    val initialized by vm.initialized.collectAsState()
+    val execution by vm.execution.collectAsState()
+    val executionReady by vm.executionReady.collectAsState()
+    val deviceError by vm.deviceError.collectAsState()
+    val reminderError by vm.reminderError.collectAsState()
+    val notificationTask by vm.notificationTask.collectAsState()
+    var executionTaskId by rememberSaveable {mutableStateOf("")}
+    var reminderTaskId by rememberSaveable {mutableStateOf("")}
+    var aiTaskId by rememberSaveable {mutableStateOf("")}
+    var aiChooser by rememberSaveable {mutableStateOf(false)}
+    var executionChooser by rememberSaveable {mutableStateOf(false)}
+    var reviewOpen by rememberSaveable {mutableStateOf(false)}
+    val context=LocalContext.current
+    val hintPreferences=remember(context) {MobileHintPreferences(context)}
+    val localScope=rememberCoroutineScope()
+    var hintVersion by rememberSaveable {mutableIntStateOf(0)}
+    var hintsEnabled by remember {mutableStateOf(hintPreferences.enabled())}
     val planningNow by vm.planningInstant.collectAsState()
     val status by vm.status.collectAsState()
     val session by vm.session.collectAsState()
@@ -97,10 +127,36 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
         val origins = relatedIdeas(state, taskId)
         if (origins.size == 1) workspaceId = origins.first().id else if (origins.isNotEmpty()) originTaskId = taskId
     }
+    LaunchedEffect(notificationTask,initialized,state) {
+        if(initialized && notificationTask!=null) {
+            val target=state.items["task:$notificationTask"]?.takeUnless {it.deleted}
+            if(target!=null)openEditor(target) else vm.deviceError.value="这项提醒对应的任务已不可用。"
+            vm.consumeNotificationTask()
+        }
+    }
+    val localReview by produceState<MobileReviewSummary?>(null,state,planningNow) {
+        value=withContext(Dispatchers.Default) {MobileReview.calculate(state,planningNow)}
+    }
+    val gentleHint=remember(localReview,hintsEnabled,hintVersion,planningNow,execution) {
+        if(hintsEnabled)localReview?.attention?.firstOrNull {execution.runFor(it.id)==null && hintPreferences.visible(it,planningNow)} else null
+    }
+    fun openReviewItem(hint:ReviewAttention) {
+        reviewOpen=false
+        if(hint.kind=="idea")workspaceId=hint.id else state.items["task:${hint.id}"]?.let {openEditor(it)}
+    }
+    fun executionLabel(id:String):String? {
+        val run=execution.runFor(id) ?: return null
+        return when {run.pendingFinish!=null->"记录待保存";run.due->"专注到点";run.paused->"已暂停";execution.focus?.id==run.id->"本机专注中";else->"外部推进中"}
+    }
+    fun toggleExecution(id:String) {
+        val run=execution.runFor(id) ?: return
+        if(run.due || run.pendingFinish!=null)executionTaskId=id
+        else vm.runCommand(ExecutionCommand(id,if(run.paused)ExecutionAction.RESUME else ExecutionAction.PAUSE))
+    }
     val capture: () -> Unit = { openEditor(kind = when (tab) { 0 -> "task"; 2 -> "idea"; else -> "inbox" }, today = tab == 0) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { Column(Modifier.statusBarsPadding()) { PareHeader(tab, status, busy, session != null, onAccount = { account = true }) } },
+        topBar = { Column(Modifier.statusBarsPadding()) { PareHeader(tab, status, busy, session != null, onAccount = { account = true }, onAI={aiChooser=true},onReview={reviewOpen=true}) } },
         bottomBar = { PareNavigation(tab, onTab = { tab = it }) },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = capture, modifier = Modifier.heightIn(min = 56.dp).testTag("add_item"),
@@ -125,6 +181,12 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                     }
                 }
             }
+            if(deviceError!=null || reminderError!=null) item {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text(deviceError ?: reminderError.orEmpty(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error,modifier=Modifier.weight(1f).testTag("device_error"))
+                    TextButton(onClick={vm.deviceError.value=null;vm.reminderError.value=null}) {Text("知道了")}
+                }
+            }
             when (tab) {
                 0 -> {
                     val active = todayTasks.filterNot { it.completed() }
@@ -141,6 +203,20 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                    if(execution.focus!=null || execution.external.isNotEmpty()) item {
+                        TextButton(onClick={executionChooser=true},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("execution_running")) {
+                            Text("本机推进 · ${if(execution.focus!=null) "1段专注 · " else ""}${execution.external.size}项外部任务")
+                        }
+                    }
+                    if(gentleHint!=null) item {
+                        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                            TextButton(onClick={openReviewItem(gentleHint)},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Text("值得回看：${gentleHint.title}",maxLines=1,overflow=TextOverflow.Ellipsis)}
+                            TextButton(onClick={localScope.launch {
+                                try {withContext(Dispatchers.IO) {hintPreferences.defer(gentleHint,planningNow)};hintVersion++}
+                                catch(_:Exception) {vm.deviceError.value="暂放设置没有保存，请稍后重试。"}
+                            }},modifier=Modifier.heightIn(min=48.dp)) {Text("暂放")}
+                        }
+                    }
                     if (active.isEmpty()) item {
                         EmptyNote(if (completedTasks.isEmpty()) "今天还没有任务" else "今天的任务已完成",
                             if (completedTasks.isEmpty()) "添加一件今天要做的事。" else "你可以继续添加任务，或回顾已完成的内容。") {
@@ -152,7 +228,9 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                     items(active, key = { it.key }) { item ->
                         EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) },
                             planLabel = todayPlanLabel(state, item.id, planningNow), onPlan = { allocationTaskId = item.id },
-                            onSupport = { supportTaskId = item.id }, onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }))
+                            onSupport = { supportTaskId = item.id }, onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }),
+                                onExecution=if(executionReady) ({executionTaskId=item.id}) else null,onAI={aiTaskId=item.id},onReminder={reminderTaskId=item.id},
+                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)})
                     }
                 }
                 1 -> {
@@ -178,7 +256,9 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                             EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered,
                                 planLabel = if (item.id in ordered) todayPlanLabel(state,item.id,planningNow) else null,
                                 onPlan = { allocationTaskId = item.id }, onSupport = { supportTaskId = item.id },
-                                onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }))
+                                onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }),
+                                onExecution=if(executionReady) ({executionTaskId=item.id}) else null,onAI={aiTaskId=item.id},onReminder={reminderTaskId=item.id},
+                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)})
                         }
                     }
                 }
@@ -200,11 +280,37 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                     EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered,
                                 planLabel = if (item.id in ordered) todayPlanLabel(state,item.id,planningNow) else null,
                                 onPlan = { allocationTaskId = item.id }, onSupport = { supportTaskId = item.id },
-                                onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }))
+                                onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }),
+                                onExecution=if(executionReady) ({executionTaskId=item.id}) else null,onAI={aiTaskId=item.id},onReminder={reminderTaskId=item.id},
+                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)})
                 }
             }
         }
     }
+    if(executionTaskId.isNotBlank()) {
+        val task=state.items["task:$executionTaskId"]?.takeUnless {it.deleted}
+        if(task!=null)ExecutionDialog(task,execution,vm::runCommand) {executionTaskId=""}
+        else AlertDialog(onDismissRequest={executionTaskId=""},title={Text("任务已不可用")},confirmButton={TextButton(onClick={executionTaskId=""}){Text("关闭")}})
+    }
+    if(reminderTaskId.isNotBlank())TaskReminderDialog(reminderTaskId,vm) {reminderTaskId=""}
+    if(aiTaskId.isNotBlank())MobileAIDialog(state,aiTaskId,vm::editMobileAI,onDismiss={aiTaskId=""})
+    if(aiChooser)AlertDialog(onDismissRequest={aiChooser=false},title={Text("让 AI 帮哪件事？")},text={
+        val choices=tasks.filterNot {it.completed()}.sortedBy {if(it.id==win)0 else if(it.id in ordered)1 else 2}
+        if(choices.isEmpty())Text("先记录一件任务，再让 AI 帮你找到下一步。")
+        else LazyColumn(Modifier.heightIn(max=400.dp)) {items(choices,key={it.id}) {task ->
+            TextButton(onClick={aiTaskId=task.id;aiChooser=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text(task.title(),modifier=Modifier.fillMaxWidth())}
+        }}
+    },confirmButton={TextButton(onClick={aiChooser=false}){Text("关闭")}})
+    if(executionChooser)AlertDialog(onDismissRequest={executionChooser=false},title={Text("本机正在推进")},text={
+        LazyColumn(Modifier.heightIn(max=400.dp)) {items(listOfNotNull(execution.focus)+execution.external,key={it.id}) {run ->
+            TextButton(onClick={executionTaskId=run.taskId;executionChooser=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
+                Text("${state.items["task:${run.taskId}"]?.title() ?: "任务已不可用"} · ${executionLabel(run.taskId).orEmpty()}")
+            }
+        }}
+    },confirmButton={TextButton(onClick={executionChooser=false}){Text("关闭")}})
+    if(reviewOpen)MobileReviewDialog(state,planningNow,hintsEnabled,onHintsChange={enabled ->
+        localScope.launch {try {withContext(Dispatchers.IO) {hintPreferences.setEnabled(enabled)};hintsEnabled=enabled} catch(_:Exception) {vm.deviceError.value="轻提示设置未保存，请重试。"}}
+    },onOpen=::openReviewItem,onAI={reviewOpen=false;aiTaskId=it},onDismiss={reviewOpen=false})
     if (workspaceId.isNotBlank()) IdeaWorkspaceDialog(workspaceId, vm, onDismiss = { workspaceId = "" },
         onEditIdea = { openEditor(it) }, onOpenTask = { openEditor(it) })
     if (allocationTaskId.isNotBlank()) TodayAllocationDialog(allocationTaskId, vm) { allocationTaskId = "" }
