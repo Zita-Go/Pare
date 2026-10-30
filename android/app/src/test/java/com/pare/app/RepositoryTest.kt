@@ -63,4 +63,35 @@ class RepositoryTest {
         migrated.close()
     }
 
+    @Test fun independentRepositoryInstancesSerializeEditsAndPublishLatestSnapshot() {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("pare.db")
+        val first=PareRepository(context);val second=PareRepository(context)
+        first.read()
+        val workers=(0 until 12).map {index -> Thread {
+            (if(index%2==0) first else second).update {StateMachine.edit(it,"inbox","parallel-$index",buildJsonObject {put("content",buildJsonObject {put("text","fictional")})})}
+        }}.onEach {it.start()}
+        workers.forEach {it.join()}
+        assertEquals(12,first.read().items.size)
+        assertEquals(first.read(),second.snapshots.value)
+        assertEquals(first.snapshots.value,second.snapshots.value)
+        first.close();second.close()
+    }
+
+    @Test fun chunkedReadsCannotMixSnapshotsFromAnotherHelper() {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("pare.db")
+        val first=PareRepository(context);val second=PareRepository(context)
+        val large="fictional".repeat(40_000)
+        fun version(value:String)=buildJsonObject {put("content",buildJsonObject {put("text",large+value)})}
+        first.update {StateMachine.edit(it,"inbox","large",version("0"))}
+        val failure=java.util.concurrent.atomic.AtomicReference<Throwable?>()
+        val writer=Thread {try {repeat(12) {index -> second.update {StateMachine.edit(it,"inbox","large",version(index.toString()))}}} catch(e:Throwable) {failure.set(e)}}
+        writer.start()
+        repeat(12) {assertTrue(first.read().items.getValue("inbox:large").title().startsWith(large))}
+        writer.join();failure.get()?.let {throw it}
+        assertEquals(first.read(),second.read())
+        first.close();second.close()
+    }
+
 }

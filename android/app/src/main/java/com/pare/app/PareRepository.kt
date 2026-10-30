@@ -5,9 +5,15 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.content.ContentValues
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /** Bounded rows avoid CursorWindow's per-row limit; every chunk commits atomically. */
-class PareRepository(context:Context):SQLiteOpenHelper(context,"pare.db",null,2) {
+class PareRepository(context:Context):SQLiteOpenHelper(context,"pare.db",null,2),SyncStore {
+    private class Shared {val lock=Any();val snapshot=MutableStateFlow(SyncState())}
+    companion object {private val databases=mutableMapOf<String,Shared>()}
+    private val shared=synchronized(databases) {databases.getOrPut(context.getDatabasePath("pare.db").absolutePath) {Shared()}}
+    override val snapshots:StateFlow<SyncState> get()=shared.snapshot
     override fun onCreate(db:SQLiteDatabase) {
         db.execSQL("CREATE TABLE snapshot_chunks (id INTEGER PRIMARY KEY, content BLOB NOT NULL)")
         writeTo(db,SyncState())
@@ -24,7 +30,7 @@ class PareRepository(context:Context):SQLiteOpenHelper(context,"pare.db",null,2)
         }
         db.execSQL("DROP TABLE snapshot")
     }
-    @Synchronized fun read():SyncState = readFrom(readableDatabase)
+    override fun read():SyncState = synchronized(shared.lock) {readFrom(readableDatabase).also {shared.snapshot.value=it}}
     private fun readFrom(db:SQLiteDatabase):SyncState {
         val bytes=ByteArrayOutputStream()
         db.rawQuery("SELECT id,content FROM snapshot_chunks ORDER BY id",null).use {cursor ->
@@ -43,11 +49,15 @@ class PareRepository(context:Context):SQLiteOpenHelper(context,"pare.db",null,2)
             db.insertOrThrow("snapshot_chunks",null,value)
         }
     }
-    @Synchronized fun update(transform:(SyncState)->SyncState):SyncState {
+    override fun update(transform:(SyncState)->SyncState):SyncState = synchronized(shared.lock) {
         val db=writableDatabase
         db.beginTransaction()
         try {
-            val next=transform(readFrom(db));writeTo(db,next);db.setTransactionSuccessful();return next
-        } finally {db.endTransaction()}
+            val next=transform(readFrom(db));writeTo(db,next);db.setTransactionSuccessful()
+            // Publish only after SQLite confirms that the complete content/outbox transaction committed.
+            db.endTransaction()
+            shared.snapshot.value=next
+            next
+        } finally {if(db.inTransaction()) db.endTransaction()}
     }
 }

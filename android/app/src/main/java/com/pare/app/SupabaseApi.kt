@@ -1,5 +1,22 @@
 package com.pare.app
 import kotlinx.serialization.json.*
+/** Bound total response time as well as individual socket reads, including slow trickles. */
+internal fun readSyncResponse(input:java.io.InputStream,deadlineNanos:Long,nanoTime:()->Long=System::nanoTime):ByteArray {
+    val output=java.io.ByteArrayOutputStream()
+    val buffer=ByteArray(8192)
+    fun checkActive() {
+        if(Thread.currentThread().isInterrupted || nanoTime()>=deadlineNanos) throw java.io.InterruptedIOException("同步请求已停止或超时")
+    }
+    while(true) {
+        checkActive()
+        val count=input.read(buffer)
+        checkActive()
+        if(count<0) break
+        require(output.size()+count<=5_242_880) {"云端响应过大"}
+        output.write(buffer,0,count)
+    }
+    return output.toByteArray()
+}
 fun parseSession(json:JsonObject, now:Long):Session? {
     val access=json["access_token"]?.jsonPrimitive?.contentOrNull ?: return null
     val refresh=json["refresh_token"]?.jsonPrimitive?.contentOrNull
@@ -14,6 +31,7 @@ fun parseSession(json:JsonObject, now:Long):Session? {
 class ApiFailure(val code:Int):Exception(when(code) {401 -> "登录已失效，请重新登录"; 400,422 -> "请检查邮箱、密码或邮件验证状态"; 429 -> "请求较多，请稍后重试"; else -> "云端暂不可用（$code）"})
 class SupabaseApi {
     fun post(path:String, body:JsonObject, token:String?=null):JsonObject {
+        val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(60)
         val base=BuildConfig.SUPABASE_URL.trimEnd('/')
         require(base.startsWith("https://") && BuildConfig.SUPABASE_PUBLIC_KEY.isNotBlank()) {"此构建尚未配置同步服务"}
         val conn=java.net.URL("$base/$path").openConnection() as javax.net.ssl.HttpsURLConnection
@@ -25,17 +43,7 @@ class SupabaseApi {
             conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             val status=conn.responseCode
             if(status !in 200..299) throw ApiFailure(status)
-            val bytes=conn.inputStream.use { input ->
-                val output=java.io.ByteArrayOutputStream()
-                val buffer=ByteArray(8192)
-                while(true) {
-                    val count=input.read(buffer)
-                    if(count<0) break
-                    require(output.size()+count<=5_242_880) {"云端响应过大"}
-                    output.write(buffer,0,count)
-                }
-                output.toByteArray()
-            }
+            val bytes=conn.inputStream.use {readSyncResponse(it,deadline)}
             require(bytes.size<=5_242_880) {"云端响应过大"}
             if(bytes.isEmpty()) return JsonObject(emptyMap())
             return wire.parseToJsonElement(bytes.toString(Charsets.UTF_8)).jsonObject
