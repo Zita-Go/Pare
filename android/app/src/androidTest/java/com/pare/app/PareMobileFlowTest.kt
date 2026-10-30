@@ -14,6 +14,8 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import java.time.Instant
+import androidx.test.espresso.Espresso
 import kotlinx.serialization.json.*
 
 /** Runs against com.pare.app.qa only; it cannot touch a real Pare installation. */
@@ -40,14 +42,15 @@ class PareMobileFlowTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("editor_save").fetchSemanticsNodes().isEmpty() }
     }
 
-    private fun screenshot(name: String) {
+    private fun screenshot(name: String, dialog: Boolean = false) {
         compose.waitForIdle()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val folder = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
             ?.let { File(it) } ?: File(context.getExternalFilesDir(null), "ui-acceptance")
         folder.mkdirs()
         File(folder, name).outputStream().use {
-            assertTrue(compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it))
+            val root = if (dialog) compose.onNode(isDialog()) else compose.onRoot()
+            assertTrue(root.captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it))
         }
     }
 
@@ -63,14 +66,32 @@ class PareMobileFlowTest {
         compose.onNodeWithTag("editor_text").assertTextContains("写出旅行清单的前三项")
         compose.onNodeWithTag("editor_next_action").performScrollTo().assertTextContains("打开笔记，列出证件和车票")
         compose.onNodeWithTag("editor_estimate").performScrollTo().performTextReplacement("15")
+        Espresso.closeSoftKeyboard()
+        screenshot("07-task-editor.png", dialog = true)
         saveAndWaitUntilClosed()
         compose.onNodeWithText("写出旅行清单的前三项").assertIsDisplayed()
-        screenshot("02-today-task.png")
 
         // Simulate a newly received model version while an editing draft is
         // open; saving must not overwrite the newer note or close the draft.
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val originalTask = PareRepository(context).use { it.read().items.values.first { e -> e.kind == "task" && e.title() == "写出旅行清单的前三项" } }
+        // Rich but entirely fictional fixtures make visual hierarchy reviewable.
+        PareRepository(context).use { repo -> repo.update { state ->
+            var next = state
+            val ids = mutableListOf<String>()
+            listOf(Triple("确认周末的集合时间", 0, 10), Triple("读一章书，留三行笔记", 1, 25)).forEach { (text, quadrant, minutes) ->
+                val id = uid(); ids += id
+                next = StateMachine.edit(next, "task", id, ContentActions.save(null, "task", text, "", quadrant, id, Instant.now(), estimatedMinutes = minutes))
+            }
+            val planKey = "day_plan:${ContentActions.planId(next, Instant.now())}"
+            val dayPlan = next.items.getValue(planKey)
+            val content = dayPlan.content()!!.toMutableMap()
+            content["ordered_task_ids"] = JsonArray(content.getValue("ordered_task_ids").jsonArray + ids.map { JsonPrimitive(it) })
+            StateMachine.edit(next, "day_plan", dayPlan.id, JsonObject(mapOf("content" to JsonObject(content))))
+        } }
+        compose.onNodeWithTag("win_${originalTask.id}").performClick()
+        compose.waitUntil(10_000) { PareRepository(context).use { it.read().items.values.any { e -> e.kind == "day_plan" && e.content()?.get("daily_win_task_id")?.jsonPrimitive?.contentOrNull == originalTask.id } } }
+        screenshot("02-today-task.png")
         val topBeforeSync = compose.onNodeWithTag("task_${originalTask.id}").fetchSemanticsNode().boundsInRoot.top
         scenario.onActivity { ViewModelProvider(it)[PareViewModel::class.java].busy.value = true }
         compose.waitForIdle()
@@ -111,6 +132,10 @@ class PareMobileFlowTest {
         saveAndWaitUntilClosed()
         compose.onNodeWithText("萌芽").assertExists()
         screenshot("04-ideas.png")
+        compose.onNodeWithTag("account_open").performScrollTo().performClick()
+        compose.onNodeWithText("登录").assertExists()
+        screenshot("06-account.png", dialog = true)
+        compose.onNodeWithText("关闭").performClick()
 
         compose.onNodeWithTag("tab_today").performClick()
         val task = PareRepository(context).use { it.read().items.values.first { e -> e.kind == "task" && e.title() == "写出旅行清单的前三项" } }

@@ -14,8 +14,8 @@ android {
         applicationId = "com.pare.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SUPABASE_URL", quoted(local.getProperty("supabase.url", "")))
         buildConfigField("String", "SUPABASE_PUBLIC_KEY", quoted(local.getProperty("supabase.publicKey", "")))
@@ -54,6 +54,7 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     add("qaImplementation", "androidx.compose.ui:ui-test-manifest")
 }
 
