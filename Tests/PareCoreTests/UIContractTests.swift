@@ -213,7 +213,7 @@ final class UIContractTests: XCTestCase {
 
     func testSettingsCategoriesPreserveDraftsAndHideInactiveAccessibility() throws {
         let settings = try source("Sources/Pare/SettingsWindowController.swift")
-        XCTAssertTrue(settings.contains("case general = \"通用\", reminders = \"提醒\", ai = \"AI\", data = \"数据\""))
+        XCTAssertTrue(settings.contains("case general = \"通用\", reminders = \"提醒\", ai = \"AI\", sync = \"同步\", data = \"数据\""))
         XCTAssertTrue(settings.contains("ZStack(alignment: .topLeading)"))
         XCTAssertTrue(settings.contains(".accessibilityHidden(category != tab)"))
         XCTAssertTrue(settings.contains(".allowsHitTesting(category == tab)"))

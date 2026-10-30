@@ -246,7 +246,7 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
                 attention.start()
             }
             settings = SettingsWindowController(store: store, manager: notifications,
-                                                 attentionDetector: attention, shortcutController: shortcuts)
+                                                 attentionDetector: attention, shortcutController: shortcuts, syncCoordinator: SyncCoordinator(store: store))
         }
         settings?.present()
     }

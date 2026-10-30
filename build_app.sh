@@ -8,8 +8,8 @@ cd "$(dirname "$0")"
 
 APP_NAME="Pare"
 BUNDLE_ID="com.zitago.Pare"
-VERSION="2.12.0"
-BUILD="39"
+VERSION="2.13.0"
+BUILD="40"
 ICON_MASTER="Resources/AppIcon.png"
 
 echo "==> swift build -c release"
@@ -27,6 +27,24 @@ echo "==> assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$EXE" "$APP/Contents/MacOS/$APP_NAME"
+
+# Only a public client key belongs in the bundle. Local project configuration
+# stays ignored by Git; this filter never copies credentials or admin fields.
+SYNC_CONFIG="${PARE_SYNC_CONFIGURATION_FILE:-backend/supabase/project.local.json}"
+if [[ -f "$SYNC_CONFIG" ]]; then
+  python3 - "$SYNC_CONFIG" "$APP/Contents/Resources/SyncConfiguration.json" <<'PY'
+import json, pathlib, sys
+from urllib.parse import urlparse
+value = json.loads(pathlib.Path(sys.argv[1]).read_text())
+url, key = value.get('api_url', ''), value.get('publishable_key', '')
+parts = urlparse(url)
+if parts.scheme != 'https' or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment:
+    raise SystemExit('Invalid sync project URL')
+if not key.startswith('sb_publishable_'):
+    raise SystemExit('Bundle configuration requires a publishable client key')
+pathlib.Path(sys.argv[2]).write_text(json.dumps({'api_url': url, 'publishable_key': key}))
+PY
+fi
 
 if [[ ! -f "$ICON_MASTER" ]]; then
   echo "error: app icon master not found at $ICON_MASTER" >&2

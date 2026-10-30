@@ -21,7 +21,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let shortcutController: CaptureShortcutController
 
     init(store: Store, manager: NotificationManager, attentionDetector: AttentionDriftDetector,
-         shortcutController: CaptureShortcutController) {
+         shortcutController: CaptureShortcutController, syncCoordinator: SyncCoordinator) {
         self.shortcutController = shortcutController
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 580, height: 640),
@@ -38,7 +38,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         let hosting = NSHostingController(rootView: SettingsView(
             store: store, manager: manager, attentionDetector: attentionDetector,
-            shortcutController: shortcutController))
+            shortcutController: shortcutController, syncCoordinator: syncCoordinator))
         window.contentViewController = hosting
         window.center()
 
@@ -70,7 +70,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 // MARK: - SettingsView
 
 private enum SettingsCategory: String, CaseIterable {
-    case general = "通用", reminders = "提醒", ai = "AI", data = "数据"
+    case general = "通用", reminders = "提醒", ai = "AI", sync = "同步", data = "数据"
 }
 
 private struct SettingsView: View {
@@ -78,6 +78,7 @@ private struct SettingsView: View {
     let manager: NotificationManager
     @ObservedObject var attentionDetector: AttentionDriftDetector
     @ObservedObject var shortcutController: CaptureShortcutController
+    @ObservedObject var syncCoordinator: SyncCoordinator
     @StateObject private var loginItem = LoginItemManager()
 
     @State private var authText = "检查中…"
@@ -153,6 +154,8 @@ private struct SettingsView: View {
                 settingsGroup("本地历史与背景") { AIHistorySettingsView(store: store) }
             case .data:
                 settingsGroup("启动与数据备份") { startupAndDataCard }
+            case .sync:
+                SyncSettingsView(coordinator: syncCoordinator, store: store)
             }
         }
     }

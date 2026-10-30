@@ -7,9 +7,16 @@ public enum SyncEntityKind: String, Codable, CaseIterable, Sendable {
     case dayPlan = "day_plan"
 }
 
-public enum SyncProtocolError: Error, Equatable {
+public enum SyncProtocolError: LocalizedError, Equatable {
     case unsupportedVersion, invalidKey, invalidRevision, invalidPayload
     case batchTooLarge, duplicateEntity, invalidPage, invalidDayPlan
+    public var errorDescription: String? {
+        switch self {
+        case .batchTooLarge: return "待同步事务超过 100 条记录或 1 MiB，已暂停上传以保持多记录操作完整。本地数据已保留。"
+        case .unsupportedVersion: return "云端数据需要更新版本的 Pare；已停止同步并保留本地内容。"
+        default: return "同步数据未通过完整性检查；本地内容和拉取位置均已保留。"
+        }
+    }
 }
 
 public struct SyncEntityKey: Codable, Hashable, Sendable {
@@ -111,7 +118,7 @@ public struct SyncMutation: Codable, Equatable, Sendable {
     }
 }
 
-public struct SyncPushRequest: Encodable, Sendable {
+public struct SyncPushRequest: Codable, Equatable, Sendable {
     public var operationID: UUID
     public var deviceID: UUID
     public var mutations: [SyncMutation]
@@ -120,6 +127,12 @@ public struct SyncPushRequest: Encodable, Sendable {
     }
     public init(operationID: UUID = UUID(), deviceID: UUID, mutations: [SyncMutation]) {
         self.operationID = operationID; self.deviceID = deviceID; self.mutations = mutations
+    }
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(operationID.uuidString.lowercased(), forKey: .operationID)
+        try values.encode(deviceID.uuidString.lowercased(), forKey: .deviceID)
+        try values.encode(mutations, forKey: .mutations)
     }
     public func validate() throws {
         guard (1...100).contains(mutations.count) else { throw SyncProtocolError.batchTooLarge }
@@ -272,15 +285,31 @@ public struct SyncDayPlan: Codable, Equatable, Sendable {
     public var timeZone: String
     public var orderedTaskIDs: [UUID]
     public var dailyWinTaskID: UUID?
+    public var taskPlans: [SyncTaskPlan]
     public var key: SyncEntityKey { .init(kind: .dayPlan, id: "\(dayKey)@\(timeZone)") }
     enum CodingKeys: String, CodingKey {
-        case dayKey = "day_key", timeZone = "time_zone", orderedTaskIDs = "ordered_task_ids", dailyWinTaskID = "daily_win_task_id"
+        case dayKey = "day_key", timeZone = "time_zone", orderedTaskIDs = "ordered_task_ids", dailyWinTaskID = "daily_win_task_id", taskPlans = "task_plans"
     }
-    public init(dayKey: String, timeZone: String, orderedTaskIDs: [UUID], dailyWinTaskID: UUID? = nil) {
+    public init(dayKey: String, timeZone: String, orderedTaskIDs: [UUID], dailyWinTaskID: UUID? = nil, taskPlans: [SyncTaskPlan] = []) {
         self.dayKey = dayKey; self.timeZone = timeZone
-        self.orderedTaskIDs = orderedTaskIDs; self.dailyWinTaskID = dailyWinTaskID
+        self.orderedTaskIDs = orderedTaskIDs; self.dailyWinTaskID = dailyWinTaskID; self.taskPlans = taskPlans
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        dayKey = try c.decode(String.self, forKey: .dayKey)
+        timeZone = try c.decode(String.self, forKey: .timeZone)
+        orderedTaskIDs = try c.decode([UUID].self, forKey: .orderedTaskIDs)
+        dailyWinTaskID = try c.decodeIfPresent(UUID.self, forKey: .dailyWinTaskID)
+        taskPlans = try c.decodeIfPresent([SyncTaskPlan].self, forKey: .taskPlans) ?? []
     }
     public func validate() throws {
+        guard Set(taskPlans.map(\.taskID)).count == taskPlans.count else { throw SyncProtocolError.invalidDayPlan }
+        for plan in taskPlans {
+            guard plan.scheduledMinutes.map({ $0 > 0 }) ?? true,
+                  plan.scheduleReminderLeadMinutes.map({ $0 >= 0 }) ?? true,
+                  plan.allocation.map({ ["personal", "check"].contains($0.kind) && ($0.plannedMinutes.map { $0 > 0 } ?? true) }) ?? true
+            else { throw SyncProtocolError.invalidDayPlan }
+        }
         guard let zone = TimeZone(identifier: timeZone), dayKey.count == 10,
               dayKey.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"#, options: .regularExpression) != nil,
               Set(orderedTaskIDs).count == orderedTaskIDs.count,

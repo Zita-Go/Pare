@@ -36,6 +36,12 @@ public final class Store: ObservableObject {
     /// drive the once-per-day rollover ritual.
     public private(set) var lastActiveDay: Date?
 
+    @Published public private(set) var syncState: SyncLocalState?
+    @Published public private(set) var syncDayPlans: [SyncDayPlan] = []
+    @Published public private(set) var planningTimeZone = TimeZone.current.identifier
+    private var applyingSync = false
+    private var localScheduleReminderSuppressions: [UUID: Date] = [:]
+
     private let fileURL: URL
     private var backupURL: URL { fileURL.appendingPathExtension("bak") }
     public var dataFileURL: URL { fileURL }
@@ -64,6 +70,7 @@ public final class Store: ObservableObject {
     public init(fileURL: URL, calendar: Calendar = .current) {
         self.fileURL = fileURL
         self.calendar = calendar
+        self.planningTimeZone = calendar.timeZone.identifier
         load()
     }
 
@@ -98,6 +105,10 @@ public final class Store: ObservableObject {
         var intelligenceAdoptions: [IntelligenceAdoptionReceipt]?
         var dailyAllocations: [DailyAllocation]?
         var legacyAIAdoptionLinks: [UUID: UUID]?
+        var syncState: SyncLocalState?
+        var syncDayPlans: [SyncDayPlan]?
+        var planningTimeZone: String?
+        var localScheduleReminderSuppressions: [UUID: Date]?
     }
 
     public enum DataTransferError: LocalizedError {
@@ -154,9 +165,14 @@ public final class Store: ObservableObject {
             }
         }
         apply(snap)
+        if rewriteRecoveredData, let owner = syncState?.accountID {
+            syncState = SyncLocalState(accountID: owner)
+            syncState?.enabled = false
+        }
     }
 
     private func apply(_ snap: Snapshot) {
+        localScheduleReminderSuppressions = snap.localScheduleReminderSuppressions ?? [:]
         inbox = snap.inbox
         tasks = snap.tasks
         archive = snap.archive ?? []
@@ -194,6 +210,11 @@ public final class Store: ObservableObject {
         }
         lastActiveDay = snap.lastActiveDay
         settings = snap.settings ?? .default
+        syncState = snap.syncState
+        syncDayPlans = snap.syncDayPlans ?? []
+        planningTimeZone = snap.planningTimeZone ?? calendar.timeZone.identifier
+        if snap.syncDayPlans == nil { migrateSyncDayPlans() }
+        else { projectSyncDayPlan(at: lastActiveDay ?? Date()) }
         if let timer = activeTimer,
            !tasks.contains(where: { $0.id == timer.taskID && !$0.completed }) {
             activeTimer = nil
@@ -208,19 +229,19 @@ public final class Store: ObservableObject {
         // changed in a newer app. A new schema is not a corrupt old snapshot.
         struct Header: Decodable { var schemaVersion: Int? }
         let version = try decoder.decode(Header.self, from: data).schemaVersion ?? 1
-        guard version <= 6 else { throw DataTransferError.unsupportedVersion(version) }
+        guard version <= 7 else { throw DataTransferError.unsupportedVersion(version) }
         return try decoder.decode(Snapshot.self, from: data)
     }
 
     private func currentSnapshot() -> Snapshot {
-        Snapshot(schemaVersion: 6, inbox: inbox, tasks: tasks,
+        Snapshot(schemaVersion: 7, inbox: inbox, tasks: tasks,
                  archive: archive, thoughts: thoughts, activeTimer: activeTimer,
                  parallelRuns: parallelRuns,
                  lastActiveDay: lastActiveDay, settings: settings,
                  aiBackground: aiBackground, aiSummaries: aiSummaries,
                  goals: goals, agentPreferences: agentPreferences, planningRuns: planningRuns,
                  confirmedPreferences: confirmedPreferences, intelligenceFeedback: intelligenceFeedback,
-                 intelligenceAdoptions: intelligenceAdoptions, dailyAllocations: dailyAllocations, legacyAIAdoptionLinks: legacyAIAdoptionLinks)
+                 intelligenceAdoptions: intelligenceAdoptions, dailyAllocations: dailyAllocations, legacyAIAdoptionLinks: legacyAIAdoptionLinks, syncState: syncState, syncDayPlans: syncDayPlans, planningTimeZone: planningTimeZone, localScheduleReminderSuppressions: localScheduleReminderSuppressions)
     }
 
     private func encoder() -> JSONEncoder {
@@ -237,7 +258,10 @@ public final class Store: ObservableObject {
     private func save(createBackup: Bool = true) -> Bool {
         guard !loading, !persistenceLocked else { return false }
         hasUnsavedChanges = true
+        let previousSyncState = syncState, previousDayPlans = syncDayPlans
         do {
+            if !applyingSync { captureSyncDayPlan() }
+            try refreshSyncPending()
             let data = try encoder().encode(currentSnapshot())
             if createBackup, let previous = lastSavedData {
                 try previous.write(to: backupURL, options: .atomic)
@@ -248,6 +272,9 @@ public final class Store: ObservableObject {
             if persistenceIssue?.contains("无法保存") == true { persistenceIssue = nil }
             return true
         } catch {
+            // Existing local transactions may roll their content back after
+            // save fails. Their derived queue and plans must roll back too.
+            syncState = previousSyncState; syncDayPlans = previousDayPlans
             persistenceIssue = "无法保存数据：\(error.localizedDescription)"
             return false
         }
@@ -292,7 +319,14 @@ public final class Store: ObservableObject {
         // An imported backup cannot tell us when a personal focus session
         // actually stopped. Preserve its recorded work, but never resume it.
         var imported = snapshot
-        imported.schemaVersion = 6
+        imported.schemaVersion = 7
+        // Backups carry content, never authority to resume uploading. Retain a
+        // disabled binding to prevent importing another account's queue.
+        if let state = syncState ?? imported.syncState {
+            var suspended = SyncLocalState(accountID: state.accountID)
+            suspended.enabled = false
+            imported.syncState = suspended
+        } else { imported.syncState = nil }
         imported.activeTimer = nil
         var previousBackup: Data?
         var backedUpCurrentFile = false
@@ -349,27 +383,23 @@ public final class Store: ObservableObject {
     @discardableResult
     public func rolloverIfNeeded(now: Date = Date()) -> Bool {
         guard !persistenceLocked else { return false }
-        let today = calendar.startOfDay(for: now)
-        if let last = lastActiveDay, calendar.isDate(last, inSameDayAs: today) {
+        let today = syncCalendar.startOfDay(for: now)
+        if let last = lastActiveDay, syncCalendar.isDate(last, inSameDayAs: today) {
             return false
         }
         let firstRun = (lastActiveDay == nil)
+        captureSyncDayPlan()
         lastActiveDay = today
         if firstRun {
             save()
             return false
         }
-        let done = tasks.filter { $0.completed }
-        archive.append(contentsOf: done)
+        // Today's UI is a projection; yesterday's plan remains a shared entity.
+        // Preserve the established archive UX. Its lifecycle write uses the same
+        // revision check as any edit, so a concurrent reopen becomes a conflict.
+        archive.append(contentsOf: tasks.filter(\.completed))
         tasks.removeAll { $0.completed }
-        for i in tasks.indices {
-            tasks[i].isToday = false
-            tasks[i].todayOrder = nil
-            tasks[i].isDailyWin = false
-            tasks[i].scheduledAt = nil
-            tasks[i].scheduledMinutes = nil
-            tasks[i].scheduleReminderLeadMinutes = nil
-        }
+        projectSyncDayPlan(at: now)
         save()
         return true
     }
@@ -674,6 +704,7 @@ public final class Store: ObservableObject {
 
     public func setScheduleReminder(_ id: UUID, leadMinutes: Int?) {
         guard let i = tasks.firstIndex(where: { $0.id == id && $0.scheduledAt != nil }) else { return }
+        localScheduleReminderSuppressions.removeValue(forKey: id)
         tasks[i].scheduleReminderLeadMinutes = leadMinutes.map { min(120, max(0, $0)) }
         save()
     }
@@ -939,7 +970,8 @@ public final class Store: ObservableObject {
         if activeTimer != nil { _ = stopTimer(now: now) }
         // Beginning the scheduled work fulfils its start reminder. Keep the
         // block visible, but do not alert again while the user is already in it.
-        if tasks[taskIndex].scheduledAt != nil {
+        if let scheduledAt = tasks[taskIndex].scheduledAt {
+            localScheduleReminderSuppressions[taskID] = scheduledAt
             tasks[taskIndex].scheduleReminderLeadMinutes = nil
         }
         activeTimer = ActiveTimer(taskID: taskID, startedAt: now,
@@ -1282,13 +1314,13 @@ public final class Store: ObservableObject {
 
     public func progressSessionsToday(now: Date = Date()) -> [ProgressSession] {
         (tasks + archive).flatMap { $0.progressSessions ?? [] }
-            .filter { calendar.isDate($0.endedAt, inSameDayAs: now) }
+            .filter { syncCalendar.isDate($0.endedAt, inSameDayAs: now) }
             .sorted { $0.endedAt < $1.endedAt }
     }
 
     public func progressedTaskCountToday(now: Date = Date()) -> Int {
         Set((tasks + archive).filter { task in
-            (task.progressSessions ?? []).contains { calendar.isDate($0.endedAt, inSameDayAs: now) }
+            (task.progressSessions ?? []).contains { syncCalendar.isDate($0.endedAt, inSameDayAs: now) }
         }.map(\.id)).count
     }
 
@@ -1330,7 +1362,7 @@ public final class Store: ObservableObject {
     public func completedTodayCount(now: Date = Date()) -> Int {
         tasks.reduce(0) { acc, t in
             guard t.completed, let at = t.completedAt else { return acc }
-            return acc + (calendar.isDate(at, inSameDayAs: now) ? 1 : 0)
+            return acc + (syncCalendar.isDate(at, inSameDayAs: now) ? 1 : 0)
         }
     }
 
@@ -1416,7 +1448,7 @@ extension Store {
                 body += "\n正在并行运行（不计入个人容量），开始：\(run.startedAt.ISO8601Format())；检查：\(run.nextCheckAt?.ISO8601Format() ?? "未设")"
             }
             if activeTimer?.taskID == task.id { body += "\n正在个人专注" }
-            if let scheduled = task.scheduledAt, calendar.isDate(scheduled, inSameDayAs: now) {
+            if let scheduled = task.scheduledAt, syncCalendar.isDate(scheduled, inSameDayAs: now) {
                 body += "\n今日时间块：\(scheduled.ISO8601Format())，\(task.scheduledMinutes.map(String.init) ?? "未知")分钟"
             }
             if options.includeHistory {
@@ -1435,7 +1467,7 @@ extension Store {
         let taskIDs = Set(relatedTasks.map(\.id))
         let ideaIDs = intent == .idea ? Set(subjectID.map { [$0] } ?? [])
             : Set(thoughts.filter { !Set($0.linkedTaskIDs).isDisjoint(with: taskIDs) }.map(\.id))
-        for allocation in dailyAllocations where taskIDs.contains(allocation.taskID) && calendar.isDate(allocation.day, inSameDayAs: now) {
+        for allocation in dailyAllocations where taskIDs.contains(allocation.taskID) && syncCalendar.isDate(allocation.day, inSameDayAs: now) {
             add(id: allocation.id, kind: "dailyAllocation", title: "当日\(allocation.kind.title)", body: "taskID: \(allocation.taskID)；确认投入：\(allocation.plannedMinutes.map(String.init) ?? "未知")分钟", date: allocation.day)
         }
         for goal in goals where options.selectedGoalIDs.contains(goal.id) {
@@ -1458,7 +1490,7 @@ extension Store {
                 add(id: feedback.id, kind: "feedback", title: feedback.kind.title, body: "用户对建议的反馈，不代表稳定习惯：\(feedback.comment)", date: feedback.date)
             }
         }
-        var request = IntelligenceRequest(intent: intent, subjectID: subjectID, availableMinutes: availableMinutes, energy: energy, instruction: instruction, options: options, evidence: [], now: now, timeZone: calendar.timeZone.identifier)
+        var request = IntelligenceRequest(intent: intent, subjectID: subjectID, availableMinutes: availableMinutes, energy: energy, instruction: instruction, options: options, evidence: [], now: now, timeZone: syncCalendar.timeZone.identifier)
         // The manifest detects new authorized facts while unrelated records stay outside this scope.
         request.scopeRevision = intelligenceRevision(evidence.map { "\($0.kind):\($0.id.uuidString):\($0.revision)" }.sorted())
         let requiredSourceID = subjectID ?? relatedTasks.first?.id
@@ -1499,8 +1531,8 @@ extension Store {
             guard receipt.undoneAt == nil, Set(receipt.actionIDs) == selectedActionIDs else { throw IntelligenceError.alreadyApplied }
             return receipt
         }
-        guard request.timeZone == calendar.timeZone.identifier,
-              calendar.isDate(request.now, inSameDayAs: now) else { throw IntelligenceError.stale }
+        guard request.timeZone == syncCalendar.timeZone.identifier,
+              syncCalendar.isDate(request.now, inSameDayAs: now) else { throw IntelligenceError.stale }
         let refreshed = try prepareIntelligenceRequest(intent: request.intent, subjectID: request.subjectID,
             availableMinutes: request.availableMinutes, energy: request.energy, instruction: request.instruction, options: request.options, now: now)
         let currentEvidence = Dictionary(uniqueKeysWithValues: refreshed.evidence.map { ($0.id, $0.revision) })
@@ -1553,7 +1585,7 @@ extension Store {
             let changedTaskIDs = Set(tasks.filter { task in beforeTasks.first { $0.id == task.id } != task }.map(\.id))
             let changedIdeaIDs = Set(thoughts.filter { idea in beforeIdeas.first { $0.id == idea.id } != idea }.map(\.id))
             let changedAllocationIDs = Set(dailyAllocations.filter { item in beforeAllocations.first { $0.id == item.id } != item }.map(\.id))
-            let receipt = IntelligenceAdoptionReceipt(requestID: request.id, actionIDs: chosen.map(\.id), createdTaskIDs: created, date: now, timeZone: calendar.timeZone.identifier, actionTaskIDs: mapping,
+            let receipt = IntelligenceAdoptionReceipt(requestID: request.id, actionIDs: chosen.map(\.id), createdTaskIDs: created, date: now, timeZone: syncCalendar.timeZone.identifier, actionTaskIDs: mapping,
                 beforeTasks: beforeTasks.filter { changedTaskIDs.contains($0.id) }, afterTasks: tasks.filter { changedTaskIDs.contains($0.id) },
                 beforeIdeas: beforeIdeas.filter { changedIdeaIDs.contains($0.id) }, afterIdeas: thoughts.filter { changedIdeaIDs.contains($0.id) },
                 beforeAllocations: beforeAllocations.filter { changedAllocationIDs.contains($0.id) }, afterAllocations: dailyAllocations.filter { changedAllocationIDs.contains($0.id) })
@@ -1566,7 +1598,7 @@ extension Store {
         guard let index = intelligenceAdoptions.firstIndex(where: { $0.id == receiptID }), intelligenceAdoptions[index].undoneAt == nil else { throw IntelligenceError.alreadyApplied }
         let receipt = intelligenceAdoptions[index]
         if !receipt.afterTasks.isEmpty || !receipt.afterAllocations.isEmpty {
-            guard calendar.isDate(receipt.date, inSameDayAs: now), receipt.timeZone == nil || receipt.timeZone == calendar.timeZone.identifier else { throw IntelligenceError.crossDayUndo }
+            guard syncCalendar.isDate(receipt.date, inSameDayAs: now), receipt.timeZone == nil || receipt.timeZone == syncCalendar.timeZone.identifier else { throw IntelligenceError.crossDayUndo }
         }
         // Conservative entity-level comparison also protects scheduling and timer edits.
         guard receipt.afterTasks.allSatisfy({ after in tasks.first { $0.id == after.id } == after }),
@@ -1613,8 +1645,8 @@ extension Store {
     private func upsertDailyAllocation(taskID: UUID, plannedMinutes: Int?, kind: DailyAllocationKind, now: Date) throws {
         guard tasks.contains(where: { $0.id == taskID }), plannedMinutes.map({ (1...1440).contains($0) }) ?? true,
               !parallelRuns.contains(where: { $0.taskID == taskID }) || kind == .check else { throw IntelligenceError.invalidInput }
-        let day = calendar.startOfDay(for: now)
-        if let index = dailyAllocations.firstIndex(where: { $0.taskID == taskID && calendar.isDate($0.day, inSameDayAs: now) }) {
+        let day = syncCalendar.startOfDay(for: now)
+        if let index = dailyAllocations.firstIndex(where: { $0.taskID == taskID && syncCalendar.isDate($0.day, inSameDayAs: now) }) {
             dailyAllocations[index].plannedMinutes = plannedMinutes; dailyAllocations[index].kind = kind
         } else { dailyAllocations.append(DailyAllocation(taskID: taskID, day: day, plannedMinutes: plannedMinutes, kind: kind)) }
     }
@@ -1632,8 +1664,8 @@ extension Store {
             guard let index = projectedTasks.firstIndex(where: { $0.id == action.sourceID && !$0.completed }) else { throw IntelligenceError.missingSource }
             projectedTasks[index].isToday = action.kind == .setDailyWin || action.selected
             if action.kind == .setTodaySelection && action.selected {
-                projectedAllocations.removeAll { $0.taskID == action.sourceID && calendar.isDate($0.day, inSameDayAs: now) }
-                projectedAllocations.append(DailyAllocation(taskID: action.sourceID, day: calendar.startOfDay(for: now), plannedMinutes: action.plannedMinutes, kind: action.allocationKind))
+                projectedAllocations.removeAll { $0.taskID == action.sourceID && syncCalendar.isDate($0.day, inSameDayAs: now) }
+                projectedAllocations.append(DailyAllocation(taskID: action.sourceID, day: syncCalendar.startOfDay(for: now), plannedMinutes: action.plannedMinutes, kind: action.allocationKind))
             }
         }
         return calculateDailyLoad(tasks: projectedTasks, allocations: projectedAllocations, now: now)
@@ -1641,17 +1673,495 @@ extension Store {
     private func calculateDailyLoad(tasks: [TaskItem], allocations: [DailyAllocation], now: Date) -> DailyLoad {
         var result = DailyLoad(personalMinutes: 0, checkMinutes: 0, unknownCount: 0)
         for task in tasks where task.isToday && !task.completed {
-            let allocation = allocations.first { $0.taskID == task.id && calendar.isDate($0.day, inSameDayAs: now) }
+            let allocation = allocations.first { $0.taskID == task.id && syncCalendar.isDate($0.day, inSameDayAs: now) }
             let parallel = parallelRuns.contains { $0.taskID == task.id }
             if parallel {
                 if allocation?.kind == .check, let minutes = allocation?.plannedMinutes { result.checkMinutes += minutes }
                 else { result.unknownCount += 1 }
-            } else if let at = task.scheduledAt, calendar.isDate(at, inSameDayAs: now), let minutes = task.scheduledMinutes {
+            } else if let at = task.scheduledAt, syncCalendar.isDate(at, inSameDayAs: now), let minutes = task.scheduledMinutes {
                 if allocation?.kind == .check { result.checkMinutes += minutes } else { result.personalMinutes += minutes }
             } else if let minutes = allocation?.plannedMinutes {
                 if allocation?.kind == .check { result.checkMinutes += minutes } else { result.personalMinutes += minutes }
             } else { result.unknownCount += 1 }
         }
         return result
+    }
+}
+
+// MARK: - Atomic, account-scoped sync
+extension Store {
+    public var pendingSyncChangeCount: Int { syncState?.pending.count ?? 0 }
+    private var syncCalendar: Calendar {
+        var value = calendar
+        value.timeZone = TimeZone(identifier: planningTimeZone) ?? calendar.timeZone
+        return value
+    }
+    private func migrateSyncDayPlans() {
+        captureSyncDayPlan()
+        for allocation in dailyAllocations {
+            let day = SyncDayPlan.dayKey(for: allocation.day, timeZone: syncCalendar.timeZone)
+            let key = SyncEntityKey(kind: .dayPlan, id: "\(day)@\(planningTimeZone)")
+            let index: Int
+            if let existing = syncDayPlans.firstIndex(where: { $0.key == key }) { index = existing }
+            else {
+                syncDayPlans.append(SyncDayPlan(dayKey: day, timeZone: planningTimeZone, orderedTaskIDs: []))
+                index = syncDayPlans.count - 1
+            }
+            let value = SyncTaskAllocation(id: allocation.id, plannedMinutes: allocation.plannedMinutes, kind: allocation.kind.rawValue)
+            if let entry = syncDayPlans[index].taskPlans.firstIndex(where: { $0.taskID == allocation.taskID }) {
+                syncDayPlans[index].taskPlans[entry].allocation = value
+            } else {
+                syncDayPlans[index].taskPlans.append(SyncTaskPlan(taskID: allocation.taskID, allocation: value))
+            }
+            syncDayPlans[index].taskPlans.sort { $0.taskID.uuidString < $1.taskID.uuidString }
+        }
+    }
+    private func captureSyncDayPlan() {
+        let date = lastActiveDay ?? Date(), zone = syncCalendar.timeZone
+        let key = SyncDayPlan.dayKey(for: date, timeZone: zone)
+        let previousPlan = syncDayPlans.first { $0.dayKey == key && $0.timeZone == planningTimeZone }
+        let selected = tasks.filter(\.isToday).sorted {
+            if $0.todayOrder != $1.todayOrder { return ($0.todayOrder ?? Int.max) < ($1.todayOrder ?? Int.max) }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        let activeIDs = Set(tasks.map(\.id))
+        var orderedIDs = selected.map(\.id)
+        for (position, id) in (previousPlan?.orderedTaskIDs ?? []).enumerated() where !activeIDs.contains(id) {
+            orderedIDs.insert(id, at: min(position, orderedIDs.count))
+        }
+        // References can precede their tasks in paginated pulls, and archived
+        // tasks still belong to historical plans. Preserve those existing slots.
+        var entries = (previousPlan?.taskPlans ?? []).filter { !activeIDs.contains($0.taskID) }
+        for task in tasks {
+            let allocation = dailyAllocations.first { $0.taskID == task.id && syncCalendar.isDate($0.day, inSameDayAs: date) }
+            if task.scheduledAt != nil || allocation != nil {
+                let suppressed = task.scheduledAt != nil && localScheduleReminderSuppressions[task.id] == task.scheduledAt
+                let lead = suppressed ? previousPlan?.taskPlans.first { $0.taskID == task.id }?.scheduleReminderLeadMinutes : task.scheduleReminderLeadMinutes
+                entries.append(SyncTaskPlan(taskID: task.id, scheduledAt: task.scheduledAt,
+                    scheduledMinutes: task.scheduledMinutes, scheduleReminderLeadMinutes: lead,
+                    allocation: allocation.map { SyncTaskAllocation(id: $0.id, plannedMinutes: $0.plannedMinutes, kind: $0.kind.rawValue) }))
+            }
+        }
+        let previousOrder = previousPlan?.taskPlans.map(\.taskID) ?? []
+        entries.sort {
+            let lhs = previousOrder.firstIndex(of: $0.taskID), rhs = previousOrder.firstIndex(of: $1.taskID)
+            if lhs != rhs { return (lhs ?? Int.max) < (rhs ?? Int.max) }
+            return $0.taskID.uuidString < $1.taskID.uuidString
+        }
+        let hiddenWin = previousPlan?.dailyWinTaskID.flatMap { activeIDs.contains($0) ? nil : $0 }
+        let plan = SyncDayPlan(dayKey: key, timeZone: planningTimeZone, orderedTaskIDs: orderedIDs,
+                               dailyWinTaskID: selected.first { $0.isDailyWin == true }?.id ?? hiddenWin,
+                               taskPlans: entries)
+        if let index = syncDayPlans.firstIndex(where: { $0.key == plan.key }) { syncDayPlans[index] = plan }
+        else if !selected.isEmpty || !entries.isEmpty { syncDayPlans.append(plan) }
+    }
+    private func projectSyncDayPlan(at date: Date) {
+        let day = SyncDayPlan.dayKey(for: date, timeZone: syncCalendar.timeZone)
+        let plan = syncDayPlans.first { $0.dayKey == day && $0.timeZone == planningTimeZone }
+        for index in tasks.indices {
+            let id = tasks[index].id, position = plan?.orderedTaskIDs.firstIndex(of: tasks[index].id)
+            tasks[index].isToday = position != nil
+            tasks[index].todayOrder = position
+            if tasks[index].isDailyWin == true || plan?.dailyWinTaskID != nil {
+                tasks[index].isDailyWin = plan?.dailyWinTaskID == id
+            }
+            let entry = plan?.taskPlans.first { $0.taskID == id }
+            tasks[index].scheduledAt = entry?.scheduledAt
+            tasks[index].scheduledMinutes = entry?.scheduledMinutes
+            let suppressed = entry?.scheduledAt != nil && localScheduleReminderSuppressions[id] == entry?.scheduledAt
+            tasks[index].scheduleReminderLeadMinutes = suppressed ? nil : entry?.scheduleReminderLeadMinutes
+        }
+        dailyAllocations.removeAll { syncCalendar.isDate($0.day, inSameDayAs: date) }
+        for entry in plan?.taskPlans ?? [] {
+            if let a = entry.allocation, let kind = DailyAllocationKind(rawValue: a.kind) {
+                dailyAllocations.append(DailyAllocation(id: a.id, taskID: entry.taskID,
+                    day: syncCalendar.startOfDay(for: date), plannedMinutes: a.plannedMinutes, kind: kind))
+            }
+        }
+    }
+    private func syncPayloads() throws -> [SyncEntityKey: SyncJSON] {
+        var values: [SyncEntityKey: SyncJSON] = [:]
+        for value in inbox { values[.uuid(kind: .inbox, id: value.id)] = try SyncPayload.wrap(value) }
+        for value in tasks { values[.uuid(kind: .task, id: value.id)] = try SyncPayload.task(value, archived: false) }
+        for value in archive { values[.uuid(kind: .task, id: value.id)] = try SyncPayload.task(value, archived: true) }
+        for value in thoughts { values[.uuid(kind: .idea, id: value.id)] = try SyncPayload.wrap(value) }
+        for value in goals { values[.uuid(kind: .goal, id: value.id)] = try SyncPayload.wrap(value) }
+        for value in syncDayPlans { values[value.key] = try SyncPayload.wrap(value) }
+        values[.init(kind: .profile, id: "profile")] = try SyncPayload.wrap(SyncProfile(background: aiBackground,
+            preferences: agentPreferences, confirmedPreferences: confirmedPreferences, planningTimeZone: planningTimeZone))
+        if syncState?.shadow.contains(where: { $0.kind == .profile && $0.deletedAt != nil }) == true,
+           aiBackground.isEmpty, agentPreferences == AgentPreferences(), confirmedPreferences.isEmpty {
+            values.removeValue(forKey: .init(kind: .profile, id: "profile"))
+        }
+        for remote in syncState?.shadow ?? [] where remote.deletedAt == nil {
+            if let value = values[remote.key] {
+                values[remote.key] = try SyncPayload.preserveUnknown(value, raw: remote.payload, kind: remote.kind)
+            }
+        }
+        return values
+    }
+    private func refreshSyncPending() throws {
+        guard var state = syncState else { return }
+        let previousPending = Dictionary(uniqueKeysWithValues: state.pending.map { ($0.key, $0) })
+        let values = try syncPayloads(), shadows = Dictionary(uniqueKeysWithValues: state.shadow.map { ($0.key, $0) })
+        let keys = Set(values.keys).union(shadows.keys)
+        state.pending = keys.compactMap { key in
+            let baseline = shadows[key], payload = values[key]
+            let oldPayload = baseline?.deletedAt == nil ? baseline?.payload : nil
+            guard payload != oldPayload else { return nil }
+            return SyncMutation(key: key, baseRevision: baseline?.revision ?? 0, payload: payload, deleted: payload == nil)
+        }.sorted { ($0.kind.rawValue, $0.id) < ($1.kind.rawValue, $1.id) }
+        // An edit may temporarily match the old shadow while a create/update
+        // is in flight. Its dependency group must survive until that receipt
+        // establishes the new baseline (e.g. bulk-delete in-flight creates).
+        let future = Set((state.inflight?.mutations ?? []).filter { mutation in
+            values[mutation.key] != (mutation.deleted ? nil : mutation.payload)
+        }.map(\.key))
+        let active = Set(state.pending.map(\.key)).union(future)
+        var groups: [Set<SyncEntityKey>] = []
+        for prior in state.pendingGroups {
+            var joined = Set(prior).intersection(active)
+            guard !joined.isEmpty else { continue }
+            groups.removeAll { group in
+                guard !group.isDisjoint(with: joined) else { return false }
+                joined.formUnion(group); return true
+            }
+            groups.append(joined)
+        }
+        let changed = Set(state.pending.filter { mutation in
+            previousPending[mutation.key]?.payload != mutation.payload || previousPending[mutation.key]?.deleted != mutation.deleted
+        }.map(\.key)).union(future.filter { previousPending[$0]?.payload != values[$0] })
+        if state.mergeConfirmed && !applyingSync && !changed.isEmpty {
+            var joined = changed
+            groups.removeAll { group in
+                guard !group.isDisjoint(with: changed) else { return false }
+                joined.formUnion(group); return true
+            }
+            groups.append(joined)
+        }
+        let assigned = groups.reduce(into: Set<SyncEntityKey>()) { $0.formUnion($1) }
+        for key in active.subtracting(assigned) { groups.append([key]) }
+        state.pendingGroups = groups.map { $0.sorted { ($0.kind.rawValue, $0.id) < ($1.kind.rawValue, $1.id) } }
+        // A choice authorizes the exact versions shown when it was made.
+        // Editing any member invalidates the whole unfinished transaction's
+        // choices, so the final sibling choice cannot discard a newer edit.
+        let changedConflictGroups = Set(state.conflicts.filter {
+            $0.local != values[$0.key]
+        }.compactMap(\.groupID))
+        for index in state.conflicts.indices {
+            if state.conflicts[index].groupID.map(changedConflictGroups.contains) == true {
+                state.conflicts[index].choice = nil
+            }
+            state.conflicts[index].local = values[state.conflicts[index].key]
+        }
+        syncState = state
+    }
+    /// Restore in-memory sync/content on write failure without load-time timer,
+    /// planning-history, or notification side effects.
+    private func syncTransaction(_ work: () throws -> Void) throws {
+        guard !persistenceLocked else { throw SyncStoreError.persistence }
+        guard !hasUnsavedChanges else { throw SyncStoreError.unsavedChanges }
+        let before = currentSnapshot()
+        applyingSync = true
+        defer { applyingSync = false }
+        do {
+            try work()
+            guard save() else { throw SyncStoreError.persistence }
+        } catch {
+            inbox = before.inbox; tasks = before.tasks; archive = before.archive ?? []; thoughts = before.thoughts ?? []
+            goals = before.goals ?? []; aiBackground = before.aiBackground ?? ""
+            agentPreferences = before.agentPreferences ?? AgentPreferences(); confirmedPreferences = before.confirmedPreferences ?? []
+            dailyAllocations = before.dailyAllocations ?? []
+            syncState = before.syncState; syncDayPlans = before.syncDayPlans ?? []
+            planningTimeZone = before.planningTimeZone ?? calendar.timeZone.identifier
+            lastActiveDay = before.lastActiveDay
+            hasUnsavedChanges = false
+            throw error
+        }
+    }
+    public func bindSyncAccount(accountID: String) throws {
+        let owner = accountID.lowercased()
+        guard !owner.isEmpty else { throw SyncStoreError.accountMismatch }
+        if let state = syncState, state.accountID != owner { throw SyncStoreError.accountMismatch }
+        try syncTransaction {
+            if syncState == nil { syncState = SyncLocalState(accountID: owner) }
+            syncState?.enabled = true
+        }
+    }
+    public func suspendSync() throws {
+        try syncTransaction { syncState?.enabled = false }
+    }
+    private func initialSyncGroups(_ state: SyncLocalState) -> [Set<SyncEntityKey>] {
+        var groups: [Set<SyncEntityKey>] = []
+        for commit in state.initialCommits {
+            var keys = Set(commit.entities.map(\.key))
+            groups.removeAll { group in
+                guard !group.isDisjoint(with: keys) else { return false }
+                keys.formUnion(group); return true
+            }
+            groups.append(keys)
+        }
+        let assigned = groups.reduce(into: Set<SyncEntityKey>()) { $0.formUnion($1) }
+        for entity in state.initialRemote where !assigned.contains(entity.key) { groups.append([entity.key]) }
+        return groups
+    }
+    public var syncMergePreview: SyncMergePreview? {
+        guard let state = syncState, state.initialPullComplete, !state.mergeConfirmed,
+              let values = try? syncPayloads() else { return nil }
+        let cloud = Dictionary(uniqueKeysWithValues: state.initialRemote.map { ($0.key, $0) })
+        var conflicts = Set(cloud.keys.filter { key in
+            let remote = cloud[key]!
+            return (values[key] != nil && values[key] != (remote.deletedAt == nil ? remote.payload : nil)) || blocksRunningSyncTask(remote)
+        })
+        for group in initialSyncGroups(state) where !group.isDisjoint(with: conflicts) { conflicts.formUnion(group) }
+        var preview = SyncMergePreview(localOnlyCount: 0, cloudOnlyCount: 0, matchingCount: 0, conflictCount: 0)
+        for key in Set(values.keys).union(cloud.keys) {
+            let local = values[key], remote = cloud[key]
+            let remotePayload = remote?.deletedAt == nil ? remote?.payload : nil
+            if conflicts.contains(key) { preview.conflictCount += 1 }
+            else if local == nil, remotePayload != nil { preview.cloudOnlyCount += 1 }
+            else if local != nil, remote == nil { preview.localOnlyCount += 1 }
+            else if local == remotePayload { preview.matchingCount += 1 }
+            else { preview.conflictCount += 1 }
+        }
+        return preview
+    }
+    public func confirmSyncMerge() throws {
+        guard let state = syncState, state.enabled, state.initialPullComplete else { throw SyncStoreError.initialPullRequired }
+        if state.mergeConfirmed { return }
+        try syncTransaction {
+            for group in initialSyncGroups(state) {
+                try mergeSyncCommit(state.initialRemote.filter { group.contains($0.key) }, groupID: UUID(), initial: true)
+            }
+            syncState?.initialRemote = []
+            syncState?.initialCommits = []
+            syncState?.mergeConfirmed = true
+            projectSyncDayPlan(at: lastActiveDay ?? Date())
+        }
+    }
+    public func nextSyncPushRequest() throws -> SyncPushRequest? {
+        guard let state = syncState, state.enabled else { throw SyncStoreError.notConnected }
+        guard !hasUnsavedChanges else { throw SyncStoreError.unsavedChanges }
+        guard state.mergeConfirmed else { throw SyncStoreError.initialPullRequired }
+        if let request = state.inflight { return request }
+        guard state.conflicts.isEmpty else { throw SyncStoreError.conflictsPending }
+        guard !state.pending.isEmpty else { return nil }
+        // Each local save records a dependency group; overlapping edits join
+        // groups. Pack whole groups, never slice through a user action. During
+        // bootstrap, publish tasks before records that reference them.
+        func rank(_ key: SyncEntityKey) -> Int {
+            switch key.kind { case .task: return 0; case .inbox: return 1; case .goal: return 2
+            case .idea: return 3; case .dayPlan: return 4; case .profile: return 5 }
+        }
+        let groups = state.pendingGroups.sorted {
+            let left = $0.map(rank).min() ?? 9, right = $1.map(rank).min() ?? 9
+            if left != right { return left < right }
+            return ($0.first?.id ?? "") < ($1.first?.id ?? "")
+        }
+        var mutations: [SyncMutation] = []
+        for group in groups {
+            let keys = Set(group)
+            let candidate = mutations + state.pending.filter { keys.contains($0.key) }
+            do { try SyncPushRequest(deviceID: state.deviceID, mutations: candidate).validate() }
+            catch SyncProtocolError.batchTooLarge {
+                if mutations.isEmpty { throw SyncProtocolError.batchTooLarge }
+                break
+            }
+            mutations = candidate
+        }
+        guard !mutations.isEmpty else { throw SyncStoreError.invalidResponse }
+        let request = SyncPushRequest(deviceID: state.deviceID, mutations: mutations)
+        try syncTransaction { syncState?.inflight = request }
+        return request
+    }
+    public func receiveSyncPushResponse(_ response: SyncPushResponse, for request: SyncPushRequest) throws {
+        guard let state = syncState, state.enabled, state.inflight == request else { throw SyncStoreError.invalidResponse }
+        try response.validate(for: request)
+        for entity in response.entities { try SyncPayload.validate(entity) }
+        for conflict in response.conflicts { if let entity = conflict.current { try SyncPayload.validate(entity) } }
+        try syncTransaction {
+            if response.status == .applied {
+                for entity in response.entities { setSyncShadow(entity) }
+            } else {
+                let values = try syncPayloads()
+                for conflict in response.conflicts {
+                    let key = SyncEntityKey(kind: conflict.kind, id: conflict.id)
+                    syncState?.conflicts.removeAll { $0.key == key }
+                    syncState?.conflicts.append(SyncLocalConflict(key: key, base: state.shadow.first { $0.key == key },
+                        local: values[key], remote: conflict.current))
+                }
+            }
+            // Never jump the pull cursor to a push receipt: intervening commits
+            // from another device must still be fetched and validated.
+            syncState?.inflight = nil
+        }
+    }
+    public func receiveSyncPullResponse(_ response: SyncPullResponse) throws {
+        guard let state = syncState, state.enabled else { throw SyncStoreError.notConnected }
+        try response.validate(after: state.cursor)
+        for commit in response.commits { for entity in commit.entities { try SyncPayload.validate(entity) } }
+        try syncTransaction {
+            if !state.mergeConfirmed {
+                syncState?.initialCommits.append(contentsOf: response.commits)
+                for commit in response.commits { for entity in commit.entities {
+                    syncState?.initialRemote.removeAll { $0.key == entity.key }
+                    syncState?.initialRemote.append(entity)
+                } }
+                syncState?.initialPullComplete = !response.hasMore
+            } else {
+                for commit in response.commits {
+                    // Retry a lost push receipt before pulling; otherwise a
+                    // later local edit could conflict with our own accepted push.
+                    guard state.inflight == nil else { throw SyncStoreError.invalidResponse }
+                    try mergeSyncCommit(commit.entities, groupID: commit.operationID, initial: false)
+                }
+                projectSyncDayPlan(at: lastActiveDay ?? Date())
+            }
+            syncState?.cursor = response.cursor
+        }
+    }
+    private func isRunningSyncTask(_ key: SyncEntityKey) -> Bool {
+        guard key.kind == .task, let id = UUID(uuidString: key.id) else { return false }
+        return activeTimer?.taskID == id || parallelRuns.contains { $0.taskID == id }
+    }
+    private func blocksRunningSyncTask(_ entity: SyncRemoteEntity) -> Bool {
+        guard isRunningSyncTask(entity.key) else { return false }
+        if entity.deletedAt != nil { return true }
+        guard let payload = entity.payload, let (task, archived) = try? SyncPayload.decodeTask(payload) else { return true }
+        return archived || task.completed
+    }
+    private func mergeSyncCommit(_ incoming: [SyncRemoteEntity], groupID: UUID, initial: Bool) throws {
+        // An acknowledged newer revision is not part of this old commit's
+        // unresolved work. Never expose it as an older conflict choice.
+        let entities = incoming.filter { entity in
+            (syncState?.shadow.first { $0.key == entity.key }?.revision ?? 0) < entity.revision
+        }
+        let values = try syncPayloads()
+        let mustHold = entities.contains { entity in
+            if blocksRunningSyncTask(entity) { return true }
+            if syncState?.conflicts.contains(where: { $0.key == entity.key }) == true { return true }
+            let base = syncState?.shadow.first { $0.key == entity.key }
+            let local = values[entity.key], baseline = base?.deletedAt == nil ? base?.payload : nil
+            let remote = entity.deletedAt == nil ? entity.payload : nil
+            return (initial ? local != nil : local != baseline) && local != remote
+        }
+        guard mustHold else {
+            for entity in entities { try mergeSyncRemote(entity, initial: initial) }
+            return
+        }
+        let previousGroups = Set((syncState?.conflicts ?? []).filter { conflict in
+            entities.contains { $0.key == conflict.key }
+        }.compactMap(\.groupID))
+        for index in syncState!.conflicts.indices where syncState!.conflicts[index].groupID.map(previousGroups.contains) == true {
+            syncState!.conflicts[index].groupID = groupID
+            syncState!.conflicts[index].choice = nil
+        }
+        for entity in entities {
+            let previous = syncState?.conflicts.first { $0.key == entity.key }
+            let base = syncState?.shadow.first { $0.key == entity.key }
+            syncState?.conflicts.removeAll { $0.key == entity.key }
+            syncState?.conflicts.append(SyncLocalConflict(key: entity.key, base: previous?.base ?? base,
+                local: values[entity.key], remote: (previous?.remote?.revision ?? 0) > entity.revision ? previous?.remote : entity, groupID: groupID))
+        }
+    }
+    private func setSyncShadow(_ entity: SyncRemoteEntity) {
+        if let old = syncState?.shadow.first(where: { $0.key == entity.key }), old.revision > entity.revision { return }
+        syncState?.shadow.removeAll { $0.key == entity.key }
+        syncState?.shadow.append(entity)
+    }
+    private func mergeSyncRemote(_ entity: SyncRemoteEntity, initial: Bool) throws {
+        let base = syncState?.shadow.first { $0.key == entity.key }
+        if let base, base.revision >= entity.revision { return }
+        let values = try syncPayloads(), local = values[entity.key]
+        let remote = entity.deletedAt == nil ? entity.payload : nil
+        let baseline = base?.deletedAt == nil ? base?.payload : nil
+        let dirty = initial ? local != nil : local != baseline
+        if (dirty && local != remote) || blocksRunningSyncTask(entity) {
+            let oldConflict = syncState?.conflicts.first { $0.key == entity.key }
+            syncState?.conflicts.removeAll { $0.key == entity.key }
+            syncState?.conflicts.append(SyncLocalConflict(key: entity.key, base: oldConflict?.base ?? base, local: local, remote: entity))
+            return
+        }
+        if local != remote { try applySyncEntity(entity) }
+        setSyncShadow(entity)
+    }
+    public func resolveSyncConflict(key: SyncEntityKey, choice: SyncConflictChoice) throws {
+        guard let state = syncState, state.enabled,
+              let conflict = state.conflicts.first(where: { $0.key == key }), state.inflight == nil else { throw SyncStoreError.invalidResponse }
+        if choice == .cloud, isRunningSyncTask(key), conflict.remote.map(blocksRunningSyncTask) ?? true {
+            throw SyncStoreError.activeTaskRunning
+        }
+        try syncTransaction {
+            let resolutions: [SyncLocalConflict]
+            if let group = conflict.groupID {
+                let index = syncState!.conflicts.firstIndex { $0.key == key }!
+                syncState!.conflicts[index].choice = choice
+                resolutions = syncState!.conflicts.filter { $0.groupID == group }
+                guard resolutions.allSatisfy({ $0.choice != nil }) else { return }
+            } else {
+                var selected = conflict; selected.choice = choice; resolutions = [selected]
+            }
+            for resolution in resolutions {
+                if let remote = resolution.remote,
+                   let shadow = syncState?.shadow.first(where: { $0.key == resolution.key }), shadow.revision > remote.revision {
+                    throw SyncStoreError.invalidResponse
+                }
+                if resolution.choice == .cloud, isRunningSyncTask(resolution.key), resolution.remote.map(blocksRunningSyncTask) ?? true {
+                    throw SyncStoreError.activeTaskRunning
+                }
+            }
+            // Remaining local choices from a remote transaction form one
+            // outgoing transaction too, even when mixed with cloud choices.
+            syncState?.pendingGroups.append(resolutions.map(\.key))
+            for resolution in resolutions {
+                if resolution.choice == .cloud {
+                    if let remote = resolution.remote { try applySyncEntity(remote) }
+                    else { removeSyncEntity(resolution.key) }
+                }
+                if let remote = resolution.remote { setSyncShadow(remote) }
+                else { syncState?.shadow.removeAll { $0.key == resolution.key } }
+                syncState?.conflicts.removeAll { $0.key == resolution.key }
+            }
+            projectSyncDayPlan(at: lastActiveDay ?? Date())
+        }
+    }
+    private func removeSyncEntity(_ key: SyncEntityKey) {
+        let id = UUID(uuidString: key.id)
+        switch key.kind {
+        case .task: tasks.removeAll { $0.id == id }; archive.removeAll { $0.id == id }
+        case .inbox: inbox.removeAll { $0.id == id }
+        case .idea: thoughts.removeAll { $0.id == id }
+        case .goal: goals.removeAll { $0.id == id }
+        case .dayPlan: syncDayPlans.removeAll { $0.key == key }
+        case .profile: aiBackground = ""; agentPreferences = AgentPreferences(); confirmedPreferences = []
+        }
+    }
+    private func applySyncEntity(_ entity: SyncRemoteEntity) throws {
+        guard !blocksRunningSyncTask(entity) else { throw SyncStoreError.activeTaskRunning }
+        if entity.deletedAt != nil { removeSyncEntity(entity.key); return }
+        guard let payload = entity.payload else { throw SyncProtocolError.invalidPayload }
+        switch entity.kind {
+        case .task:
+            var (task, archived) = try SyncPayload.decodeTask(payload)
+            task.lastImplementationTriggeredAt = (tasks + archive).first { $0.id == task.id }?.lastImplementationTriggeredAt
+            removeSyncEntity(entity.key)
+            if archived { archive.append(task) } else { tasks.append(task) }
+        case .inbox:
+            let value = try SyncPayload.content(InboxItem.self, payload); removeSyncEntity(entity.key); inbox.append(value)
+        case .idea:
+            let value = try SyncPayload.content(ThoughtItem.self, payload); removeSyncEntity(entity.key); thoughts.append(value)
+        case .goal:
+            let value = try SyncPayload.content(LongTermGoal.self, payload); removeSyncEntity(entity.key); goals.append(value)
+        case .dayPlan:
+            let value = try SyncPayload.content(SyncDayPlan.self, payload); removeSyncEntity(entity.key); syncDayPlans.append(value)
+        case .profile:
+            let value = try SyncPayload.content(SyncProfile.self, payload)
+            aiBackground = value.background; agentPreferences = value.preferences
+            confirmedPreferences = value.confirmedPreferences
+            if planningTimeZone != value.planningTimeZone {
+                planningTimeZone = value.planningTimeZone
+                lastActiveDay = syncCalendar.startOfDay(for: Date())
+            }
+        }
     }
 }

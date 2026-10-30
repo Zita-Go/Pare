@@ -33,7 +33,7 @@ final class TimeBlockTests: XCTestCase {
         let loaded = Store(fileURL: url, calendar: calendar())
         XCTAssertEqual(loaded.tasks.first?.scheduledAt, date(14))
         let json = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
-        XCTAssertEqual(json["schemaVersion"] as? Int, 6)
+        XCTAssertEqual(json["schemaVersion"] as? Int, 7)
     }
 
     func testDefaultDurationResizeAndEstimateStayInSync() {

@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var attentionDetector: AttentionDriftDetector!
     private var momentumManager: MomentumManager!
     private var shortcutController: CaptureShortcutController!
+    private var syncCoordinator: SyncCoordinator!
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
     private var sleepStoppedTimer: (task: String, minutes: Int)?
@@ -38,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let interruptedFocusNotice = store.recoverInterruptedFocus()
         store.rolloverIfNeeded()
+        syncCoordinator = SyncCoordinator(store: store)
+        syncCoordinator.start()
 
         popoverController = PopoverController(store: store, onOpenOrganize: { [weak self] in
             self?.openOrganize()
@@ -225,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController(
                 store: store, manager: notificationManager, attentionDetector: attentionDetector,
-                shortcutController: shortcutController)
+                shortcutController: shortcutController, syncCoordinator: syncCoordinator)
         }
         settingsWindowController?.present()
     }

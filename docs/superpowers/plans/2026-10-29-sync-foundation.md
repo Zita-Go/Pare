@@ -19,8 +19,9 @@
 - [x] root：`Sources/PareCore/SyncProtocol.swift`、协议/初始DayPlan验证测试，跨日计划独立于本机翻篇。
 - [x] root：运行Swift回归、只读复核SQL权限与事务。
 - [x] 读取组织/费用/项目，创建0美元开发项目、检查既有表、迁移与RLS实测，仅虚构数据。
-- [ ] 后续：schema6迁移与原子outbox、Mac账号/冲突UI、Android构建环境和客户端、真机双端验收。基础代码通过不等于同步或Android已可用。
+- [x] schema6迁移与原子outbox、Mac账号/冲突UI、Android构建环境和客户端已在2026-10-30开发预览实现；见同目录 `2026-10-30-sync-clients.md`。
+- [ ] 真机双端验收与正式发布；开发构建不等于完整移动功能或所有机型已验证。
 
 验证：协议测试10项通过；完整Swift测试278项通过。首次全套运行停在既有模拟服务的Process.waitUntilExit清理阶段，清理该测试进程后终端模式复跑通过。未修改正式App或用户任务。实际SQL验收测试全部回滚，数据和测试账号为0；匿名URLSession请求按预期401拒绝。
 
-权限审查保留两类与设计一致的advisor提示，详见backend/supabase/README.md。多会话并发、认证后的HTTP与双端持久化尚待验证。Android SDK许可及安装授权已询问，尚未收到回答，未安装SDK。
+权限审查保留两类与设计一致的advisor提示，详见backend/supabase/README.md。后续认证HTTP、Swift/Kotlin互通与持久化测试已完成；独立数据库会话压力并发和真机体验仍待验证。用户2026-10-30同意Android SDK许可与安装，开发环境已安装。
