@@ -39,82 +39,92 @@ import androidx.compose.ui.window.DialogProperties
         Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
             Surface(
                 Modifier.widthIn(max = 640.dp).fillMaxWidth().fillMaxHeight().testTag("account_surface"),
-                color = MaterialTheme.colorScheme.surface
+                color = MaterialTheme.colorScheme.background
             ) {
                 Column {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("账号与同步", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                         TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp).testTag("account_close")) { Text("关闭") }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Column(
-                        Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                        Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         if (session == null) {
-                            Text("本机内容已保存在这台设备。登录可连接其他设备。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                PareFormField(email, { email = it }, label = "邮箱", singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                                    modifier = Modifier.fillMaxWidth().testTag("account_email"))
-                                PareFormField(password, { password = it }, label = "密码", visualTransformation = PasswordVisualTransformation(), singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                    modifier = Modifier.fillMaxWidth().testTag("account_password"))
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("在设备之间接着推进", style = MaterialTheme.typography.titleMedium)
+                                Text("本机内容已保存在这台设备。登录可连接其他设备。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Button(
-                                    onClick = { vm.authenticate(email.trim(), password, false); password = "" },
-                                    enabled = !busy && email.isNotBlank() && password.isNotEmpty(), shape = MaterialTheme.shapes.small,
-                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("account_login")
-                                ) { Text("登录") }
-                                OutlinedButton(
-                                    onClick = { vm.authenticate(email.trim(), password, true); password = "" },
-                                    enabled = !busy && email.isNotBlank() && password.isNotEmpty(), shape = MaterialTheme.shapes.small,
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("account_register")
-                                ) { Text("注册") }
+                            AccountSection {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    PareFormField(email, { email = it }, label = "邮箱", singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                                        modifier = Modifier.fillMaxWidth().testTag("account_email"))
+                                    PareFormField(password, { password = it }, label = "密码", visualTransformation = PasswordVisualTransformation(), singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                        modifier = Modifier.fillMaxWidth().testTag("account_password"))
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Button(
+                                        onClick = { vm.authenticate(email.trim(), password, false); password = "" },
+                                        enabled = !busy && email.isNotBlank() && password.isNotEmpty(), shape = MaterialTheme.shapes.small,
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("account_login")
+                                    ) { Text("登录") }
+                                    OutlinedButton(
+                                        onClick = { vm.authenticate(email.trim(), password, true); password = "" },
+                                        enabled = !busy && email.isNotBlank() && password.isNotEmpty(), shape = MaterialTheme.shapes.small,
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("account_register")
+                                    ) { Text("注册") }
+                                }
+                                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.testTag("account_status").semantics { liveRegion = LiveRegionMode.Polite })
                             }
                             Text("先查看云端内容，再由你确认是否合并。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.testTag("account_status").semantics { liveRegion = LiveRegionMode.Polite })
                         } else {
-                            PareFormStatus(
-                                title = if (state.enabled) "自动同步已开启" else "自动同步未开启",
-                                detail = session.email,
-                                icon = if (state.enabled) Icons.Default.CheckCircle else Icons.Default.Refresh
-                            )
-                            Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.testTag("account_status").semantics { liveRegion = LiveRegionMode.Polite })
-                            Text(
-                                if (state.enabled) "修改先保存在本机，联网后自动同步。离开应用后，系统会安排定期检查。" else "本机内容会继续保存。开启同步后，先合并手机与云端的内容。",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (!state.enabled) {
-                                Button(onClick = { consent = true }, enabled = !busy && previewReady, shape = MaterialTheme.shapes.small,
-                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_enable")) { Text("确认合并并开启自动同步") }
-                                if (!previewReady) TextButton(onClick = { vm.sync(true) }, enabled = !busy, shape = MaterialTheme.shapes.small,
-                                    modifier = Modifier.heightIn(min = 48.dp)) { Text("先读取云端预览") }
+                            AccountSection {
+                                Text("当前账号", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(session.email, style = MaterialTheme.typography.titleMedium)
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(if (state.enabled) Icons.Default.CheckCircle else Icons.Default.Refresh, null,
+                                        modifier = Modifier.size(20.dp), tint = if (state.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(if (state.enabled) "自动同步已开启" else "自动同步未开启", style = MaterialTheme.typography.titleSmall)
+                                }
+                                Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.testTag("account_status").semantics { liveRegion = LiveRegionMode.Polite })
+                                Text(
+                                    if (state.enabled) "修改先保存在本机，联网后自动同步。离开应用后，系统会安排定期检查。" else "本机内容会继续保存。开启同步后，先合并手机与云端的内容。",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (!state.enabled) {
+                                    Button(onClick = { consent = true }, enabled = !busy && previewReady, shape = MaterialTheme.shapes.small,
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_enable")) { Text("确认合并并开启自动同步") }
+                                    if (!previewReady) TextButton(onClick = { vm.sync(true) }, enabled = !busy, shape = MaterialTheme.shapes.small,
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("先读取云端预览") }
+                                }
                             }
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            TextButton(
-                                onClick = { details = !details }, shape = MaterialTheme.shapes.small,
-                                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
-                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_details")
-                            ) {
-                                Text(if (details) "收起同步详情" else "同步详情与操作", modifier = Modifier.weight(1f))
-                                Icon(if (details) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (details) {
-                                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) {
-                                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("本机待上传 ${state.items.values.count { it.dirty }} 项 · 待决定版本 ${state.items.values.count { it.conflict != null }} 项", style = MaterialTheme.typography.bodySmall)
-                                        Text("AI 密钥与请求历史留在本机。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            TextButton(onClick = { vm.sync(true) }, enabled = !busy, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp).testTag("sync_retry")) { Text("立即重试") }
-                                            if (state.enabled) TextButton(onClick = { pause = true }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("暂停同步") }
-                                            TextButton(onClick = { signOut = true }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("退出账号") }
-                                        }
+                            AccountSection {
+                                TextButton(
+                                    onClick = { details = !details }, shape = MaterialTheme.shapes.small,
+                                    contentPadding = PaddingValues(0.dp),
+                                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_details")
+                                ) {
+                                    Text(if (details) "收起同步详情" else "同步详情与操作", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                                    Icon(if (details) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (details) {
+                                    Text("本机待上传 ${state.items.values.count { it.dirty }} 项 · 待决定版本 ${state.items.values.count { it.conflict != null }} 项", style = MaterialTheme.typography.bodySmall)
+                                    Text("AI 密钥与请求历史留在本机。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    OutlinedButton(onClick = { vm.sync(true) }, enabled = !busy, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_retry")) { Text("立即重试") }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        if (state.enabled) TextButton(onClick = { pause = true }, shape = MaterialTheme.shapes.small,
+                                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant), modifier = Modifier.heightIn(min = 48.dp)) { Text("暂停同步") }
+                                        TextButton(onClick = { signOut = true }, shape = MaterialTheme.shapes.small,
+                                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error), modifier = Modifier.heightIn(min = 48.dp)) { Text("退出账号") }
                                     }
                                 }
                             }
@@ -122,9 +132,11 @@ import androidx.compose.ui.window.DialogProperties
                         val conflict = stableEntities(state.items.values.filter { it.conflict != null && it.conflictChoice == null }).firstOrNull()
                         if (conflict != null) {
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("选择要保留的版本", style = MaterialTheme.typography.titleMedium)
-                                Text("选择会用于整条记录；有关联的记录，需要全部选择后一起处理。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("选择要保留的版本", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Text("选择会用于整条记录；有关联的记录，需要全部选择后一起处理。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                }
                             }
                             val taskTitles = state.items.values.filter { it.kind == "task" }.associate { it.id to it.title() }
                             val localFields = conflictFields(conflict.kind, conflict.payload, conflict.deleted, taskTitles)
@@ -163,16 +175,16 @@ import androidx.compose.ui.window.DialogProperties
     var expanded by remember(raw) { mutableStateOf(false) }
     val accent = if (cloudVersion) pareQuadrantColor(2) else MaterialTheme.colorScheme.primary
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large,
         border = BorderStroke(1.dp, accent.copy(alpha = 0.45f))
     ) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = accent)
             HorizontalDivider(color = accent.copy(alpha = 0.20f))
             fields.forEach { field ->
                 val changed = other.none { it == field }
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(field.label + if (changed) " · 有差异" else "", style = MaterialTheme.typography.labelSmall, color = if (changed) accent else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(field.label + if (changed) " · 有差异" else "", style = MaterialTheme.typography.labelLarge, color = if (changed) accent else MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(field.value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
@@ -185,5 +197,11 @@ import androidx.compose.ui.window.DialogProperties
                 }
             }
         }
+    }
+}
+
+@Composable private fun AccountSection(content: @Composable ColumnScope.() -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
 }

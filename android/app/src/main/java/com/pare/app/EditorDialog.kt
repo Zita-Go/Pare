@@ -66,7 +66,7 @@ import androidx.compose.ui.window.DialogProperties
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Column {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 4.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = dismiss, enabled = !saving, modifier = Modifier.size(48.dp).testTag("editor_cancel")) {
                             Icon(if (draft.isNew) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack, if (draft.isNew) "取消" else "返回", modifier = Modifier.size(22.dp))
                         }
@@ -75,16 +75,16 @@ import androidx.compose.ui.window.DialogProperties
                         if (!draft.isNew) EditorSaveButton(draft, saving, onSave)
                     }
                     Column(
-                        Modifier.weight(1f, fill = !draft.isNew).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        Modifier.weight(1f, fill = !draft.isNew).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         BasicTextField(
                             value = draft.text, onValueChange = { onDraftChange(draft.copy(text = it)) }, enabled = !saving,
-                            textStyle = MaterialTheme.typography.headlineSmall.copy(color = MaterialTheme.colorScheme.onSurface),
+                            textStyle = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).focusRequester(titleFocus).testTag("editor_text"),
                             decorationBox = { field -> Box(Modifier.padding(vertical = 12.dp)) {
-                                if (draft.text.isEmpty()) Text(if (draft.kind == "idea") "记下你的想法" else "准备做什么？", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (draft.text.isEmpty()) Text(if (draft.kind == "idea") "记下你的想法" else "准备做什么？", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 field()
                             } }
                         )
@@ -99,6 +99,7 @@ import androidx.compose.ui.window.DialogProperties
                         if ((!draft.isNew || expanded) && draft.kind != "inbox") {
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             if (draft.kind == "task") {
+                                Text("从这里开始", style = MaterialTheme.typography.titleSmall)
                                 PareFormField(draft.nextAction, { onDraftChange(draft.copy(nextAction = it)) }, label = "下一步（可选）",
                                     enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor_next_action"))
                             }
@@ -124,7 +125,7 @@ import androidx.compose.ui.window.DialogProperties
                     }
                     if (draft.isNew) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) { EditorSaveButton(draft, saving, onSave) }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.End) { EditorSaveButton(draft, saving, onSave) }
                     }
                 }
             }
@@ -181,7 +182,7 @@ import androidx.compose.ui.window.DialogProperties
 @Composable private fun EditorSaveButton(draft: EditorDraft, saving: Boolean, onSave: () -> Unit) {
     Button(onClick = onSave, enabled = !saving && draft.text.isNotBlank(), shape = MaterialTheme.shapes.small,
         contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("editor_save")) {
-        if (saving) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(6.dp)) }
+        if (saving) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary); Spacer(Modifier.width(6.dp)) }
         Text(if (saving) "正在保存" else "保存")
     }
 }
@@ -191,11 +192,12 @@ import androidx.compose.ui.window.DialogProperties
     Box {
         TextButton(onClick = { priorityMenu = true }, enabled = !saving, contentPadding = PaddingValues(horizontal = 0.dp),
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("editor_priority")) {
-            Text("优先级", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
+            Text("优先级", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(16.dp))
             Box(Modifier.size(7.dp).background(pareQuadrantColor(draft.quadrant), CircleShape))
             Spacer(Modifier.width(8.dp))
-            Text(quadrantLabels.getOrElse(draft.quadrant) { quadrantLabels[1] }, modifier = Modifier.weight(2f), color = MaterialTheme.colorScheme.onSurface)
+            Text(quadrantLabels.getOrElse(draft.quadrant) { quadrantLabels[1] }, modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             Icon(Icons.Default.KeyboardArrowDown, "选择优先级", modifier = Modifier.size(20.dp))
         }
         DropdownMenu(expanded = priorityMenu, onDismissRequest = { priorityMenu = false }) {

@@ -2,8 +2,6 @@ package com.pare.app
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -40,27 +38,24 @@ internal fun OrganizeDialog(item: Entity?, saving: Boolean, error: String?, onCo
     var today by rememberSaveable(item?.id) { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = { if (!saving) onDismiss() },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        sheetGesturesEnabled = !saving) {
+        sheetGesturesEnabled = !saving, containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).navigationBarsPadding()) {
-            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("整理为任务", style = MaterialTheme.typography.headlineSmall)
-                Text(item?.title() ?: "这条内容已不可用", style = MaterialTheme.typography.bodyMedium)
-                Text("选择象限", style = MaterialTheme.typography.labelLarge)
-                Column(Modifier.selectableGroup()) {
-                    quadrantLabels.forEachIndexed { index, label ->
-                        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).selectable(
-                            selected = quadrant == index, enabled = !saving, role = Role.RadioButton,
-                            onClick = { quadrant = index }).testTag("organize_priority_$index"), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = quadrant == index, onClick = null, enabled = !saving)
-                            Spacer(Modifier.width(12.dp))
-                            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text("整理为任务", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 16.dp))
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                Text(item?.title() ?: "这条内容已不可用", style = MaterialTheme.typography.bodyLarge)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("选择象限", style = MaterialTheme.typography.titleSmall)
+                    WorkflowChoiceGroup { choiceModifier ->
+                        quadrantLabels.forEachIndexed { index, label ->
+                            WorkflowChoice(label, quadrant == index, !saving, "organize_priority_$index", choiceModifier) { quadrant = index }
                         }
                     }
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = today, enabled = !saving,
                     role = Role.Checkbox, onValueChange = { today = it }).testTag("organize_add_today"), verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = today, onCheckedChange = null, enabled = !saving)
-                    Spacer(Modifier.width(12.dp)); Text("加入今天")
+                    Spacer(Modifier.width(12.dp)); Text("加入今天", style = MaterialTheme.typography.bodyLarge)
                 }
             }
             (error ?: if (item == null || item.deleted) "这条内容已不可用，请关闭后重试。" else null)?.let {
@@ -69,7 +64,7 @@ internal fun OrganizeDialog(item: Entity?, saving: Boolean, error: String?, onCo
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = onDismiss, enabled = !saving, modifier = Modifier.heightIn(min = 48.dp).testTag("organize_cancel")) { Text("取消") }
                 Button(onClick = { onConfirm(quadrant, today) }, enabled = !saving && quadrant in 0..3 && item != null && !item.deleted,
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("organize_confirm")) {
+                    shape = MaterialTheme.shapes.small, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("organize_confirm")) {
                     Text(if (saving) "正在整理…" else "确认整理")
                 }
             }

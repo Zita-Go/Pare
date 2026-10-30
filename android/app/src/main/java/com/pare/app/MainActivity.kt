@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -159,7 +160,9 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
         topBar = { Column(Modifier.statusBarsPadding()) { PareHeader(tab, status, busy, session != null, onAccount = { account = true }, onAI={aiChooser=true},onReview={reviewOpen=true}) } },
         bottomBar = { PareNavigation(tab, onTab = { tab = it }) },
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = capture, modifier = Modifier.heightIn(min = 56.dp).testTag("add_item"),
+            ExtendedFloatingActionButton(onClick = capture, shape=MaterialTheme.shapes.large,
+                containerColor=MaterialTheme.colorScheme.primary,contentColor=MaterialTheme.colorScheme.onPrimary,
+                elevation=FloatingActionButtonDefaults.elevation(defaultElevation=2.dp,pressedElevation=4.dp), modifier = Modifier.heightIn(min = 56.dp).testTag("add_item"),
                 icon = { Icon(Icons.Default.Add, null) }, text = { Text(listOf("添加任务", "随手记", "记录想法")[tab]) })
         }
     ) { padding ->
@@ -225,12 +228,12 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                             }
                         }
                     }
-                    items(active, key = { it.key }) { item ->
+                    itemsIndexed(active, key = { _,item -> item.key }) { index,item ->
                         EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) },
                             planLabel = todayPlanLabel(state, item.id, planningNow), onPlan = { allocationTaskId = item.id },
                             onSupport = { supportTaskId = item.id }, onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }),
                                 onExecution=if(executionReady) ({executionTaskId=item.id}) else null,onAI={aiTaskId=item.id},onReminder={reminderTaskId=item.id},
-                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)})
+                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)},firstInGroup=index==0,lastInGroup=index==active.lastIndex)
                     }
                 }
                 1 -> {
@@ -252,13 +255,13 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                     quadrantLabels.forEachIndexed { q, label ->
                         val group = tasks.filter { (it.content()?.get("quadrant")?.jsonPrimitive?.intOrNull ?: 1) == q && !it.completed() }
                         if (group.isNotEmpty()) item { SectionLabel(label, group.size, pareQuadrantColor(q)) }
-                        items(group, key = { it.key }) { item ->
+                        itemsIndexed(group, key = { _,item -> item.key }) { index,item ->
                             EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered,
                                 planLabel = if (item.id in ordered) todayPlanLabel(state,item.id,planningNow) else null,
                                 onPlan = { allocationTaskId = item.id }, onSupport = { supportTaskId = item.id },
                                 onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }),
                                 onExecution=if(executionReady) ({executionTaskId=item.id}) else null,onAI={aiTaskId=item.id},onReminder={reminderTaskId=item.id},
-                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)})
+                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)},firstInGroup=index==0,lastInGroup=index==group.lastIndex)
                         }
                     }
                 }
@@ -276,13 +279,13 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                             style = MaterialTheme.typography.labelLarge)
                     }
                 }
-                if (showCompleted) items(completedTasks, key = { "completed:${it.key}" }) { item ->
+                if (showCompleted) itemsIndexed(completedTasks, key = { _,item -> "completed:${item.key}" }) { index,item ->
                     EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered,
                                 planLabel = if (item.id in ordered) todayPlanLabel(state,item.id,planningNow) else null,
                                 onPlan = { allocationTaskId = item.id }, onSupport = { supportTaskId = item.id },
                                 onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }),
                                 onExecution=if(executionReady) ({executionTaskId=item.id}) else null,onAI={aiTaskId=item.id},onReminder={reminderTaskId=item.id},
-                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)})
+                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)},firstInGroup=index==0,lastInGroup=index==completedTasks.lastIndex)
                 }
             }
         }

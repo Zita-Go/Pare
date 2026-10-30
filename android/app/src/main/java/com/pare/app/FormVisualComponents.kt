@@ -23,14 +23,14 @@ import androidx.compose.ui.unit.dp
     visualTransformation: VisualTransformation = VisualTransformation.None
 ) {
     TextField(
-        value = value, onValueChange = onValueChange, label = { Text(label) },
+        value = value, onValueChange = onValueChange, label = { Text(label,style=MaterialTheme.typography.bodySmall) },
         modifier = modifier, enabled = enabled, minLines = minLines, singleLine = singleLine,
         isError = isError, keyboardOptions = keyboardOptions, visualTransformation = visualTransformation,
         shape = MaterialTheme.shapes.medium,
         textStyle = MaterialTheme.typography.bodyLarge,
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
             errorContainerColor = MaterialTheme.colorScheme.surfaceContainer,
             focusedIndicatorColor = MaterialTheme.colorScheme.primary,

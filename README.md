@@ -59,6 +59,8 @@ API 密钥、AI 原始请求历史、正在运行的计时器和系统设置留�
 
 Android 0.6.0 从任务菜单开始专注、记录外部推进或设置提醒；顶部「AI助手」先预览再生成，确认后才更新下一步。「回看」使用本地真实记录，轻提示不后台调用模型。模型密钥在手机单独配置并加密保存。查看[当前用法与验收范围](docs/releases/android-v0.6.0.md)。
 
+Android 0.7.0 进一步统一了布局、字体、配色和圆角，突出任务、专注时间与 AI 建议；标准字号保持六任务首屏密度，并验证真实大字体弹窗。[查看前后对比与页面截图](docs/releases/android-v0.7.0.md)。
+
 此前更新：[自动同步](docs/releases/android-v0.2.0.md) · [视觉调整](docs/releases/android-v0.3.0.md) · [列表与快速记录](docs/releases/android-v0.4.0.md) · [想法到行动](docs/releases/android-v0.5.0.md)。产品方向遵循[Pare自己的产品原则](docs/product-principles.md)。
 
 ## 念头来了，先放下来
