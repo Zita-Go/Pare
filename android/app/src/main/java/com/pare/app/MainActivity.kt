@@ -48,6 +48,10 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     val busy by vm.busy.collectAsState()
     val previewReady by vm.previewReady.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var workspaceId by rememberSaveable { mutableStateOf("") }
+    var allocationTaskId by rememberSaveable { mutableStateOf("") }
+    var supportTaskId by rememberSaveable { mutableStateOf("") }
+    var originTaskId by rememberSaveable { mutableStateOf("") }
     var organizeId by rememberSaveable { mutableStateOf("") }
     val organizeSave: OrganizeSaveModel = viewModel()
     LaunchedEffect(organizeSave.saved) { if (organizeSave.saved) { organizeId = ""; organizeSave.reset() } }
@@ -89,6 +93,10 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     val todayTasks = ordered.mapNotNull { id -> tasks.find { it.id == id } }
     val completedTasks = (if (tab == 0) todayTasks else tasks).filter { it.completed() }
     val conflictCount = state.items.values.count { it.conflict != null }
+    fun openOrigin(taskId: String) {
+        val origins = relatedIdeas(state, taskId)
+        if (origins.size == 1) workspaceId = origins.first().id else if (origins.isNotEmpty()) originTaskId = taskId
+    }
     val capture: () -> Unit = { openEditor(kind = when (tab) { 0 -> "task"; 2 -> "idea"; else -> "inbox" }, today = tab == 0) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -121,9 +129,11 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                 0 -> {
                     val active = todayTasks.filterNot { it.completed() }
                     item {
-                        val estimated = active.mapNotNull { it.content()?.get("estimatedMinutes")?.jsonPrimitive?.intOrNull }.sum()
+                        val load = TodayLoad.calculate(state, planningNow)
                         val summary = listOfNotNull(planningDayLabel(vm.planningDate(state, planningNow)),
-                            "${active.size} 件待办", if (estimated > 0) "$estimated 分钟" else null).joinToString(" · ")
+                            if (load.personalMinutes > 0) "自己投入 ${load.personalMinutes} 分钟" else null,
+                            if (load.checkMinutes > 0) "检查 ${load.checkMinutes} 分钟" else null,
+                            if (load.unplannedCount > 0) "${load.unplannedCount} 件未安排投入" else null).joinToString(" · ")
                         Text(summary, style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp, bottom = 12.dp).testTag("today_summary"))
@@ -140,7 +150,9 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                         }
                     }
                     items(active, key = { it.key }) { item ->
-                        EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) })
+                        EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) },
+                            planLabel = todayPlanLabel(state, item.id, planningNow), onPlan = { allocationTaskId = item.id },
+                            onSupport = { supportTaskId = item.id }, onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }))
                     }
                 }
                 1 -> {
@@ -163,7 +175,10 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                         val group = tasks.filter { (it.content()?.get("quadrant")?.jsonPrimitive?.intOrNull ?: 1) == q && !it.completed() }
                         if (group.isNotEmpty()) item { SectionLabel(label, group.size, pareQuadrantColor(q)) }
                         items(group, key = { it.key }) { item ->
-                            EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered)
+                            EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered,
+                                planLabel = if (item.id in ordered) todayPlanLabel(state,item.id,planningNow) else null,
+                                onPlan = { allocationTaskId = item.id }, onSupport = { supportTaskId = item.id },
+                                onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }))
                         }
                     }
                 }
@@ -171,7 +186,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                     val ideas = all.filter { it.kind == "idea" }
 
                     if (ideas.isEmpty()) item { EmptyNote("还没有想法", "记录一个想法，之后可以继续补充。") }
-                    items(ideas, key = { it.key }) { item -> IdeaCard(item, onEdit = { openEditor(item) }) }
+                    items(ideas, key = { it.key }) { item -> IdeaCard(item, onEdit = { workspaceId = item.id }) }
                 }
             }
             if (tab != 2 && completedTasks.isNotEmpty()) {
@@ -182,11 +197,22 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                     }
                 }
                 if (showCompleted) items(completedTasks, key = { "completed:${it.key}" }) { item ->
-                    EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered)
+                    EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered,
+                                planLabel = if (item.id in ordered) todayPlanLabel(state,item.id,planningNow) else null,
+                                onPlan = { allocationTaskId = item.id }, onSupport = { supportTaskId = item.id },
+                                onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }))
                 }
             }
         }
     }
+    if (workspaceId.isNotBlank()) IdeaWorkspaceDialog(workspaceId, vm, onDismiss = { workspaceId = "" },
+        onEditIdea = { openEditor(it) }, onOpenTask = { openEditor(it) })
+    if (allocationTaskId.isNotBlank()) TodayAllocationDialog(allocationTaskId, vm) { allocationTaskId = "" }
+    if (supportTaskId.isNotBlank()) TaskSupportDialog(supportTaskId, vm) { supportTaskId = "" }
+    if (originTaskId.isNotBlank()) AlertDialog(onDismissRequest = { originTaskId = "" }, title = { Text("关联想法") },
+        text = { Column { relatedIdeas(state, originTaskId).forEach { idea ->
+            TextButton(onClick = { workspaceId = idea.id; originTaskId = "" }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(idea.title()) }
+        } } }, confirmButton = { TextButton(onClick = { originTaskId = "" }) { Text("关闭") } })
     if (organizeId.isNotBlank()) {
         val inbox = state.items["inbox:$organizeId"]
         OrganizeDialog(inbox, organizeSave.saving, organizeSave.error,

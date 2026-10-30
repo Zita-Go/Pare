@@ -1,5 +1,7 @@
 package com.pare.app
 
+import kotlinx.serialization.json.JsonObject
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -128,8 +130,8 @@ import androidx.compose.ui.window.DialogProperties
                             val localFields = conflictFields(conflict.kind, conflict.payload, conflict.deleted, taskTitles)
                             val cloud = requireNotNull(conflict.conflict)
                             val cloudFields = conflictFields(cloud.kind, cloud.payload, cloud.deletedAt != null, taskTitles)
-                            ConflictVersion("本机版本", localFields, cloudFields)
-                            ConflictVersion("云端版本", cloudFields, localFields, cloudVersion = true)
+                            ConflictVersion("本机版本", localFields, cloudFields, raw = conflict.payload)
+                            ConflictVersion("云端版本", cloudFields, localFields, cloudVersion = true, raw = cloud.payload)
                             if (state.pending != null) Text("请先重试同步，确认上一笔请求后再选择版本。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = { vm.resolve(conflict.key, true) }, enabled = !busy && state.pending == null, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("保留本机") }
@@ -157,7 +159,8 @@ import androidx.compose.ui.window.DialogProperties
         dismissButton = { TextButton(onClick = { signOut = false }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消") } })
 }
 
-@Composable private fun ConflictVersion(title: String, fields: List<ConflictField>, other: List<ConflictField>, cloudVersion: Boolean = false) {
+@Composable private fun ConflictVersion(title: String, fields: List<ConflictField>, other: List<ConflictField>, cloudVersion: Boolean = false, raw: JsonObject? = null) {
+    var expanded by remember(raw) { mutableStateOf(false) }
     val accent = if (cloudVersion) pareQuadrantColor(2) else MaterialTheme.colorScheme.primary
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium,
@@ -171,6 +174,14 @@ import androidx.compose.ui.window.DialogProperties
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(field.label + if (changed) " · 有差异" else "", style = MaterialTheme.typography.labelSmall, color = if (changed) accent else MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(field.value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+            if (raw != null) {
+                TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(if (expanded) "收起完整内容" else "查看完整版本内容")
+                }
+                if (expanded) androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(raw.toString(), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

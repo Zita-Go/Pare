@@ -79,18 +79,43 @@ fun conflictFields(kind: String, payload: JsonObject?, deleted: Boolean, taskTit
             if (kind != "inbox") fields += ConflictField("备注", string(if (kind == "idea") "notes" else "note")?.ifBlank { null } ?: "无")
             if (kind == "task") {
                 fields += ConflictField("下一步", string("nextAction")?.ifBlank { null } ?: "未填写")
+                fields += ConflictField("停止标准", string("definitionOfDone")?.ifBlank { null } ?: "未填写")
+                val blockers = content["blockerEntries"] as? JsonArray ?: JsonArray(emptyList())
+                fields += ConflictField("卡点记录", if (blockers.isEmpty()) "暂无" else "共 ${blockers.size} 条\n" + blockers.takeLast(5).joinToString("\n") {
+                    val entry = it.jsonObject
+                    val reason = entry["reason"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    val label = supportReasons.firstOrNull { it.code == reason }?.label ?: reason
+                    "${entry["at"]?.jsonPrimitive?.contentOrNull.orEmpty()} · $label"
+                })
                 fields += ConflictField("预计时长", string("estimatedMinutes")?.let { "$it 分钟" } ?: "未填写")
                 fields += ConflictField("状态", if (content["completed"]?.jsonPrimitive?.booleanOrNull == true) "已完成" else "待完成")
                 fields += ConflictField("优先级", quadrantLabels.getOrElse(content["quadrant"]?.jsonPrimitive?.intOrNull ?: 1) { "未分类" })
                 if (payload["lifecycle"]?.jsonPrimitive?.contentOrNull == "archived") fields += ConflictField("归档", "已归档")
             }
-            if (kind == "idea") fields += ConflictField("阶段", ideaStageLabel(string("stage")))
+            if (kind == "idea") {
+                fields += ConflictField("阶段", ideaStageLabel(string("stage")))
+                fields += ConflictField("探索问题", string("nextQuestion")?.ifBlank { null } ?: "未填写")
+                val entries = content["entries"] as? JsonArray ?: JsonArray(emptyList())
+                fields += ConflictField("探索记录", if (entries.isEmpty()) "暂无" else "共 ${entries.size} 条，以下为最近至多5条\n" + entries.takeLast(5).joinToString("\n") {
+                    val entry = it.jsonObject
+                    "${ideaEntryKindLabel(entry["kind"]?.jsonPrimitive?.contentOrNull ?: "note")}：${entry["text"]?.jsonPrimitive?.contentOrNull.orEmpty().take(600)}"
+                })
+                fields += ConflictField("关联行动", (content["linkedTaskIDs"] as? JsonArray)?.joinToString("、") {
+                    taskTitles[it.jsonPrimitive.content] ?: it.jsonPrimitive.content
+                }?.ifBlank { null } ?: "暂无")
+            }
         }
         "day_plan" -> {
             fields += ConflictField("日期", string("day_key").orEmpty())
             fields += ConflictField("时区", string("time_zone").orEmpty())
             fields += ConflictField("今日任务", (content["ordered_task_ids"] as? JsonArray)?.joinToString("、") { taskTitles[it.jsonPrimitive.content] ?: it.jsonPrimitive.content } ?: "无")
             fields += ConflictField("今日重点", string("daily_win_task_id")?.let { taskTitles[it] ?: it } ?: "未设置")
+            fields += ConflictField("当天投入", (content["task_plans"] as? JsonArray)?.mapNotNull { value ->
+                val plan = value.jsonObject
+                val allocation = plan["allocation"] as? JsonObject ?: return@mapNotNull null
+                val id = plan["task_id"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                "${taskTitles[id] ?: id}：${if (allocation["kind"]?.jsonPrimitive?.contentOrNull == "check") "检查" else "自己推进"} ${allocation["planned_minutes"]?.jsonPrimitive?.contentOrNull ?: "未定"} 分钟"
+            }?.joinToString("\n")?.ifBlank { null } ?: "尚未安排")
         }
         "profile" -> {
             fields += ConflictField("规划时区", string("planningTimeZone") ?: "未设置")

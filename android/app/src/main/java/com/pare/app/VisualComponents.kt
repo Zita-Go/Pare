@@ -92,10 +92,16 @@ internal fun IdeaCard(item: Entity, onEdit: () -> Unit) {
     val stage = ideaStageLabel(content?.get("stage")?.jsonPrimitive?.contentOrNull)
     val date = ideaDateLabel(content?.get("updatedAt")?.jsonPrimitive?.contentOrNull)
     val note = content?.get("notes")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+    val question = content?.get("nextQuestion")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+    val linkedCount = (content?.get("linkedTaskIDs") as? JsonArray)?.size ?: 0
     Column(Modifier.fillMaxWidth().heightIn(min = 80.dp).clickable(onClick = onEdit)
         .padding(vertical = 12.dp).testTag("idea_${item.id}"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(item.title(), style = MaterialTheme.typography.bodyLarge, fontSize = 16.sp, lineHeight = 24.sp)
-        Text(listOfNotNull(stage, date?.let { "更新于 $it" }, note).joinToString(" · "),
+        (question?.let { "正在探索：$it" } ?: note)?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(listOfNotNull(stage, "$linkedCount 项关联行动", date?.let { "更新于 $it" }).joinToString(" · "),
             style = MaterialTheme.typography.bodySmall, fontSize = 13.sp, lineHeight = 18.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -104,13 +110,14 @@ internal fun IdeaCard(item: Entity, onEdit: () -> Unit) {
 
 @Composable
 internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComplete: () -> Unit,
-    onToday: () -> Unit, onWin: (() -> Unit)? = null, inToday: Boolean = true) {
+    onToday: () -> Unit, onWin: (() -> Unit)? = null, inToday: Boolean = true,
+    planLabel: String? = null, onPlan: (() -> Unit)? = null, onSupport: (() -> Unit)? = null, onOrigin: (() -> Unit)? = null) {
     val completed = item.completed()
     val content = item.content()
     var menu by remember { mutableStateOf(false) }
     val support = listOfNotNull(
-        content?.get("estimatedMinutes")?.jsonPrimitive?.intOrNull?.let { "$it 分钟" },
-        content?.get("nextAction")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+        planLabel ?: content?.get("estimatedMinutes")?.jsonPrimitive?.intOrNull?.let { "总估时 $it 分钟" },
+        content?.get("nextAction")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { "下一步：$it" }
             ?: content?.get("note")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
     ).joinToString(" · ")
     val focused = win && !completed
@@ -132,17 +139,23 @@ internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComple
                         textDecoration = if (completed) TextDecoration.LineThrough else null)
                 }
                 if (support.isNotBlank()) Text(support, style = MaterialTheme.typography.bodySmall, fontSize = 13.sp, lineHeight = 18.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = if (focused) 2 else 1, overflow = TextOverflow.Ellipsis)
             }
             Box {
                 IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp).testTag("more_${item.id}")) {
                     Icon(Icons.Default.MoreVert, "更多操作：${item.title()}", Modifier.size(22.dp))
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (onPlan != null && !completed) DropdownMenuItem(text = { Text("今天怎么推进") },
+                        onClick = { menu = false; onPlan() }, modifier = Modifier.heightIn(min = 48.dp).testTag("plan_${item.id}"))
+                    if (onSupport != null && !completed) DropdownMenuItem(text = { Text("我卡住了") },
+                        onClick = { menu = false; onSupport() }, modifier = Modifier.heightIn(min = 48.dp).testTag("support_${item.id}"))
                     DropdownMenuItem(text = { Text(if (inToday) "移出今天" else "加入今天") },
                         onClick = { menu = false; onToday() }, modifier = Modifier.heightIn(min = 48.dp).testTag("today_${item.id}"))
                     if (onWin != null) DropdownMenuItem(text = { Text(if (win) "取消重点" else "设为今日重点") },
                         onClick = { menu = false; onWin() }, modifier = Modifier.heightIn(min = 48.dp).testTag("win_${item.id}"))
+                    if (onOrigin != null) DropdownMenuItem(text = { Text("查看关联想法") },
+                        onClick = { menu = false; onOrigin() }, modifier = Modifier.heightIn(min = 48.dp).testTag("origin_${item.id}"))
                 }
             }
         }

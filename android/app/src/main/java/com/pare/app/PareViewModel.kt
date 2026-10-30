@@ -50,6 +50,16 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
             next
         }
     }
+    fun saveIdeaContext(ideaId:String,stage:String,nextQuestion:String,expected:IdeaContextBaseline,onResult:(Result<Unit>)->Unit={}) =
+        edit(onResult) {IdeaActions.saveContext(it,ideaId,stage,nextQuestion,expected,Instant.now())}
+    fun appendIdeaEntry(ideaId:String,entryId:String,text:String,kind:String,onResult:(Result<Unit>)->Unit={}) =
+        edit(onResult) {IdeaActions.appendEntry(it,ideaId,entryId,text,kind,Instant.now())}
+    fun createIdeaAction(ideaId:String,taskId:String,title:String,nextAction:String,definitionOfDone:String,quadrant:Int,allocation:TodayAllocationDraft?=null,onResult:(Result<Unit>)->Unit={}) =
+        edit(onResult) {IdeaActions.createLinkedTask(it,ideaId,taskId,title,nextAction,definitionOfDone,quadrant,allocation,Instant.now())}
+    fun allocateToday(taskId:String,allocation:TodayAllocationDraft,onResult:(Result<Unit>)->Unit={}) =
+        edit(onResult) {DayPlanActions.allocate(it,taskId,allocation,Instant.now())}
+    fun saveSmallStep(taskId:String,nextAction:String,definitionOfDone:String,expected:SmallStepBaseline,allocation:TodayAllocationDraft?=null,blockerReason:String?=null,blockerEntryId:String?=null,onResult:(Result<Unit>)->Unit={}) =
+        edit(onResult) {SmallStepActions.save(it,taskId,nextAction,definitionOfDone,expected,allocation,blockerReason,blockerEntryId,Instant.now())}
     fun complete(entity:Entity) = edit {s ->
         val current=s.items.getValue(entity.key)
         val content=current.content()!!.toMutableMap()

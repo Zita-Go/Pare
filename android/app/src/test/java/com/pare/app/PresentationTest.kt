@@ -65,6 +65,21 @@ class PresentationTest {
         assertEquals("准备会议", fields["今日重点"])
     }
 
+    @Test fun ideaConflictShowsQuestionHistoryAndLinkedActions() {
+        val payload = wire.parseToJsonElement("""{"content":{"text":"想法","stage":"exploring","nextQuestion":"怎样验证？","linkedTaskIDs":["task-id"],"entries":[{"kind":"finding","text":"新的发现","createdAt":"2026-10-30T00:00:00Z"}]}}""").jsonObject
+        val fields = conflictFields("idea", payload, false, mapOf("task-id" to "做一次小实验")).associate { it.label to it.value }
+        assertEquals("怎样验证？", fields["探索问题"])
+        assertTrue(fields["探索记录"]?.contains("新的发现") == true)
+        assertEquals("做一次小实验", fields["关联行动"])
+    }
+
+    @Test fun taskConflictShowsStopCriteriaAndBlockerHistory() {
+        val payload = wire.parseToJsonElement("""{"content":{"text":"任务","definitionOfDone":"写一句就停","blockerEntries":[{"reason":"lowEnergy","at":"2026-10-30T00:00:00Z"}]}}""").jsonObject
+        val fields = conflictFields("task", payload, false).associate { it.label to it.value }
+        assertEquals("写一句就停", fields["停止标准"])
+        assertTrue(fields["卡点记录"]?.contains("精力不足") == true)
+    }
+
     @Test fun openingAnotherItemRequiresExplicitDraftSwitchDecision() {
         val retained = EditorDraft("task-a", "task", text = "还没有保存的编辑")
         val requested = EditorDraft("task-b", "task", text = "另一件事", isNew = false)
