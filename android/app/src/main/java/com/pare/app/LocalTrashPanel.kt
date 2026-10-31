@@ -49,12 +49,12 @@ internal fun LocalTrashPanel(state: SyncState, query: String, onEdit: LibraryEdi
                         }
                         Text("恢复内容会继续保存；清理此回收记录不会删除它。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else if (entry.canRestoreOriginal(state)) {
-                        OutlinedButton(onClick = { model.edit(onEdit, { LocalTrashActions.restoreOriginal(it, entry.id) }) { model.undo = null; model.message = "已恢复原内容" } },
+                        OutlinedButton(shape=MaterialTheme.shapes.medium,onClick= { model.edit(onEdit, { LocalTrashActions.restoreOriginal(it, entry.id) }) { model.undo = null; model.message = "已恢复原内容" } },
                             enabled = !model.saving, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("trash_restore_original_${entry.id}")) { Text("恢复原内容") }
                     } else {
                         Text("原删除状态已同步或再次改变，可以恢复一份副本，保留已有的新版本。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("副本保留可恢复的内容与记录。其他内容中指向原记录的关联不会自动改动，需要时可重新关联。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OutlinedButton(onClick = { model.edit(onEdit, { LocalTrashActions.restoreCopy(it, entry.id) }) { model.undo = null; model.message = "已恢复为副本，原有内容与关联未覆盖" } },
+                        OutlinedButton(shape=MaterialTheme.shapes.medium,onClick= { model.edit(onEdit, { LocalTrashActions.restoreCopy(it, entry.id) }) { model.undo = null; model.message = "已恢复为副本，原有内容与关联未覆盖" } },
                             enabled = !model.saving, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("trash_restore_copy_${entry.id}")) { Text("恢复为副本") }
                     }
                     TextButton(onClick = { dialog.removing = listOf(entry) }, enabled = !model.saving,

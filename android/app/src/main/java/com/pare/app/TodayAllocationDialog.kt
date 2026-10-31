@@ -43,7 +43,7 @@ fun TodayAllocationDialog(taskId: String, vm: PareViewModel, onDismiss: () -> Un
         }, onDismiss = onDismiss, onReload = { model.confirmReload(state, taskId, now, support = false) }) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("当前任务", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(task?.title() ?: "任务已不可用", style = MaterialTheme.typography.titleLarge)
+            Text(task?.title() ?: "任务已不可用", style = MaterialTheme.typography.bodyLarge)
             task?.content()?.get("estimatedMinutes")?.jsonPrimitive?.intOrNull?.let {
                 Text("任务总预估 $it 分钟", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -122,7 +122,8 @@ internal fun TodayWorkflowSurface(
         Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.Center) {
             Surface(Modifier.widthIn(max = 640.dp).fillMaxWidth().fillMaxHeight().testTag("${tag}_dialog"), color = MaterialTheme.colorScheme.surface) {
                 Column {
-                    Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp))
+                    ParePageHeader(title, onBack = onDismiss, enabled = !model.saving,
+                        backModifier = Modifier.testTag("${tag}_cancel"))
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), content = content)
                     val error = if (!available) "任务已完成、归档或不可用，无法保存。草稿仍保留。" else model.error
@@ -137,9 +138,8 @@ internal fun TodayWorkflowSurface(
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TextButton(onClick = onDismiss, enabled = !model.saving, modifier = Modifier.heightIn(min = 48.dp).testTag("${tag}_cancel")) { Text("关闭") }
                         Button(onClick = onSave, enabled = available && !model.saving && canSave,
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("${tag}_save"), shape = MaterialTheme.shapes.small) {
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("${tag}_save"), shape = MaterialTheme.shapes.medium) {
                             if (model.saving) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary); Spacer(Modifier.width(8.dp)) }
                             Text(if (model.saving) "正在保存…" else "保存")
                         }

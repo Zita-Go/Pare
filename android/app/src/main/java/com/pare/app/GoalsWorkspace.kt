@@ -29,11 +29,16 @@ class GoalsWorkspaceModel : ViewModel() {
     var saving by mutableStateOf(false); private set
     var error: String? by mutableStateOf(null); private set
     var message: String? by mutableStateOf(null); private set
+    var messageEvent by mutableLongStateOf(0L); private set
+    fun consumeMessage(event: Long) { if(messageEvent==event) message=null }
     var confirmDelete by mutableStateOf(false)
     var confirmDiscard by mutableStateOf(false)
+    private var initialDraft: GoalDraft? = null
+    fun isDirty() = draft!=null && draft!=initialDraft
     fun open(entity: Entity?) {
         if (saving || draft != null) return
         original=entity; baseline=GoalBaseline.from(entity); draft=entity?.let(GoalDraft::from) ?: GoalDraft()
+        initialDraft=draft
         error=null; message=null
     }
     fun change(value: GoalDraft) { if (!saving) { draft=value; error=null } }
@@ -44,7 +49,7 @@ class GoalsWorkspaceModel : ViewModel() {
     }
     fun finish(result: Result<Unit>) {
         saving=false
-        if (result.isSuccess) { clear(); message="已保存" }
+        if (result.isSuccess) { clear(); messageEvent++; message="已保存" }
         else error=result.exceptionOrNull()?.message ?: "保存失败，草稿已保留，请重试。"
     }
     fun clear() {
@@ -59,12 +64,12 @@ fun GoalsWorkspace(state: SyncState, onEdit: ((SyncState)->SyncState,(Result<Uni
     val model: GoalsWorkspaceModel = viewModel(key="goals-workspace:${state.owner}")
     LaunchedEffect(initialGoalId) {initialGoalId?.let {state.items["goal:$it"]?.takeUnless {e->e.deleted}?.let(model::open)}}
     val draft=model.draft
-    val close = { if (!model.saving) { if (draft != null) model.confirmDiscard=true else onDismiss() } }
+    val close = { if (!model.saving) { if (draft != null) {if(model.isDirty()) model.confirmDiscard=true else model.clear()} else onDismiss() } }
     GoalsPreferencesFrame(if (draft == null) "长期目标" else if (model.baseline?.isNew == true) "新建长期目标" else "编辑长期目标",
         "goals_workspace",model.saving,model.error,close,
+        editing=draft!=null,message=model.message,messageEvent=model.messageEvent,onMessageConsumed=model::consumeMessage,messageTag="goal_saved",
         actions={
-            TextButton(onClick=close,enabled=!model.saving,modifier=Modifier.heightIn(min=48.dp)) { Text(if(draft==null) "关闭" else "返回") }
-            if (draft != null) Button(onClick={
+            if (draft != null) Button(shape=MaterialTheme.shapes.medium,onClick={
                 val expected=model.baseline ?: return@Button
                 if (model.begin()) onEdit({ GoalsActions.save(it,draft,expected,Instant.now()) },model::finish)
             },enabled=!model.saving && draft.validationError()==null,modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("goal_save")) {
@@ -74,8 +79,7 @@ fun GoalsWorkspace(state: SyncState, onEdit: ((SyncState)->SyncState,(Result<Uni
     ) {
         if (draft == null) {
             Text("让今天的行动连接到更长远的方向。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(onClick={ model.open(null) },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("goal_add")) { Text("新建目标") }
-            model.message?.let { Text(it,color=MaterialTheme.colorScheme.primary,modifier=Modifier.testTag("goal_saved")) }
+            Button(shape=MaterialTheme.shapes.medium,onClick={ model.open(null) },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("goal_add")) { Text("新建目标") }
             val goals=state.items.values.filter { it.kind=="goal" && !it.deleted && it.payload!=null }.sortedWith(
                 compareBy<Entity> { when(it.content()?.stringValue("status")) { "active"->0; "paused"->1; else->2 } }
                     .thenByDescending { it.content()?.stringValue("updatedAt") }.thenBy { it.id })
@@ -126,7 +130,7 @@ internal fun goalStatusLabel(value: String?) = when(value) { "paused"->"暂停";
         modifier=Modifier.fillMaxWidth().testTag("goal_motivation"),minLines=2)
     Text("当前状态",style=MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-        listOf("active","paused","achieved").forEach { value -> FilterChip(selected=draft.status==value,
+        listOf("active","paused","achieved").forEach { value -> FilterChip(colors=pareChoiceColors(),selected=draft.status==value,
             onClick={onChange(draft.copy(status=value))},enabled=enabled,label={Text(goalStatusLabel(value))},modifier=Modifier.heightIn(min=48.dp).testTag("goal_status_$value")) }
     }
     GoalsPreferenceDateButton("目标日期",draft.targetDate,PreferencesActions.planningZone(state),false,enabled,"goal_target_date") { onChange(draft.copy(targetDate=it)) }
@@ -169,19 +173,42 @@ internal fun goalStatusLabel(value: String?) = when(value) { "paused"->"暂停";
 }
 
 @Composable internal fun GoalsPreferencesFrame(title: String,tag: String,busy: Boolean,error: String?,onDismiss: ()->Unit,
+    editing: Boolean = true, message: String? = null, messageEvent: Long = 0L,
+    onMessageConsumed: (Long)->Unit = {}, messageTag: String = "management_saved",
     actions: @Composable RowScope.()->Unit,content: @Composable ColumnScope.()->Unit) {
     Dialog(onDismissRequest={if(!busy)onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false,dismissOnBackPress=!busy,dismissOnClickOutside=!busy)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding().imePadding().testTag(tag),color=MaterialTheme.colorScheme.surface) {
             Column {
-                Text(title,style=MaterialTheme.typography.titleLarge,modifier=Modifier.padding(horizontal=24.dp,vertical=20.dp))
+                ParePageHeader(title,onDismiss,backLabel=if(editing) "返回" else "关闭",enabled=!busy,backModifier=Modifier.testTag("${tag}_close"))
                 HorizontalDivider()
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp),content=content)
-                if(error!=null) Text(error,modifier=Modifier.fillMaxWidth().heightIn(max=140.dp).verticalScroll(rememberScrollState()).padding(horizontal=24.dp,vertical=8.dp).testTag("${tag}_error"),
-                    style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.error)
-                HorizontalDivider()
-                Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),content=actions)
+                Box(Modifier.weight(1f)) {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(16.dp),content=content)
+                    ManagementSnackbar(message,messageEvent,onMessageConsumed,messageTag,Modifier.align(Alignment.BottomCenter))
+                }
+                if(error!=null) Text(error,modifier=Modifier.fillMaxWidth().heightIn(max=140.dp).verticalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=8.dp).testTag("${tag}_error"),
+                    style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.error)
+                if(editing) {
+                    HorizontalDivider()
+                    Row(Modifier.fillMaxWidth().padding(16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),content=actions)
+                }
             }
         }
+    }
+}
+
+/** Consumed events prevent rotation/recomposition from replaying an old success. */
+@Composable internal fun ManagementSnackbar(message: String?, event: Long, onConsumed: (Long)->Unit,
+    tag: String, modifier: Modifier = Modifier) {
+    val host = remember { SnackbarHostState() }
+    val consume by rememberUpdatedState(onConsumed)
+    LaunchedEffect(message,event) {
+        if(message!=null) {
+            host.showSnackbar(message,duration=SnackbarDuration.Short)
+            consume(event)
+        }
+    }
+    SnackbarHost(host,modifier.padding(16.dp)) { data ->
+        Snackbar(data,modifier=Modifier.testTag(tag))
     }
 }
 
@@ -192,7 +219,7 @@ internal fun goalsDateText(at: String,zone: ZoneId,time: Boolean=false): String 
 @Composable internal fun GoalsPreferenceDateButton(label: String,value: String?,zone: ZoneId,withTime: Boolean,enabled: Boolean,tag: String,onChange: (String?)->Unit) {
     val context=LocalContext.current
     Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-        OutlinedButton(onClick={
+        OutlinedButton(shape=MaterialTheme.shapes.medium,onClick={
             val selected=value?.let {runCatching {Instant.parse(it)}.getOrNull()}?.atZone(zone) ?: ZonedDateTime.now(zone).plusDays(7)
             DatePickerDialog(context,{_,year,month,day ->
                 val date=LocalDate.of(year,month+1,day)

@@ -26,12 +26,17 @@ class ImplementationPlanModel:ViewModel() {
     var saving by mutableStateOf(false);private set
     var saved by mutableStateOf(false);private set
     var error by mutableStateOf<String?>(null);private set
+    var confirmDiscard by mutableStateOf(false)
+    private var originalInput = emptyList<String>()
+    private fun input() = listOf(enabled.toString(),hour,minute,action)
+    fun isDirty() = !unsupported && baseline!=null && input()!=originalInput
     fun initialize(state:SyncState,taskId:String) {
         if(baseline!=null)return
         baseline=ImplementationPlanBaseline.from(state,taskId)
         val plan=state.items["task:$taskId"]?.content()?.get("implementationPlan") as? JsonObject
         enabled=plan!=null;unsupported=plan!=null && plan.timelineString("kind")!="time"
         hour=(plan?.timelineInt("hour") ?: 9).toString();minute=(plan?.timelineInt("minute") ?: 0).toString();action=plan?.timelineString("action").orEmpty()
+        originalInput=input()
     }
     fun draft():ImplementationPlanDraft? {
         if(unsupported)return null
@@ -45,7 +50,7 @@ class ImplementationPlanModel:ViewModel() {
         if(saving || saved)return;saving=true;error=null
         onEdit({ImplementationPlanActions.save(it,taskId,expected,input)}) {result->saving=false;saved=result.isSuccess;error=result.exceptionOrNull()?.message ?: if(result.isFailure) "保存失败，草稿已保留" else null}
     }
-    fun reset() {if(!saving) {baseline=null;saved=false;error=null}}
+    fun reset() {if(!saving) {baseline=null;saved=false;error=null;confirmDiscard=false}}
 }
 
 @Composable fun ImplementationPlanDialog(state:SyncState,taskId:String,onEdit:((SyncState)->SyncState,(Result<Unit>)->Unit)->Unit,onDismiss:()->Unit,
@@ -54,10 +59,12 @@ class ImplementationPlanModel:ViewModel() {
     val task=state.items["task:$taskId"]
     val available=taskCanBePlanned(task) && task?.conflict==null && task?.conflictGroup.orEmpty().isEmpty()
     LaunchedEffect(model.saved) {if(model.saved){model.reset();onDismiss()}}
-    Dialog(onDismissRequest={if(!model.saving){model.reset();onDismiss()}},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
+    val close = { if(!model.saving) {if(model.isDirty()) model.confirmDiscard=true else {model.reset();onDismiss()}} }
+    Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false,dismissOnBackPress=!model.saving,dismissOnClickOutside=!model.saving)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding().imePadding().testTag("implementation_dialog"),color=MaterialTheme.colorScheme.background) {
             Column {
-                Text("到点开始一个小行动",style=MaterialTheme.typography.titleLarge,modifier=Modifier.padding(20.dp))
+                ParePageHeader("到点开始一个小行动",close,enabled=!model.saving,backModifier=Modifier.testTag("implementation_close"))
+                HorizontalDivider()
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                     Text(task?.title() ?: "任务不可用",style=MaterialTheme.typography.titleMedium)
                     if(model.unsupported) {
@@ -81,12 +88,13 @@ class ImplementationPlanModel:ViewModel() {
                     if(!available)Text("任务已完成、删除或存在冲突，草稿已保留。",color=MaterialTheme.colorScheme.error)
                     model.error?.let {Text(it,color=MaterialTheme.colorScheme.error,modifier=Modifier.testTag("implementation_error"))}
                 }
-                Row(Modifier.fillMaxWidth().padding(16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                    TextButton(onClick={model.reset();onDismiss()},enabled=!model.saving) {Text("关闭")}
-                    if(!model.unsupported)Button(onClick={model.save(taskId,onEdit)},enabled=available && !model.saving && model.draft()!=null,
+                if(!model.unsupported) Row(Modifier.fillMaxWidth().padding(16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Button(shape=MaterialTheme.shapes.medium,onClick={model.save(taskId,onEdit)},enabled=available && !model.saving && model.draft()!=null,
                         modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("implementation_save")) {Text(if(model.saving) "正在保存…" else "保存")}
                 }
             }
         }
     }
+    ManagementDiscardConfirmation(model.confirmDiscard,{model.confirmDiscard=false}) {model.reset();onDismiss()}
+
 }

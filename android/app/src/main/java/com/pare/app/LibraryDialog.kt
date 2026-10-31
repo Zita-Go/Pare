@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,7 +26,12 @@ import kotlinx.serialization.json.*
 class LibraryDialogModel : ViewModel() {
     var saving by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
-    var message by mutableStateOf<String?>(null)
+    private var feedback by mutableStateOf<String?>(null)
+    var messageEvent by mutableLongStateOf(0L); private set
+    var message: String?
+        get() = feedback
+        set(value) { feedback=value; if(value!=null) messageEvent++ }
+    fun consumeMessage(event: Long) { if(messageEvent==event) message=null }
     var deletion by mutableStateOf<Entity?>(null)
     var undo by mutableStateOf<LibraryDeletionUndo?>(null)
     fun edit(onEdit: LibraryEdit, operation: (SyncState) -> SyncState, success: () -> Unit = {}) {
@@ -66,9 +70,9 @@ internal fun LibraryDialog(
     val open: (Entity) -> Unit = { item -> when(item.kind) { "task" -> onOpenTask(item); "idea" -> onOpenIdea(item); else -> onOpenEntity(item) } }
     Dialog(onDismissRequest = { if (!model.saving) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize().testTag("library_dialog"), color = MaterialTheme.colorScheme.surface) {
-            Scaffold(topBar = { TopAppBar(title = { Text("资料库") }, navigationIcon = {
-                IconButton(onClick = onDismiss, enabled = !model.saving, modifier = Modifier.size(48.dp).testTag("library_close")) { Icon(Icons.Default.ArrowBack, "返回") }
-            }) }) { padding ->
+            Scaffold(topBar = { ParePageHeader("资料库",onDismiss,backModifier=Modifier.testTag("library_close"),enabled=!model.saving) }, snackbarHost={
+                ManagementSnackbar(model.message,model.messageEvent,model::consumeMessage,"library_feedback")
+            }) { padding ->
                 Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
                     OutlinedTextField(value = query, onValueChange = { query = it }, label = { Text("搜索标题、背景或下一步") }, singleLine = true,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("library_search"))
@@ -92,7 +96,6 @@ internal fun LibraryDialog(
                     if (scope == LibraryScope.DEADLINES) Text("按截止时间排列；提醒时间在任务详情中单独管理。", style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     model.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp).testTag("library_error")) }
-                    model.message?.let { Text(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
                     model.undo?.let { undo ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("已删除“${LibrarySearch.title(undo.before)}”", modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)

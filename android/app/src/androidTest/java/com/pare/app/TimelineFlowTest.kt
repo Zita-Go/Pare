@@ -395,6 +395,8 @@ class TimelineFlowTest {
             .performScrollTo().assertIsDisplayed().assertIsEnabled()
         // Inspect the permission route without launching system settings or saving a reminder.
         node("timeline_schedule_cancel").assertIsDisplayed().performClick()
+        visible("timeline_schedule_discard")
+        node("timeline_schedule_discard").performClick()
         gone("timeline_schedule_dialog")
         assertEquals(originalPlan, planContent())
         assertEquals(notificationsAllowed, MobileNotificationRuntime(context).notificationsAllowed())

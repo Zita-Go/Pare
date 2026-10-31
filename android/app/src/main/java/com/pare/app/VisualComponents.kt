@@ -24,17 +24,28 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.serialization.json.*
 
 @Composable
 internal fun PareHeader(tab: Int, status: String, busy: Boolean, signedIn: Boolean, onAccount: () -> Unit,
-    onAI:(()->Unit)?=null,onReview:(()->Unit)?=null) {
+    onAI:(()->Unit)?=null,onReview:(()->Unit)?=null,day:TimelineDay?=null,onChooseDate:(()->Unit)?=null) {
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp, end = 8.dp).testTag("page_topbar"),
         verticalAlignment = Alignment.CenterVertically) {
-        Text(listOf("今天", "整理", "想法")[tab], style = MaterialTheme.typography.headlineSmall,
-            fontSize = 24.sp, lineHeight = 32.sp, modifier = Modifier.weight(1f))
-        onAI?.let {FilledTonalButton(onClick=it,shape=MaterialTheme.shapes.small,contentPadding=PaddingValues(horizontal=12.dp,vertical=8.dp),
-            colors=ButtonDefaults.filledTonalButtonColors(containerColor=MaterialTheme.colorScheme.primaryContainer,contentColor=MaterialTheme.colorScheme.onPrimaryContainer),
+        Column(Modifier.weight(1f).heightIn(min=48.dp).then(if(day!=null && onChooseDate!=null)Modifier.clickable(onClick=onChooseDate).testTag("today_choose_date") else Modifier),verticalArrangement=Arrangement.Center) {
+            Text(listOf("今天", "整理", "想法")[tab],style=MaterialTheme.typography.headlineSmall)
+            if(day!=null) {
+                Row(verticalAlignment=Alignment.CenterVertically) {
+                    Text(day.date.format(DateTimeFormatter.ofPattern("M月d日 EEEE",Locale.SIMPLIFIED_CHINESE)),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.weight(1f,fill=false))
+                    Icon(Icons.Default.ArrowDropDown,null,Modifier.size(14.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if(day.zone.rules!=ZoneId.systemDefault().rules)Text(day.zone.id,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        onAI?.let {TextButton(onClick=it,shape=pareActionShape(),contentPadding=PaddingValues(horizontal=8.dp,vertical=8.dp),
+            colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.primary),
             modifier=Modifier.heightIn(min=48.dp).testTag("ai_open")) {Text("AI 助手")}}
         onReview?.let {TextButton(onClick=it,colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.onSurfaceVariant),modifier=Modifier.heightIn(min=48.dp).testTag("review_open")) {Text("回看")}}
         Box {

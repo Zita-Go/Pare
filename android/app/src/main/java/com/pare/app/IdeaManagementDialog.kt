@@ -18,10 +18,20 @@ class IdeaManagementDraftModel : ViewModel() {
     var review by mutableStateOf<String?>(null)
     var saving by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
-    var message by mutableStateOf<String?>(null)
+    private var feedback by mutableStateOf<String?>(null)
+    var messageEvent by mutableLongStateOf(0L); private set
+    var message: String?
+        get() = feedback
+        set(value) { feedback=value; if(value!=null) messageEvent++ }
+    fun consumeMessage(event: Long) { if(messageEvent==event) message=null }
+    var confirmDiscard by mutableStateOf(false)
+    private var initialReview: String? = null
+    fun isDirty() = baseline!=null && review!=initialReview
+    fun reviewSaved() { initialReview=review }
     fun read(idea: Entity) {
         baseline = IdeaManagementBaseline.from(idea)
         review = (idea.content()?.get("reviewAt") as? JsonPrimitive)?.contentOrNull
+        initialReview=review;confirmDiscard=false
         error = null
     }
     fun edit(onEdit: LibraryEdit, operation: (SyncState) -> SyncState, success: () -> Unit = {}) {
@@ -52,21 +62,24 @@ internal fun IdeaManagementDialog(ideaId: String, state: SyncState, onEdit: Libr
             model.message = if (shouldLink) "已关联行动" else "已解除关联，任务仍保留"
         }
     }
-    LibraryFormDialog("关联行动与回看", "idea_management", model.saving, onDismiss) {
-        Text(idea?.title() ?: "想法已不可用", style = MaterialTheme.typography.titleMedium)
-        LibraryDateField("回看时间", model.review, available && !model.saving, "idea_review") { model.review = it }
-        Text("到了这一天，在回看中重新看看这个想法。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Button(onClick = {
+    val close = { if(!model.saving) {if(model.isDirty()) model.confirmDiscard=true else {model.baseline=null;onDismiss()}} }
+    LibraryFormDialog("关联行动与回看", "idea_management", model.saving, close,
+        message=model.message,messageEvent=model.messageEvent,onMessageConsumed=model::consumeMessage,actions={
+        Button(shape=MaterialTheme.shapes.medium,onClick= {
             model.baseline?.let { expected ->
                 val at = model.review?.let(Instant::parse)
                 model.edit(onEdit, { IdeaManagementActions.review(it, ideaId, at, expected, Instant.now()) }) {
-                    model.baseline = expected.copy(reviewAt = at?.let { JsonPrimitive(it.toString()) }); model.message = "已保存回看时间"
+                    model.baseline = expected.copy(reviewAt = at?.let { JsonPrimitive(it.toString()) }); model.reviewSaved(); model.message = "已保存回看时间"
                 }
             }
         }, enabled = available && !model.saving && model.baseline != null,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("idea_review_save")) { Text("保存回看时间") }
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("idea_review_save")) { Text("保存回看时间") }
+    }) {
+        Text(idea?.title() ?: "想法已不可用", style = MaterialTheme.typography.titleMedium)
+        LibraryDateField("回看时间", model.review, available && !model.saving, "idea_review") { model.review = it }
+        Text("到了这一天，在回看中重新看看这个想法。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
         model.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("idea_management_error")) }
-        model.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
         if (!available) Text("想法不可用或存在冲突，草稿仍保留。", color = MaterialTheme.colorScheme.error)
         if (model.error != null && idea != null) TextButton(onClick = { model.read(idea) }, enabled = !model.saving, modifier = Modifier.heightIn(min = 48.dp)) { Text("放弃回看草稿，读取最新值") }
         HorizontalDivider()
@@ -84,7 +97,7 @@ internal fun IdeaManagementDialog(ideaId: String, state: SyncState, onEdit: Libr
             }
         }
         if (links.size > linkLimit) TextButton(onClick = { linkLimit += 20 }, modifier = Modifier.heightIn(min = 48.dp)) { Text("显示更多关联行动") }
-        OutlinedButton(onClick = { showCandidates = !showCandidates }, enabled = available && !model.saving,
+        OutlinedButton(shape=MaterialTheme.shapes.medium,onClick= { showCandidates = !showCandidates }, enabled = available && !model.saving,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("idea_link_existing")) { Text(if (showCandidates) "收起已有任务" else "关联已有任务") }
         if (showCandidates) {
             OutlinedTextField(value = query, onValueChange = { query = it; limit = 20 }, label = { Text("搜索已有任务") }, singleLine = true,
@@ -103,4 +116,8 @@ internal fun IdeaManagementDialog(ideaId: String, state: SyncState, onEdit: Libr
             if (candidates.size > limit) TextButton(onClick = { limit += 20 }, modifier = Modifier.heightIn(min = 48.dp)) { Text("显示更多任务") }
         }
     }
+    ManagementDiscardConfirmation(model.confirmDiscard,{model.confirmDiscard=false}) {
+        model.confirmDiscard=false;model.baseline=null;onDismiss()
+    }
+
 }

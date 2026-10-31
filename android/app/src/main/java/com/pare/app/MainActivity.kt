@@ -57,6 +57,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     restore = { EditorDraft(it[0] as String, it[1] as String, it[2] as String, it[3] as String, it[4] as Int, it[5] as String, it[6] as String, it[7] as Boolean, it[8] as Boolean) }
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable fun PareScreen(vm: PareViewModel) {
     val state by vm.state.collectAsState()
     val initialized by vm.initialized.collectAsState()
@@ -102,6 +103,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     var timelineMode by rememberSaveable {mutableStateOf(false)}
     val todayViewStates=rememberSaveableStateHolder()
     var calendarDate by rememberSaveable {mutableStateOf<String?>(null)}
+    var chooseDate by rememberSaveable {mutableStateOf(false)}
     val selectedDate=calendarDate?.let(LocalDate::parse) ?: LocalDate.parse(vm.planningDate(state,planningNow))
     val scheduleModel:TimelineScheduleModel=viewModel(key="timeline-form:${state.owner}")
     var scheduleOpen by rememberSaveable {mutableStateOf(false)}
@@ -253,11 +255,28 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
         else vm.runCommand(ExecutionCommand(id,if(run.paused)ExecutionAction.RESUME else ExecutionAction.PAUSE))
     }
     val capture: () -> Unit = { openEditor(kind = when (tab) { 0 -> "task"; 2 -> "idea"; else -> "inbox" }, today = tab == 0) }
+    val localRuns=listOfNotNull(execution.focus)+execution.external
+    val runningAction=if(localRuns.isEmpty())null else PareRunningAction(
+        execution.focus?.let {when {it.pendingFinish!=null || it.due->"待记录";it.paused->"已暂停";else->"专注中"}} ?: "等待 ${execution.external.size} 项"
+    ) {if(localRuns.size==1)executionTaskId=localRuns.single().taskId else executionChooser=true}
+    CompositionLocalProvider(LocalPareRunningAction provides runningAction) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost={SnackbarHost(snackbars) {data ->Snackbar(data,modifier=Modifier.testTag("workspace_snackbar"))}},
-        topBar = { Column(Modifier.statusBarsPadding()) { PareHeader(tab, status, busy, session != null, onAccount = { moreOpen = true }, onAI={openPlanning()},onReview={reviewOpen=true}) } },
-        bottomBar = { PareNavigation(tab, onTab = { tab = it }) },
+        topBar = { Column(Modifier.statusBarsPadding()) { PareHeader(tab, status, busy, session != null, onAccount = { moreOpen = true }, onAI={openPlanning()},onReview={reviewOpen=true},day=if(tab==0)TimelineDay.from(state,selectedDate) else null,onChooseDate={chooseDate=true}) } },
+        bottomBar = { Column {
+            if(runningAction!=null) Surface(color=MaterialTheme.colorScheme.primaryContainer) {
+                Row(Modifier.fillMaxWidth().heightIn(min=48.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
+                    TextButton(onClick=runningAction.onClick,modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("execution_running"),contentPadding=PaddingValues(horizontal=8.dp)) {
+                        Text(runningAction.label+(execution.focus?.let {" · "+(state.items["task:${it.taskId}"]?.title() ?: "任务")} ?: ""),maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.labelLarge)
+                    }
+                    execution.focus?.let {run->
+                        TextButton(onClick={toggleExecution(run.taskId)},modifier=Modifier.heightIn(min=48.dp).testTag("execution_global_toggle")) {Text(if(run.due || run.pendingFinish!=null)"查看" else if(run.paused)"继续" else "暂停")}
+                    }
+                }
+            }
+            PareNavigation(tab, onTab = { tab = it })
+        } },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = capture, shape=MaterialTheme.shapes.large,
                 containerColor=MaterialTheme.colorScheme.primary,contentColor=MaterialTheme.colorScheme.onPrimary,
@@ -270,14 +289,12 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             if(listOf("失败","超时","失效","拒绝","已停止","等待联网","等待重试","未完成").any {it in status})TextButton(onClick={account=true},modifier=Modifier.heightIn(min=48.dp).testTag("sync_attention")){Text(status,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)}
             if(conflictCount>0)TextButton(onClick={account=true},modifier=Modifier.heightIn(min=48.dp)){Text("$conflictCount 个同步冲突待处理")}
             if(deviceError!=null || reminderError!=null)Text(deviceError ?: reminderError.orEmpty(),color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(horizontal=16.dp).testTag("device_error"))
-            if(execution.focus!=null || execution.external.isNotEmpty())TextButton(onClick={executionChooser=true},modifier=Modifier.heightIn(min=48.dp).testTag("execution_running")){Text("正在专注或等待 · ${listOfNotNull(execution.focus).size+execution.external.size} 项")}
             if(gentleHint!=null)Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                 TextButton(onClick={openReviewItem(gentleHint)},modifier=Modifier.weight(1f).heightIn(min=48.dp)){Text("值得回看：${gentleHint.title}",maxLines=1,overflow=TextOverflow.Ellipsis)}
                 TextButton(onClick={localScope.launch {try {withContext(Dispatchers.IO){hintPreferences.defer(gentleHint,planningNow)};hintVersion++}catch(_:Exception){vm.deviceError.value="暂放没有保存，请重试。"}}},modifier=Modifier.heightIn(min=48.dp)){Text("暂放")}
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected=!timelineMode,onClick={timelineMode=false},label={Text("清单")},modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("today_mode_list"))
-                FilterChip(selected=timelineMode,onClick={timelineMode=true},label={Text("时间轴")},modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("today_mode_timeline"))
+            TodayViewControls(TimelineDay.from(state,selectedDate),planningNow,timelineMode,{timelineMode=it}) {date ->
+                timelineReveal=null;calendarDate=if(date==LocalDate.parse(vm.planningDate(state,planningNow)))null else date.toString()
             }
             todayViewStates.SaveableStateProvider(if(timelineMode) "timeline" else "list") {
             if(!timelineMode) TodayOverview(state,selectedDate,planningNow,
@@ -286,7 +303,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                 onScheduleTask={task,day->openSchedule(task,day)},
                 onEditSchedule={block->openSchedule(block.task,TimelineDay.from(state,block.start.atZone(TimelineDay.from(state,selectedDate).zone).toLocalDate()),block.start,block.sourcePlanId)},
                 onExecution={task->if(execution.runFor(task.id)!=null)toggleExecution(task.id) else executionTaskId=task.id},
-                executionLabel=::executionLabel,executionPaused={id->execution.runFor(id)?.let {it.paused && !it.due && it.pendingFinish==null}==true},modifier=Modifier.weight(1f))
+                executionLabel=::executionLabel,executionPaused={id->execution.runFor(id)?.let {it.paused && !it.due && it.pendingFinish==null}==true},modifier=Modifier.weight(1f),showDateHeader=false)
             else TodayTimeline(state,selectedDate,planningNow,
                 onSelectDate={date ->timelineReveal=null;calendarDate=if(date==LocalDate.parse(vm.planningDate(state,planningNow)))null else date.toString()},
                 onOpenTask={openEditor(it)},onComplete={vm.complete(it)},
@@ -304,7 +321,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                     saveTimeline("已移到 ${date.monthValue}月${date.dayOfMonth}日",onSaved={calendarDate=date.toString();timelineReveal=start.toString()},undoReveal=block.start.toString()) {
                         TimelineActions.moveToDay(it,block.task.id,start,block.durationMinutes,expected)
                     }
-                },revealAt=timelineReveal?.let(Instant::parse))
+                },revealAt=timelineReveal?.let(Instant::parse),showDateHeader=false)
             }
         } else         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("main_list"),
             contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 88.dp)) {
@@ -390,6 +407,17 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             }
         }
     }
+    if(chooseDate) {
+        val picker=rememberDatePickerState(initialSelectedDateMillis=selectedDate.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli())
+        DatePickerDialog(onDismissRequest={chooseDate=false},modifier=Modifier.testTag("today_date_picker"),confirmButton={
+            TextButton(onClick={picker.selectedDateMillis?.let {millis ->
+                val date=Instant.ofEpochMilli(millis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                calendarDate=if(date==LocalDate.parse(vm.planningDate(state,planningNow)))null else date.toString();timelineReveal=null
+            };chooseDate=false},enabled=picker.selectedDateMillis!=null,modifier=Modifier.heightIn(min=48.dp).testTag("today_date_confirm")) {Text("查看这一天")}
+        },dismissButton={TextButton(onClick={chooseDate=false},modifier=Modifier.heightIn(min=48.dp)) {Text("取消")}}) {
+            Column {DatePicker(picker);Text("规划时区：${TimelineDay.from(state,selectedDate).zone.id}",style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(horizontal=24.dp,vertical=8.dp))}
+        }
+    }
     if(moreOpen)MoreWorkspaceDialog(onSelect={key->moreOpen=false;when(key) {
         "library"->libraryOpen=true
         "goals"->{initialGoalId=null;goalsOpen=true}
@@ -421,11 +449,6 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             if(scheduleModel.beginUnschedule()) {val id=scheduleModel.taskId;saveTimeline("已取消时间安排",undoReveal=expected.scheduledAt,onResult=scheduleModel::finish) {TimelineActions.clearSchedule(it,id,expected.planId,expected)}}
         }) else null,onDismiss={scheduleOpen=false;scheduleModel.clear()},onSelectDate={scheduleModel.selectDate(state,it)})
     }
-    if(executionTaskId.isNotBlank()) {
-        val task=state.items["task:$executionTaskId"]?.takeUnless {it.deleted}
-        if(task!=null)ExecutionDialog(task,execution,vm::runCommand,onDismiss={executionTaskId=""},otherFocusLabel=vm.peerFocusLabels())
-        else AlertDialog(onDismissRequest={executionTaskId=""},title={Text("任务已不可用")},confirmButton={TextButton(onClick={executionTaskId=""}){Text("关闭")}})
-    }
     if(reminderTaskId.isNotBlank())TaskReminderDialog(reminderTaskId,vm) {reminderTaskId=""}
     if(aiChooser)AlertDialog(onDismissRequest={aiChooser=false},title={Text("让 AI 帮哪件事？")},text={
         val choices=tasks.filterNot {it.completed()}.sortedBy {if(it.id==win)0 else if(it.id in ordered)1 else 2}
@@ -434,13 +457,6 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             TextButton(onClick={aiTaskId=task.id;aiChooser=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text(task.title(),modifier=Modifier.fillMaxWidth())}
         }}
     },confirmButton={TextButton(onClick={aiChooser=false}){Text("关闭")}})
-    if(executionChooser)AlertDialog(onDismissRequest={executionChooser=false},title={Text("本机正在推进")},text={
-        LazyColumn(Modifier.heightIn(max=400.dp)) {items(listOfNotNull(execution.focus)+execution.external,key={it.id}) {run ->
-            TextButton(onClick={executionTaskId=run.taskId;executionChooser=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
-                Text("${state.items["task:${run.taskId}"]?.title() ?: "任务已不可用"} · ${executionLabel(run.taskId).orEmpty()}")
-            }
-        }}
-    },confirmButton={TextButton(onClick={executionChooser=false}){Text("关闭")}})
     if(reviewOpen)MobileReviewDialog(state,planningNow,hintsEnabled,onHintsChange={enabled ->
         localScope.launch {try {withContext(Dispatchers.IO) {hintPreferences.setEnabled(enabled)};hintsEnabled=enabled} catch(_:Exception) {vm.deviceError.value="轻提示设置未保存，请重试。"}}
     },onOpen=::openReviewItem,onAI={reviewOpen=false;aiTaskId=it},onDismiss={reviewOpen=false})
@@ -505,4 +521,17 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     if(planningOpen)PlanningAIDialog(state,planningPlanId,vm::editWorkspace,onDismiss={planningOpen=false},
         ideaId=planningSubject.takeIf {planningKind=="idea"},goalId=planningSubject.takeIf {planningKind=="goal"},inboxId=planningSubject.takeIf {planningKind=="inbox"})
     if (account) AccountDialog(vm, state, status, session, busy, previewReady) { account = false }
+    if(executionChooser)AlertDialog(onDismissRequest={executionChooser=false},title={Text("本机正在推进")},text={
+        LazyColumn(Modifier.heightIn(max=400.dp)) {items(listOfNotNull(execution.focus)+execution.external,key={it.id}) {run ->
+            TextButton(onClick={executionTaskId=run.taskId;executionChooser=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
+                Text("${state.items["task:${run.taskId}"]?.title() ?: "任务已不可用"} · ${executionLabel(run.taskId).orEmpty()}")
+            }
+        }}
+    },confirmButton={TextButton(onClick={executionChooser=false}){Text("关闭")}})
+    if(executionTaskId.isNotBlank()) {
+        val task=state.items["task:$executionTaskId"]?.takeUnless {it.deleted}
+        if(task!=null)ExecutionDialog(task,execution,vm::runCommand,onDismiss={executionTaskId=""},otherFocusLabel=vm.peerFocusLabels())
+        else AlertDialog(onDismissRequest={executionTaskId=""},title={Text("任务已不可用")},confirmButton={TextButton(onClick={executionTaskId=""}){Text("关闭")}})
+    }
+    }
 }

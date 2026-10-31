@@ -3,8 +3,6 @@ package com.pare.app
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -24,9 +22,7 @@ fun DevicePresenceDialog(state: DevicePresenceState, content: SyncState, onRefre
     val peers = if (sharingEnabled == false || state.owner != content.owner || state.device != content.device) emptyList() else state.peers
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize().testTag("device_presence"), color = MaterialTheme.colorScheme.surface) {
-            Scaffold(topBar = { TopAppBar(title = { Text("其他设备的运行") }, navigationIcon = {
-                IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp).testTag("device_presence_close")) { Icon(Icons.Default.Close, "关闭") }
-            }) }) { padding ->
+            Scaffold(topBar = { ParePageHeader("其他设备的运行",onDismiss,backModifier=Modifier.testTag("device_presence_close"),backLabel="关闭") }) { padding ->
                 LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item {
                         Text("同一账号下其他设备最近报告的专注与等待记录。这里的状态仅供参考，各设备仍分别控制自己的计时。",
@@ -50,7 +46,7 @@ fun DevicePresenceDialog(state: DevicePresenceState, content: SyncState, onRefre
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(state.status, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("device_presence_status"))
                             if (sharingEnabled != false) state.lastConfirmedAt?.let { Text("最近确认：${presenceDate(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            if (sharingEnabled != false || state.status.contains("暂未确认清空")) OutlinedButton(onClick = onRefresh, enabled = !state.refreshing, modifier = Modifier.heightIn(min = 48.dp).testTag("device_presence_refresh")) {
+                            if (sharingEnabled != false || state.status.contains("暂未确认清空")) OutlinedButton(shape=MaterialTheme.shapes.medium,onClick= onRefresh, enabled = !state.refreshing, modifier = Modifier.heightIn(min = 48.dp).testTag("device_presence_refresh")) {
                                 Text(if (state.refreshing) "正在更新…" else if (sharingEnabled == false) "重试确认清空" else "更新状态")
                             }
                         }

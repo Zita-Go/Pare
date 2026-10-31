@@ -42,10 +42,7 @@ import androidx.compose.ui.window.DialogProperties
                 color = MaterialTheme.colorScheme.background
             ) {
                 Column {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("账号与同步", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                        TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp).testTag("account_close")) { Text("关闭") }
-                    }
+                    ParePageHeader("账号与同步",onDismiss,backModifier=Modifier.testTag("account_close"),backLabel="关闭")
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Column(
                         Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
@@ -68,12 +65,12 @@ import androidx.compose.ui.window.DialogProperties
                                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Button(
                                         onClick = { vm.authenticate(email.trim(), password, false); password = "" },
-                                        enabled = !busy && email.isNotBlank() && password.isNotEmpty(), shape = MaterialTheme.shapes.small,
+                                        enabled = !busy && email.isNotBlank() && password.isNotEmpty(), shape = MaterialTheme.shapes.medium,
                                         modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("account_login")
                                     ) { Text("登录") }
                                     OutlinedButton(
                                         onClick = { vm.authenticate(email.trim(), password, true); password = "" },
-                                        enabled = !busy && email.isNotBlank() && password.isNotEmpty(), shape = MaterialTheme.shapes.small,
+                                        enabled = !busy && email.isNotBlank() && password.isNotEmpty(), shape = MaterialTheme.shapes.medium,
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                         modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("account_register")
                                     ) { Text("注册") }
@@ -99,15 +96,15 @@ import androidx.compose.ui.window.DialogProperties
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 if (!state.enabled) {
-                                    Button(onClick = { consent = true }, enabled = !busy && previewReady, shape = MaterialTheme.shapes.small,
+                                    Button(onClick= { consent = true }, enabled = !busy && previewReady, shape = MaterialTheme.shapes.medium,
                                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_enable")) { Text("确认合并并开启自动同步") }
-                                    if (!previewReady) TextButton(onClick = { vm.sync(true) }, enabled = !busy, shape = MaterialTheme.shapes.small,
+                                    if (!previewReady) TextButton(onClick = { vm.sync(true) }, enabled = !busy, shape = MaterialTheme.shapes.medium,
                                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("先读取云端预览") }
                                 }
                             }
                             AccountSection {
                                 TextButton(
-                                    onClick = { details = !details }, shape = MaterialTheme.shapes.small,
+                                    onClick = { details = !details }, shape = MaterialTheme.shapes.medium,
                                     contentPadding = PaddingValues(0.dp),
                                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
                                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_details")
@@ -118,12 +115,12 @@ import androidx.compose.ui.window.DialogProperties
                                 if (details) {
                                     Text("本机待上传 ${state.items.values.count { it.dirty }} 项 · 待决定版本 ${state.items.values.count { it.conflict != null }} 项", style = MaterialTheme.typography.bodySmall)
                                     Text("AI 密钥与请求历史留在本机。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    OutlinedButton(onClick = { vm.sync(true) }, enabled = !busy, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_retry")) { Text("立即重试") }
+                                    OutlinedButton(onClick= { vm.sync(true) }, enabled = !busy, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_retry")) { Text("立即重试") }
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        if (state.enabled) TextButton(onClick = { pause = true }, shape = MaterialTheme.shapes.small,
+                                        if (state.enabled) TextButton(onClick = { pause = true }, shape = MaterialTheme.shapes.medium,
                                             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant), modifier = Modifier.heightIn(min = 48.dp)) { Text("暂停同步") }
-                                        TextButton(onClick = { signOut = true }, shape = MaterialTheme.shapes.small,
+                                        TextButton(onClick = { signOut = true }, shape = MaterialTheme.shapes.medium,
                                             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error), modifier = Modifier.heightIn(min = 48.dp)) { Text("退出账号") }
                                     }
                                 }
@@ -146,8 +143,8 @@ import androidx.compose.ui.window.DialogProperties
                             ConflictVersion("云端版本", cloudFields, localFields, cloudVersion = true, raw = cloud.payload)
                             if (state.pending != null) Text("请先重试同步，确认上一笔请求后再选择版本。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = { vm.resolve(conflict.key, true) }, enabled = !busy && state.pending == null, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("保留本机") }
-                                OutlinedButton(onClick = { vm.resolve(conflict.key, false) }, enabled = !busy && state.pending == null, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("采用云端") }
+                                OutlinedButton(onClick= { vm.resolve(conflict.key, true) }, enabled = !busy && state.pending == null, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp)) { Text("保留本机") }
+                                OutlinedButton(onClick= { vm.resolve(conflict.key, false) }, enabled = !busy && state.pending == null, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp)) { Text("采用云端") }
                             }
                         }
                     }
@@ -159,16 +156,16 @@ import androidx.compose.ui.window.DialogProperties
     if (consent) AlertDialog(onDismissRequest = { consent = false }, title = { Text("开启自动同步？") },
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         text = { Text("已读取云端预览。开启后，本机与云端的任务、想法、今日计划、背景和规划偏好会合并，之后自动同步。不同版本需要你决定，AI 密钥与请求历史不会上传。") },
-        confirmButton = { TextButton(onClick = { consent = false; vm.enableSync() }, enabled = !busy && previewReady, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("确认合并并开启") } },
-        dismissButton = { TextButton(onClick = { consent = false }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("暂不开启") } })
+        confirmButton = { TextButton(onClick = { consent = false; vm.enableSync() }, enabled = !busy && previewReady, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp)) { Text("确认合并并开启") } },
+        dismissButton = { TextButton(onClick = { consent = false }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp)) { Text("暂不开启") } })
     if (pause) AlertDialog(onDismissRequest = { pause = false }, title = { Text("暂停自动同步？") }, text = { Text("暂停后仍可在本机编辑。待上传内容会保留，重新开启后继续同步。") },
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        confirmButton = { TextButton(onClick = { pause = false; vm.pauseSync() }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("暂停同步") } },
-        dismissButton = { TextButton(onClick = { pause = false }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消") } })
+        confirmButton = { TextButton(onClick = { pause = false; vm.pauseSync() }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp)) { Text("暂停同步") } },
+        dismissButton = { TextButton(onClick = { pause = false }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消") } })
     if (signOut) AlertDialog(onDismissRequest = { signOut = false }, title = { Text("退出账号？") }, text = { Text("未上传变更会保留在本机，并继续绑定当前账号。重新登录同一账号可继续同步。") },
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        confirmButton = { TextButton(onClick = { signOut = false; vm.signOut() }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("退出并保留本机") } },
-        dismissButton = { TextButton(onClick = { signOut = false }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消") } })
+        confirmButton = { TextButton(onClick = { signOut = false; vm.signOut() }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp)) { Text("退出并保留本机") } },
+        dismissButton = { TextButton(onClick = { signOut = false }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消") } })
 }
 
 @Composable private fun ConflictVersion(title: String, fields: List<ConflictField>, other: List<ConflictField>, cloudVersion: Boolean = false, raw: JsonObject? = null) {

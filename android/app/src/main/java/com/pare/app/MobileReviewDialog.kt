@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -46,20 +47,20 @@ class MobileHintPreferences(context:Context) {
 @Composable fun MobileReviewDialog(state:SyncState,now:Instant,hintsEnabled:Boolean,onHintsChange:(Boolean)->Unit,
     onOpen:(ReviewAttention)->Unit,onAI:(String)->Unit,onDismiss:()->Unit) {
     val review=remember(state,now) {MobileReview.calculate(state,now)}
-    var showCompleted by remember {mutableStateOf(false)}
-    var showAnalytics by remember {mutableStateOf(false)}
+    var showCompleted by rememberSaveable {mutableStateOf(false)}
+    var showAnalytics by rememberSaveable {mutableStateOf(false)}
     var copyStatus by remember {mutableStateOf("")}
+    var copyMessage by remember {mutableStateOf<String?>(null)}
+    var copyEvent by remember {mutableLongStateOf(0L)}
     val context=LocalContext.current
     val analytics=remember(state,now) {ReviewAnalytics.calculate(state,now)}
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding().testTag("review_dialog"),color=MaterialTheme.colorScheme.background) {
             Column {
-                Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(start=20.dp,end=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Text("回看最近7天",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
-                    TextButton(onClick=onDismiss,modifier=Modifier.heightIn(min=48.dp).testTag("review_close")) {Text("关闭")}
-                }
+                ParePageHeader("回看最近7天",onDismiss,backModifier=Modifier.testTag("review_close"),backLabel="关闭")
                 HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
-                LazyColumn(Modifier.weight(1f),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                Box(Modifier.weight(1f)) {
+                LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                     item {
                         Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                             Text("你的实际投入",style=MaterialTheme.typography.titleMedium)
@@ -108,14 +109,16 @@ class MobileHintPreferences(context:Context) {
                             Text("估时校准",style=MaterialTheme.typography.titleSmall)
                             Text(if(c==null) "尚无同时填写预计与实际分钟的已完成任务，不作推算。" else "${c.pairs} 件完整样本：预计 ${c.estimatedMinutes} 分钟，实际 ${c.actualMinutes} 分钟；实际/预计 ${String.format(java.util.Locale.ROOT,"%.2f",c.ratio)} 倍。",style=MaterialTheme.typography.bodyMedium)
                         }
-                        OutlinedButton(onClick={
+                        OutlinedButton(shape=MaterialTheme.shapes.medium,onClick={
+                            copyMessage=null
                             val text=ReviewAnalytics.export(state,now)
                             copyStatus=try {
                                 (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Pare 本地回顾",text))
-                                "已复制汇总；不含任务标题或 AI 原始记录"
+                                copyEvent++; copyMessage="已复制汇总；不含任务标题或 AI 原始记录"
+                                ""
                             } catch(_:Exception) {"复制失败，请重试"}
                         },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("review_copy")) {Text("复制本地回顾")}
-                        if(copyStatus.isNotEmpty())Text(copyStatus,style=MaterialTheme.typography.bodySmall,modifier=Modifier.testTag("review_copy_status"))
+                        if(copyStatus.isNotEmpty())Text(copyStatus,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall,modifier=Modifier.testTag("review_copy_status"))
                     }
                     item {Text("值得回看",style=MaterialTheme.typography.titleMedium,modifier=Modifier.padding(top=8.dp))}
                     if(review.attention.isEmpty()) item {
@@ -161,6 +164,8 @@ class MobileHintPreferences(context:Context) {
                             }
                         }
                     }
+                }
+                ManagementSnackbar(copyMessage,copyEvent,{event -> if(copyEvent==event) copyMessage=null},"review_copy_status",Modifier.align(Alignment.BottomCenter))
                 }
             }
         }

@@ -8,6 +8,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
@@ -70,24 +74,23 @@ internal fun TodayDateHeader(day:TimelineDay,now:Instant,onSelectDate:(LocalDate
 fun TodayOverview(state:SyncState,selectedDate:LocalDate,now:Instant,onSelectDate:(LocalDate)->Unit,
     onOpenTask:(Entity)->Unit,onComplete:(Entity)->Unit,onScheduleTask:(Entity,TimelineDay)->Unit,
     onEditSchedule:(TimelineBlock)->Unit,onExecution:(Entity)->Unit,executionLabel:(String)->String?,executionPaused:(String)->Boolean,
-    modifier:Modifier=Modifier) {
+    modifier:Modifier=Modifier,showDateHeader:Boolean=true) {
     val day=remember(state,selectedDate) {TimelineDay.from(state,selectedDate)}
     val projection=remember(state,day) {TodayOverviewProjection.project(state,day)}
     val win=state.items["day_plan:${day.planId}"]?.takeUnless {it.deleted}?.content()?.timelineString("daily_win_task_id")
     var completedExpanded by rememberSaveable(day.planId) {mutableStateOf(false)}
     val remaining=projection.scheduled.size+projection.unscheduled.size
     Column(modifier.fillMaxSize().testTag("today_overview")) {
-        TodayDateHeader(day,now,onSelectDate)
+        if(showDateHeader) TodayDateHeader(day,now,onSelectDate)
         Text("待办 $remaining 件 · 已完成 ${projection.completed.size} 件",style=MaterialTheme.typography.bodySmall,
-            color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(horizontal=16.dp,vertical=6.dp).testTag("today_overview_summary"))
+            color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(horizontal=16.dp,vertical=2.dp).testTag("today_overview_summary"))
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("today_overview_list"),contentPadding=PaddingValues(start=12.dp,end=12.dp,bottom=96.dp)) {
-            if(projection.scheduled.isNotEmpty())item {OverviewSection("已安排时间",projection.scheduled.size)}
-            items(projection.scheduled,key={"scheduled:${it.task.id}"}) {entry ->
-                OverviewRow(entry,day,entry.task.id==win,onOpenTask,onComplete,onScheduleTask,onEditSchedule,onExecution,executionLabel(entry.task.id),executionPaused(entry.task.id))
+            itemsIndexed(projection.scheduled,key={_,entry->"scheduled:${entry.task.id}"}) {index,entry ->
+                OverviewRow(entry,day,entry.task.id==win,onOpenTask,onComplete,onScheduleTask,onEditSchedule,onExecution,executionLabel(entry.task.id),executionPaused(entry.task.id),index==0,index==projection.scheduled.lastIndex,Modifier.animateItem(fadeInSpec=tween(120),placementSpec=tween(180),fadeOutSpec=tween(120)))
             }
-            if(projection.unscheduled.isNotEmpty())item {OverviewSection("未定时间",projection.unscheduled.size)}
-            items(projection.unscheduled,key={"unscheduled:${it.task.id}"}) {entry ->
-                OverviewRow(entry,day,entry.task.id==win,onOpenTask,onComplete,onScheduleTask,onEditSchedule,onExecution,executionLabel(entry.task.id),executionPaused(entry.task.id))
+            if(projection.unscheduled.isNotEmpty() && projection.scheduled.isNotEmpty())item {OverviewSection("未定时间",projection.unscheduled.size)}
+            itemsIndexed(projection.unscheduled,key={_,entry->"unscheduled:${entry.task.id}"}) {index,entry ->
+                OverviewRow(entry,day,entry.task.id==win,onOpenTask,onComplete,onScheduleTask,onEditSchedule,onExecution,executionLabel(entry.task.id),executionPaused(entry.task.id),index==0,index==projection.unscheduled.lastIndex,Modifier.animateItem(fadeInSpec=tween(120),placementSpec=tween(180),fadeOutSpec=tween(120)))
             }
             if(remaining==0)item {
                 EmptyNote(if(projection.completed.isEmpty()) "这一天还没有任务" else "这一天的任务已完成",
@@ -105,12 +108,12 @@ fun TodayOverview(state:SyncState,selectedDate:LocalDate,now:Instant,onSelectDat
 
 @Composable private fun OverviewSection(title:String,count:Int) {
     Text("$title · $count",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier=Modifier.padding(start=8.dp,top=10.dp,bottom=4.dp))
+        modifier=Modifier.padding(start=4.dp,top=4.dp,bottom=4.dp))
 }
 
 @Composable private fun OverviewRow(entry:TodayOverviewEntry,day:TimelineDay,win:Boolean,
     onOpen:(Entity)->Unit,onComplete:(Entity)->Unit,onSchedule:(Entity,TimelineDay)->Unit,
-    onEditSchedule:(TimelineBlock)->Unit,onExecution:(Entity)->Unit,executionLabel:String?,paused:Boolean) {
+    onEditSchedule:(TimelineBlock)->Unit,onExecution:(Entity)->Unit,executionLabel:String?,paused:Boolean,first:Boolean=true,last:Boolean=true,modifier:Modifier=Modifier) {
     val task=entry.task
     val completed=task.completed()
     val clock=remember {DateTimeFormatter.ofPattern("HH:mm")}
@@ -120,8 +123,11 @@ fun TodayOverview(state:SyncState,selectedDate:LocalDate,now:Instant,onSelectDat
         val end=if(block.end>=day.end)"次日 ${block.end.atZone(day.zone).format(clock)}" else block.end.atZone(day.zone).format(clock)
         return "$start–$end · ${block.durationMinutes}分"
     }
+    val rowShape=RoundedCornerShape(topStart=if(first)12.dp else 0.dp,topEnd=if(first)12.dp else 0.dp,bottomStart=if(last)12.dp else 0.dp,bottomEnd=if(last)12.dp else 0.dp)
+    Column(modifier.fillMaxWidth()) {
     Surface(color=if(win)MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
-        shape=MaterialTheme.shapes.medium,modifier=Modifier.fillMaxWidth().padding(vertical=3.dp).testTag("overview_task_${task.id}")) {
+        shape=rowShape,modifier=Modifier.fillMaxWidth().testTag("overview_task_${task.id}")) {
+        Column {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
             Box(Modifier.size(48.dp).toggleable(completed,role=Role.Checkbox,onValueChange={onComplete(task)}).testTag("overview_complete_${task.id}")
                 .semantics {contentDescription=(if(completed)"标为未完成：" else "完成：")+task.title()},contentAlignment=Alignment.Center) {
@@ -142,7 +148,7 @@ fun TodayOverview(state:SyncState,selectedDate:LocalDate,now:Instant,onSelectDat
                     style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if(!completed)Box {
-                IconButton(onClick={when(entry.blocks.size){0->onSchedule(task,day);1->onEditSchedule(entry.blocks.single());else->chooseOccurrence=true}},modifier=Modifier.size(48.dp).testTag("overview_schedule_${task.id}")) {Icon(Icons.Default.DateRange,if(entry.blocks.isEmpty())"安排时间" else "调整时间",tint=MaterialTheme.colorScheme.onSurfaceVariant)}
+                IconButton(onClick={when(entry.blocks.size){0->onSchedule(task,day);1->onEditSchedule(entry.blocks.single());else->chooseOccurrence=true}},modifier=Modifier.size(48.dp).testTag("overview_schedule_${task.id}")) {Icon(Icons.Outlined.DateRange,if(entry.blocks.isEmpty())"安排时间" else "调整时间",modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)}
                 DropdownMenu(expanded=chooseOccurrence,onDismissRequest={chooseOccurrence=false}) {
                     entry.blocks.forEach {block->DropdownMenuItem(text={Text(timeLabel(block))},onClick={chooseOccurrence=false;onEditSchedule(block)})}
                 }
@@ -152,8 +158,11 @@ fun TodayOverview(state:SyncState,selectedDate:LocalDate,now:Instant,onSelectDat
                 if(active)Row(Modifier.size(24.dp).padding(horizontal=6.dp,vertical=4.dp).semantics {contentDescription="暂停"},horizontalArrangement=Arrangement.spacedBy(4.dp)) {
                     repeat(2) {Box(Modifier.weight(1f).fillMaxHeight().background(MaterialTheme.colorScheme.primary))}
                 } else Icon(if(executionLabel==null || paused)Icons.Default.PlayArrow else Icons.Default.MoreVert,
-                    if(paused)"继续" else executionLabel ?: "开始专注",tint=MaterialTheme.colorScheme.primary)
+                    if(paused)"继续" else executionLabel ?: "开始专注",modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.primary)
             }
         }
+        if(!last)HorizontalDivider(Modifier.padding(start=48.dp,end=12.dp),color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=.55f))
+        }
+    }
     }
 }

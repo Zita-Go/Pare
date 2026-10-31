@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -37,7 +38,6 @@ fun MobileNotificationSettings(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var refresh by remember { mutableIntStateOf(0) }
     var message by remember { mutableStateOf<String?>(null) }
-    var expanded by remember { mutableStateOf(false) }
     fun reload() {
         refresh++
         scope.launch(Dispatchers.IO) { runCatching { runtime.refresh() } }
@@ -53,21 +53,46 @@ fun MobileNotificationSettings(modifier: Modifier = Modifier) {
     fun openSettings(intent: Intent) {
         runCatching { context.startActivity(intent) }.onFailure { message = "无法打开系统设置，请在系统中找到 Pare 的通知与闹钟权限。" }
     }
+    MobileNotificationControls(
+        allowed = allowed, exact = exact, modifier = modifier,
+        onEnable = {
+            if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            else openSettings(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+        },
+        onSystemSettings = { openSettings(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)) },
+        onExactSettings = if (allowed && !exact && Build.VERSION.SDK_INT >= 31) ({
+            openSettings(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
+        }) else null,
+        error = message ?: runtime.lastError()
+    )
+}
+
+/** Displaying permission status never requests a permission; each OS action follows its own tap. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun MobileNotificationControls(
+    allowed: Boolean,
+    exact: Boolean,
+    onEnable: () -> Unit,
+    onSystemSettings: () -> Unit,
+    onExactSettings: (() -> Unit)?,
+    error: String? = null,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("手机提醒", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
         Text(when {
-            !allowed -> "手机通知尚未开启；时间安排仍会保留。"
-            !exact -> "手机提醒使用大约时间，系统省电可能进一步延迟。"
-            else -> "已允许按时间提醒；强行停止应用或系统限制仍可能影响送达。"
-        }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            !allowed -> "手机通知未开启，安排仍会保留。"
+            !exact -> "手机提醒已开启，按大约时间提醒。"
+            else -> "手机提醒已开启，送达仍受系统限制。"
+        }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("notification_status"))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (!allowed) TextButton(onClick = {
-                if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
-                    permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                else openSettings(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-            }, modifier = Modifier.heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("开启手机通知") }
+            if (!allowed) TextButton(onClick = onEnable, modifier = Modifier.heightIn(min = 48.dp).testTag("notification_enable"),
+                contentPadding = PaddingValues(horizontal = 4.dp)) { Text("开启手机通知") }
             TextButton(onClick = { expanded = !expanded },
-                modifier = Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (expanded) "已展开" else "已收起" },
+                modifier = Modifier.heightIn(min = 48.dp).testTag("notification_disclosure").semantics { stateDescription = if (expanded) "已展开" else "已收起" },
                 contentPadding = PaddingValues(horizontal = 4.dp)) {
                 Text("提醒设置")
                 Spacer(Modifier.width(4.dp))
@@ -75,13 +100,14 @@ fun MobileNotificationSettings(modifier: Modifier = Modifier) {
             }
         }
         if (expanded) {
+            Text("系统省电、强行停止应用或通知权限变化可能延迟或阻止提醒。", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             // Keep system settings reachable after repeated permission denial or channel disable.
-            TextButton(onClick = { openSettings(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)) },
-                modifier = Modifier.heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("系统通知设置") }
-            if (allowed && !exact && Build.VERSION.SDK_INT >= 31) TextButton(onClick = {
-                openSettings(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
-            }, modifier = Modifier.heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("允许更准时的提醒") }
+            TextButton(onClick = onSystemSettings,
+                modifier = Modifier.heightIn(min = 48.dp).testTag("notification_system_settings"), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("系统通知设置") }
+            if (onExactSettings != null) TextButton(onClick = onExactSettings,
+                modifier = Modifier.heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("允许更准时的提醒") }
         }
-        (message ?: runtime.lastError())?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
 }

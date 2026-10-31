@@ -64,7 +64,7 @@ internal fun OrganizeDialog(item: Entity?, saving: Boolean, error: String?, onCo
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = onDismiss, enabled = !saving, modifier = Modifier.heightIn(min = 48.dp).testTag("organize_cancel")) { Text("取消") }
                 Button(onClick = { onConfirm(quadrant, today) }, enabled = !saving && quadrant in 0..3 && item != null && !item.deleted,
-                    shape = MaterialTheme.shapes.small, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("organize_confirm")) {
+                    shape = MaterialTheme.shapes.medium, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("organize_confirm")) {
                     Text(if (saving) "正在整理…" else "确认整理")
                 }
             }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +48,11 @@ class TimelineScheduleModel : ViewModel() {
     var saved by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var lastAttemptWasUnschedule by mutableStateOf(false); private set
+    private data class Draft(val title: String, val time: String, val minutes: String,
+        val date: LocalDate?, val reminderEnabled: Boolean, val reminderMinutes: String)
+    private var originalDraft: Draft? = null
+    private fun currentDraft() = Draft(title, time, minutes, day?.date, reminderEnabled, reminderMinutes)
+    fun hasChanges(): Boolean = originalDraft?.let { currentDraft() != it } ?: false
     private var titleFocusRequested = false
     // Preserve a selected occurrence in a repeated DST hour until the clock text is changed.
     private var initialTime: String? = null
@@ -76,6 +82,7 @@ class TimelineScheduleModel : ViewModel() {
         minutes = (baseline.scheduledMinutes ?: 30).toString()
         reminderEnabled = baseline.reminderLeadMinutes != null
         reminderMinutes = (baseline.reminderLeadMinutes ?: 0).toString()
+        originalDraft = currentDraft()
     }
 
     fun selectDate(state:SyncState,date:LocalDate) {
@@ -139,6 +146,7 @@ class TimelineScheduleModel : ViewModel() {
         saved = false; error = null; initialTime = null; initialOffset = null
         lastAttemptWasUnschedule = false
         titleFocusRequested = false
+        originalDraft = null
     }
 }
 
@@ -158,13 +166,19 @@ fun TimelineScheduleDialog(
     val start = model.startInstant()
     val duration = model.durationMinutes()
     var showDatePicker by remember {mutableStateOf(false)}
+    var confirmDiscard by rememberSaveable(model.taskId) { mutableStateOf(false) }
+    val dismiss: () -> Unit = {
+        if (!model.saving) {
+            if (model.hasChanges()) confirmDiscard = true else onDismiss()
+        }
+    }
     if(showDatePicker && onSelectDate!=null) {
         val picker=rememberDatePickerState(initialSelectedDateMillis=day.date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
         DatePickerDialog(onDismissRequest={showDatePicker=false},confirmButton={TextButton(onClick={
             picker.selectedDateMillis?.let {onSelectDate(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate())};showDatePicker=false
         },enabled=picker.selectedDateMillis!=null) {Text("选择日期")}},dismissButton={TextButton(onClick={showDatePicker=false}) {Text("取消")}}) {DatePicker(picker)}
     }
-    Dialog(onDismissRequest = { if (!model.saving) onDismiss() }, properties = DialogProperties(
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(
         usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
         dismissOnBackPress = !model.saving, dismissOnClickOutside = !model.saving)) {
         val titleFocus = remember(model.taskId) { FocusRequester() }
@@ -181,15 +195,15 @@ fun TimelineScheduleDialog(
         Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.Center) {
             Surface(Modifier.widthIn(max = 640.dp).fillMaxWidth().fillMaxHeight().testTag("timeline_schedule_dialog"), color = MaterialTheme.colorScheme.surface) {
                 Column {
-                    Text(if (model.isNewTask) "安排一件事" else "调整时间", style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp))
+                    ParePageHeader(if (model.isNewTask) "安排一件事" else "调整时间", onBack = dismiss, enabled = !model.saving,
+                        backModifier = Modifier.testTag("timeline_schedule_cancel"))
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         if (model.isNewTask) {
                             PareFormField(model.title, { model.title = it }, "要做什么？", enabled = enabled,
                                 modifier = Modifier.fillMaxWidth().focusRequester(titleFocus).testTag("timeline_schedule_title"), minLines = 2)
                         } else {
-                            Text(model.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("timeline_schedule_title"))
+                            Text(model.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("timeline_schedule_title"))
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(day.date.format(DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE")), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("timeline_schedule_date"))
@@ -206,7 +220,7 @@ fun TimelineScheduleDialog(
                                 modifier = Modifier.fillMaxWidth().testTag("timeline_schedule_duration"))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 listOf(15, 30, 60, 90).forEach { amount ->
-                                    FilterChip(selected = duration == amount, onClick = { model.minutes = amount.toString() }, enabled = enabled,
+                                    FilterChip(colors = pareChoiceColors(), selected = duration == amount, onClick = { model.minutes = amount.toString() }, enabled = enabled,
                                         label = { Text("$amount 分钟") }, modifier = Modifier.heightIn(min = 48.dp).testTag("timeline_duration_$amount"))
                                 }
                             }
@@ -233,7 +247,7 @@ fun TimelineScheduleDialog(
                             }
                         }
                         if (onUnschedule != null && !model.isNewTask && model.expected?.scheduledAt != null) {
-                            OutlinedButton(onClick = onUnschedule, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("timeline_unschedule"), shape = MaterialTheme.shapes.small) {
+                            OutlinedButton(onClick = onUnschedule, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("timeline_unschedule"), shape = MaterialTheme.shapes.medium) {
                                 Text(if (model.error != null && model.lastAttemptWasUnschedule) "重试移回待安排" else "移回待安排")
                             }
                             Text("保留任务、今日顺序和推进方式。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -249,14 +263,13 @@ fun TimelineScheduleDialog(
                     }
                     if (error != null) Text("$error\n\n$recovery",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth().heightIn(max = 120.dp).clip(MaterialTheme.shapes.small)
+                        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().heightIn(max = 120.dp).clip(MaterialTheme.shapes.small)
                             .background(MaterialTheme.colorScheme.errorContainer).verticalScroll(rememberScrollState()).padding(12.dp)
                             .testTag("timeline_schedule_error").semantics { liveRegion = LiveRegionMode.Polite })
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TextButton(onClick = onDismiss, enabled = !model.saving, modifier = Modifier.heightIn(min = 48.dp).testTag("timeline_schedule_cancel")) { Text("取消") }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(onClick = onSave, enabled = enabled && model.validationMessage() == null,
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("timeline_schedule_save"), shape = MaterialTheme.shapes.small) {
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("timeline_schedule_save"), shape = MaterialTheme.shapes.medium) {
                             Text(if (model.saving) "正在保存…" else if (model.error != null && !model.lastAttemptWasUnschedule) "重试保存" else "保存")
                         }
                     }
@@ -264,4 +277,18 @@ fun TimelineScheduleDialog(
             }
         }
     }
+    if (confirmDiscard) AlertDialog(
+        onDismissRequest = { if (!model.saving) confirmDiscard = false },
+        title = { Text("放弃时间安排草稿？") },
+        text = { Text("修改还没有保存。继续编辑会保留当前内容；放弃后将关闭，已保存的任务与安排不变。") },
+        confirmButton = {
+            TextButton(onClick = { if (!model.saving) { confirmDiscard = false; onDismiss() } },
+                enabled = !model.saving, modifier = Modifier.heightIn(min = 48.dp).testTag("timeline_schedule_discard")) { Text("放弃草稿并返回") }
+        },
+        dismissButton = {
+            TextButton(onClick = { confirmDiscard = false }, enabled = !model.saving,
+                modifier = Modifier.heightIn(min = 48.dp).testTag("timeline_schedule_continue")) { Text("继续编辑") }
+        }
+    )
+
 }

@@ -38,7 +38,7 @@ fun TaskSupportDialog(taskId: String, vm: PareViewModel, onStart: ((String) -> U
         val enabled = available && !model.saving
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("当前任务", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(task?.title() ?: "任务已不可用", style = MaterialTheme.typography.titleLarge)
+            Text(task?.title() ?: "任务已不可用", style = MaterialTheme.typography.bodyLarge)
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("卡在哪里", style = MaterialTheme.typography.titleSmall)
@@ -65,7 +65,7 @@ fun TaskSupportDialog(taskId: String, vm: PareViewModel, onStart: ((String) -> U
             Text(if (model.kind == "check") "留几分钟检查结果" else "先给自己一点时间", style = MaterialTheme.typography.titleSmall)
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 listOf(5, 10, 15).forEach { minutes ->
-                    FilterChip(selected = !custom && model.minutes == minutes.toString(), onClick = { custom = false; model.minutes = minutes.toString() },
+                    FilterChip(colors = pareChoiceColors(), selected = !custom && model.minutes == minutes.toString(), onClick = { custom = false; model.minutes = minutes.toString() },
                         enabled = enabled, label = { Text("$minutes 分钟") }, shape = MaterialTheme.shapes.small,
                         modifier = Modifier.widthIn(min = 88.dp).heightIn(min = 48.dp).testTag("support_minutes_$minutes"))
                 }
@@ -80,7 +80,7 @@ fun TaskSupportDialog(taskId: String, vm: PareViewModel, onStart: ((String) -> U
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("support_minutes"))
         }
         TimeBlockDisclosure(model)
-        if(onStart!=null) OutlinedButton(onClick={save(true)},enabled=enabled && model.nextAction.isNotBlank() && model.definitionOfDone.isNotBlank() && model.allocation()!=null,
+        if(onStart!=null) OutlinedButton(shape=MaterialTheme.shapes.medium,onClick={save(true)},enabled=enabled && model.nextAction.isNotBlank() && model.definitionOfDone.isNotBlank() && model.allocation()!=null,
             modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("support_save_start")) {Text("保存并开始5分钟")}
         Text(if(onStart==null) "保存会记录下一步和今日投入，计时由你手动开始。" else "保存会记录下一步和今日投入。选择“保存并开始5分钟”才请求启动专注；只保存不会启动。", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)

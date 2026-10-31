@@ -25,17 +25,27 @@ class PreferencesWorkspaceModel : ViewModel() {
     var saving by mutableStateOf(false); private set
     var error: String? by mutableStateOf(null); private set
     var message: String? by mutableStateOf(null); private set
+    var messageEvent by mutableLongStateOf(0L); private set
+    fun consumeMessage(event: Long) { if(messageEvent==event) message=null }
     var confirmDiscard by mutableStateOf(false)
     var forgetEntry: JsonObject? by mutableStateOf(null)
     var forgetBaseline: PreferenceBaseline? = null
+    private var initialProfile: ProfileDraft? = null
+    private var initialPreference: ConfirmedPreferenceDraft? = null
+    private var initialPlanning = "30"
+    private var initialStarting = "5"
+    fun isDirty() = if(profile!=null) profile!=initialProfile || planningMinutes!=initialPlanning || startingMinutes!=initialStarting
+        else preference!=null && preference!=initialPreference
     fun openProfile(entity: Entity?) {
         if(saving || profile!=null || preference!=null) return
         profile=ProfileDraft.from(entity); profileBaseline=ProfileBaseline.from(entity)
         planningMinutes=profile!!.planningMinutes.toString(); startingMinutes=profile!!.startingMinutes.toString(); error=null; message=null
+        initialProfile=profile;initialPlanning=planningMinutes;initialStarting=startingMinutes
     }
     fun openPreference(entity: Entity?,entry: JsonObject?) {
         if(saving || profile!=null || preference!=null) return
         preference=entry?.let(ConfirmedPreferenceDraft::from) ?: ConfirmedPreferenceDraft()
+        initialPreference=preference
         preferenceBaseline=PreferenceBaseline.from(entity,preference!!.id); source=entry?.stringValue("source") ?: "用户填写"; error=null; message=null
     }
     fun changeProfile(value: ProfileDraft) { if(!saving) {profile=value;error=null} }
@@ -49,7 +59,7 @@ class PreferencesWorkspaceModel : ViewModel() {
     }
     fun finish(result: Result<Unit>) {
         saving=false
-        if(result.isSuccess) {clear();message="已保存"}
+        if(result.isSuccess) {clear();messageEvent++;message="已保存"}
         else error=result.exceptionOrNull()?.message ?: "保存失败，草稿已保留，请重试。"
     }
     fun clear() {
@@ -63,11 +73,10 @@ class PreferencesWorkspaceModel : ViewModel() {
     val current=state.items["profile:profile"]
     val editing=model.profile!=null || model.preference!=null
     val zone=PreferencesActions.planningZone(state)
-    val close={ if(!model.saving) {if(editing) model.confirmDiscard=true else onDismiss()} }
+    val close={ if(!model.saving) {if(editing) {if(model.isDirty()) model.confirmDiscard=true else model.clear()} else onDismiss()} }
     val title=when {model.profile!=null->"规划偏好";model.preference!=null->"确认一条偏好";else->"我的偏好"}
-    GoalsPreferencesFrame(title,"preferences_workspace",model.saving,model.error,close,actions={
-        TextButton(onClick=close,enabled=!model.saving,modifier=Modifier.heightIn(min=48.dp)) {Text(if(editing) "返回" else "关闭")}
-        if(editing) Button(onClick={
+    GoalsPreferencesFrame(title,"preferences_workspace",model.saving,model.error,close,editing=editing,message=model.message,messageEvent=model.messageEvent,onMessageConsumed=model::consumeMessage,messageTag="preferences_saved",actions={
+        if(editing) Button(shape=MaterialTheme.shapes.medium,onClick={
             val profile=model.profileValue(); val preference=model.preference
             val profileExpected=model.profileBaseline; val preferenceExpected=model.preferenceBaseline
             if(model.begin()) {
@@ -103,7 +112,7 @@ class PreferencesWorkspaceModel : ViewModel() {
                 var scopesOpen by rememberSaveable(draft.id) {mutableStateOf(false)}
                 var scopeQuery by rememberSaveable(draft.id) {mutableStateOf("")}
                 Text("适用范围",style=MaterialTheme.typography.titleSmall)
-                OutlinedButton(onClick={scopesOpen=!scopesOpen},enabled=!model.saving,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("preference_scope")) {
+                OutlinedButton(shape=MaterialTheme.shapes.medium,onClick={scopesOpen=!scopesOpen},enabled=!model.saving,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("preference_scope")) {
                     Text(preferenceScopeLabel(draft.ideaId,state))
                 }
                 if(scopesOpen) {
@@ -134,8 +143,7 @@ class PreferencesWorkspaceModel : ViewModel() {
                 }
                 HorizontalDivider()
                 Text("已确认的偏好",style=MaterialTheme.typography.titleMedium)
-                OutlinedButton(onClick={model.openPreference(current,null)},enabled=available && !model.saving,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("preference_add")) {Text("添加偏好")}
-                model.message?.let {Text(it,color=MaterialTheme.colorScheme.primary,modifier=Modifier.testTag("preferences_saved"))}
+                OutlinedButton(shape=MaterialTheme.shapes.medium,onClick={model.openPreference(current,null)},enabled=available && !model.saving,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("preference_add")) {Text("添加偏好")}
                 val entries=PreferencesActions.entries(current).sortedByDescending {it.stringValue("updatedAt")}
                 if(entries.isEmpty()) Text("可以写下你的工作节奏，或只适用于某个想法的限制。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 entries.forEach { entry ->

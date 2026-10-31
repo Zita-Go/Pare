@@ -103,7 +103,7 @@ class UserWorkspaceFlowTest {
         compose.onNodeWithTag("library_menu_$taskId").performClick()
     }
     private fun closeWorkspace(tag: String) {
-        compose.onNode(hasText("关闭") and hasAnyAncestor(hasTestTag(tag))).performClick()
+        compose.onNode((hasText("关闭") or hasContentDescription("关闭")) and hasAnyAncestor(hasTestTag(tag))).performClick()
         gone(tag)
     }
     private fun optionalScreenshot(name: String, rootTag: String) {

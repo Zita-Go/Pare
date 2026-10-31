@@ -63,7 +63,8 @@ fun TodayTimeline(
     revealUnscheduledKey: Int = 0,
     modifier: Modifier = Modifier,
     onMoveToDay: ((TimelineBlock, Instant, TimelineMoveBaseline) -> Unit)? = null,
-    revealAt: Instant? = null
+    revealAt: Instant? = null,
+    showDateHeader:Boolean = true
 ) {
     val day = remember(state, selectedDate) { TimelineDay.from(state, selectedDate) }
     val projection = remember(state, day) { TimelineProjection.project(state, day) }
@@ -224,7 +225,7 @@ fun TodayTimeline(
     }
 
     Column(modifier.fillMaxSize().testTag("today_timeline")) {
-        TodayDateHeader(day,now,onSelectDate)
+        if(showDateHeader) TodayDateHeader(day,now,onSelectDate)
         if (plannedLoad.personalMinutes != 0L || plannedLoad.checkMinutes != 0L || plannedLoad.unplannedCount != 0) {
             val summary=listOfNotNull(
                 if(plannedLoad.personalMinutes>0) "自己做 ${plannedLoad.personalMinutes} 分钟" else null,

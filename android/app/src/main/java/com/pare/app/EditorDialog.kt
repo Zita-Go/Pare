@@ -5,8 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -69,14 +67,12 @@ import androidx.compose.ui.window.DialogProperties
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Column {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 4.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = dismiss, enabled = !saving, modifier = Modifier.size(48.dp).testTag("editor_cancel")) {
-                            Icon(if (draft.isNew) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack, if (draft.isNew) "取消" else "返回", modifier = Modifier.size(22.dp))
-                        }
-                        Text(if (draft.isNew) when (draft.kind) { "task" -> "添加任务"; "idea" -> "记录想法"; else -> "随手记" } else when (draft.kind) { "idea" -> "想法详情"; "inbox" -> "随手记详情"; else -> "任务详情" },
-                            style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        if (!draft.isNew) EditorSaveButton(draft, saving, onSave)
-                    }
+                    ParePageHeader(
+                        title = if (draft.isNew) when (draft.kind) { "task" -> "添加任务"; "idea" -> "记录想法"; else -> "随手记" }
+                            else when (draft.kind) { "idea" -> "想法详情"; "inbox" -> "随手记详情"; else -> "任务详情" },
+                        onBack = dismiss, backLabel = if (draft.isNew) "取消" else "返回", enabled = !saving,
+                        backModifier = Modifier.testTag("editor_cancel")
+                    )
                     Column(
                         Modifier.weight(1f, fill = !draft.isNew).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -94,6 +90,10 @@ import androidx.compose.ui.window.DialogProperties
                         if(draft.isNew && plannedDayLabel!=null)Text(plannedDayLabel,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         if(!draft.isNew && draft.kind=="task")taskActions?.invoke()
                         if(!draft.isNew && draft.kind=="inbox")inboxActions?.invoke()
+                        if (draft.isNew && draft.kind == "task" && !expanded) TextButton(
+                            onClick = { expanded = true }, enabled = !saving,
+                            contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("editor_estimate_entry")
+                        ) { Text("预计时长 · ${draft.estimate.takeIf { it.isNotBlank() }?.let { "$it 分钟" } ?: "未填写"}") }
                         if (draft.isNew && draft.kind != "inbox") TextButton(
                             onClick = { expanded = !expanded }, enabled = !saving,
                             contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("editor_details")
@@ -129,10 +129,8 @@ import androidx.compose.ui.window.DialogProperties
                         }
                         if (latestVersion != null) TextButton(onClick = { compareLatest = true }, modifier = Modifier.heightIn(min = 48.dp).testTag("editor_compare_latest")) { Text("查看最新版本") }
                     }
-                    if (draft.isNew) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.End) { EditorSaveButton(draft, saving, onSave) }
-                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.End) { EditorSaveButton(draft, saving, onSave) }
                 }
             }
             LaunchedEffect(draft.entityId) {
@@ -164,18 +162,18 @@ import androidx.compose.ui.window.DialogProperties
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { compareLatest = false }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp).testTag("editor_return_draft")) { Text("返回草稿") } },
-        dismissButton = { if (onReloadLatest != null) TextButton(onClick = { compareLatest = false; onReloadLatest() }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp).testTag("editor_reload_latest")) { Text("放弃草稿并载入最新") } })
+        confirmButton = { TextButton(onClick = { compareLatest = false }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp).testTag("editor_return_draft")) { Text("返回草稿") } },
+        dismissButton = { if (onReloadLatest != null) TextButton(onClick = { compareLatest = false; onReloadLatest() }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp).testTag("editor_reload_latest")) { Text("放弃草稿并载入最新") } })
     if (confirmClose) AlertDialog(onDismissRequest = { confirmClose = false }, title = { Text("修改还没有保存") },
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("可以保留草稿，稍后继续编辑。草稿尚未同步到其他设备。")
-                TextButton(onClick = { confirmClose = false; onDiscard() }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp).testTag("draft_discard")) { Text("放弃修改", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { confirmClose = false; onDiscard() }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp).testTag("draft_discard")) { Text("放弃修改", color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton(onClick = { confirmClose = false; onDismiss() }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp).testTag("draft_keep_close")) { Text("保留草稿并关闭") } },
-        dismissButton = { TextButton(onClick = { confirmClose = false }, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(min = 48.dp).testTag("draft_continue")) { Text("继续编辑") } })
+        confirmButton = { TextButton(onClick = { confirmClose = false; onDismiss() }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp).testTag("draft_keep_close")) { Text("保留草稿并关闭") } },
+        dismissButton = { TextButton(onClick = { confirmClose = false }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp).testTag("draft_continue")) { Text("继续编辑") } })
 }
 
 @Composable private fun LatestVersionField(label: String, value: String) {
@@ -186,7 +184,7 @@ import androidx.compose.ui.window.DialogProperties
 }
 
 @Composable private fun EditorSaveButton(draft: EditorDraft, saving: Boolean, onSave: () -> Unit) {
-    Button(onClick = onSave, enabled = !saving && draft.text.isNotBlank(), shape = MaterialTheme.shapes.small,
+    Button(onClick = onSave, enabled = !saving && draft.text.isNotBlank(), shape = MaterialTheme.shapes.medium,
         contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("editor_save")) {
         if (saving) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary); Spacer(Modifier.width(6.dp)) }
         Text(if (saving) "正在保存" else "保存")

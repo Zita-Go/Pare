@@ -46,7 +46,7 @@ class PlanningAIFlowInstrumentedTest {
             val raw=wire.parseToJsonElement(body).jsonObject.getValue("messages").jsonArray[1].jsonObject.getValue("content").jsonPrimitive.content
             assertFalse(raw.contains("不要发送未选中任务的说明"))
             val id=wire.parseToJsonElement(raw).jsonObject.getValue("requestId").jsonPrimitive.content
-            val proposal=PlanningAIProposal(id,"从已选草图开始，保留已有约会",listOf(PlanningAIAction("00000000-0000-4000-8000-000000000083","allocate",taskId,minutes=15,reason="根据所选草图和30分钟容量")))
+            val proposal=PlanningAIProposal(id,"从已选草图开始，保留已有约会",listOf(PlanningAIAction("00000000-0000-4000-8000-000000000083","allocate",taskId,minutes=15,nextAction="在纸上画一条短边",stopCriterion="画出第一条线就可以停",reason="根据所选草图和30分钟容量")))
             MobileAIResponse(200,buildJsonObject {put("choices",buildJsonArray {add(buildJsonObject {put("finish_reason","stop");put("message",buildJsonObject {put("content",wire.encodeToString(proposal))})})})}.toString())
         })
         val scenario=ActivityScenario.launch(ComponentActivity::class.java)
@@ -68,6 +68,21 @@ class PlanningAIFlowInstrumentedTest {
             compose.waitUntil(10_000) {model.planningDraft(state,PlanningAIKind.DAY,null,day).proposal!=null && !model.planningDraft(state,PlanningAIKind.DAY,null,day).busy}
             assertEquals(1,calls.get());assertEquals(before,state)
             compose.onNodeWithTag("planning_summary").assertIsDisplayed()
+            val actionId="00000000-0000-4000-8000-000000000083"
+            // Reviewing rationale must not conceal or change the actual writes and selection.
+            compose.onNodeWithTag("planning_action_$actionId").performScrollTo().assertTextContains("个人 15 分钟",substring=true)
+            compose.onNodeWithTag("planning_next_$actionId").performScrollTo().assertTextContains("在纸上画一条短边",substring=true)
+            compose.onNodeWithTag("planning_stop_$actionId").performScrollTo().assertTextContains("画出第一条线就可以停",substring=true)
+            compose.onNodeWithTag("planning_reason_$actionId").assertDoesNotExist()
+            compose.onNodeWithTag("planning_select_$actionId").performScrollTo().assertIsOn().performClick().assertIsOff()
+            compose.onNodeWithTag("planning_adopt").assertIsNotEnabled()
+            compose.onNodeWithTag("planning_reason_toggle_$actionId").performScrollTo().performClick()
+            compose.onNodeWithTag("planning_reason_$actionId").performScrollTo().assertTextContains("30分钟容量",substring=true)
+            compose.onNodeWithTag("planning_select_$actionId").performScrollTo().assertIsOff().performClick().assertIsOn()
+            compose.onNodeWithTag("planning_reason_toggle_$actionId").performScrollTo().performClick()
+            compose.onNodeWithTag("planning_next_$actionId").assertExists()
+            compose.onNodeWithTag("planning_stop_$actionId").assertExists()
+            assertEquals(1,calls.get());assertEquals(before,state)
             compose.onNodeWithTag("planning_adopt").performClick()
             compose.waitUntil(10_000) {model.planningDraft(state,PlanningAIKind.DAY,null,day).undo!=null}
             assertEquals(PlanningAIContext.entry(before,day,appointmentId),PlanningAIContext.entry(state,day,appointmentId))

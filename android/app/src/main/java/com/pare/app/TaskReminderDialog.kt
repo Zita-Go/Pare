@@ -56,10 +56,11 @@ class TaskReminderModel:ViewModel() {
     var repeatMenu by remember {mutableStateOf(false)}
     LaunchedEffect(model.saved) {if(model.saved) {model.baseline=null;model.saved=false;onDismiss()}}
     Dialog(onDismissRequest={if(!model.saving)onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
-        Surface(Modifier.fillMaxSize().safeDrawingPadding().imePadding().testTag("task_reminder_dialog"),color=MaterialTheme.colorScheme.background) {
+        Surface(Modifier.fillMaxSize().safeDrawingPadding().imePadding().testTag("task_reminder_dialog"),color=MaterialTheme.colorScheme.surface) {
             Column {
-                Text("提醒我",style=MaterialTheme.typography.titleLarge,modifier=Modifier.padding(horizontal=24.dp,vertical=20.dp))
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal=24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                ParePageHeader("提醒我", onBack=onDismiss, enabled=!model.saving,
+                    backModifier=Modifier.testTag("reminder_close"))
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                     Text(task?.title() ?: "任务已不可用",style=MaterialTheme.typography.titleMedium,color=MaterialTheme.colorScheme.onSurface)
                     Surface(color=MaterialTheme.colorScheme.surface,shape=MaterialTheme.shapes.large) {
                         Column(Modifier.fillMaxWidth().padding(20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -71,7 +72,7 @@ class TaskReminderModel:ViewModel() {
                     }
                     FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {listOf(10,30,60).forEach {minutes ->
                         OutlinedButton(onClick={model.at=Instant.now().plusSeconds(minutes*60L);model.error=null},enabled=available && !model.saving,
-                            modifier=Modifier.heightIn(min=48.dp).testTag("reminder_after_$minutes"),contentPadding=PaddingValues(horizontal=12.dp,vertical=12.dp),shape=MaterialTheme.shapes.small) {Text("${minutes}分钟后")}
+                            modifier=Modifier.heightIn(min=48.dp).testTag("reminder_after_$minutes"),contentPadding=PaddingValues(horizontal=12.dp,vertical=12.dp),shape=MaterialTheme.shapes.medium) {Text("${minutes}分钟后")}
                     }}
                     OutlinedButton(onClick={
                         val date=(model.at ?: Instant.now().plusSeconds(600)).atZone(zone)
@@ -107,20 +108,21 @@ class TaskReminderModel:ViewModel() {
                     }
                     HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
                     MobileNotificationSettings()
+                    Spacer(Modifier.height(8.dp))
+                }
+                Column(Modifier.fillMaxWidth().padding(horizontal=16.dp).heightIn(max=132.dp).verticalScroll(rememberScrollState())) {
                     if(!available) Text("任务已完成、存在冲突或不可用，提醒草稿仍保留。",color=MaterialTheme.colorScheme.error)
                     model.error?.let {Text(it,color=MaterialTheme.colorScheme.error,modifier=Modifier.testTag("reminder_error"))}
                     if(model.error!=null && available) TextButton(onClick={model.reload=true},enabled=!model.saving,modifier=Modifier.heightIn(min=48.dp)) {Text("重新读取已保存的提醒")}
-                    Spacer(Modifier.height(8.dp))
                 }
                 Surface(color=MaterialTheme.colorScheme.surface) {
                     Column {
                         HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
-                        Row(Modifier.fillMaxWidth().padding(horizontal=24.dp,vertical=16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-                            TextButton(onClick=onDismiss,enabled=!model.saving,modifier=Modifier.heightIn(min=48.dp).testTag("reminder_close")) {Text("关闭")}
+                        Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
                             Button(onClick={
                                 val expected=model.baseline
                                 if(expected!=null) {model.saving=true;vm.saveReminder(taskId,expected,model.at,model.recurrence,model::finish)}
-                            },enabled=available && !model.saving,modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("reminder_save"),shape=MaterialTheme.shapes.small) {Text(if(model.saving) "保存中…" else "保存提醒")}
+                            },enabled=available && !model.saving,modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("reminder_save"),shape=MaterialTheme.shapes.medium) {Text(if(model.saving) "保存中…" else "保存提醒")}
                         }
                     }
                 }
