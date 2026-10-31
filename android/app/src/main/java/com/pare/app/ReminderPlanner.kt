@@ -51,7 +51,9 @@ data class ReminderSource(val key: String, val taskId: String, val kind: String,
 
 object ReminderPlanner {
     fun sources(state: SyncState, deadlines: List<ReminderDeadline>, now: Instant): List<ReminderSource> {
-        val active = state.items.values.filter { it.kind == "task" && taskCanBePlanned(it) && it.conflict == null }.associateBy { it.id }
+        val active = state.items.values.filter {
+            it.kind == "task" && taskCanBePlanned(it) && it.conflict == null && it.conflictGroup.isEmpty()
+        }.associateBy { it.id }
         val result = mutableListOf<ReminderSource>()
         for (task in active.values) {
             val content = task.content() ?: continue
@@ -59,17 +61,19 @@ object ReminderPlanner {
             val rule = content["recurrence"]?.jsonPrimitive?.contentOrNull
             result += ReminderSource("task:${task.id}", task.id, "task", at.toEpochMilli(), rule)
         }
-        val planId = ContentActions.planId(state, now)
-        val zone = planId.substringAfter('@')
-        val day = planId.substringBefore('@')
-        val plan = state.items["day_plan:$planId"]?.takeUnless { it.deleted || it.conflict != null }?.content()
-        for (value in (plan?.get("task_plans") as? JsonArray).orEmpty()) {
-            val entry = value as? JsonObject ?: continue
-            val taskId = entry["task_id"]?.jsonPrimitive?.contentOrNull ?: continue
+        // A future day's lead may be tonight. Use the calendar's authoritative occurrences
+        // before filtering conflicts, so a stale legacy copy cannot replace a blocked source.
+        for (schedule in TimelineProjection.schedules(state)) {
+            val taskId = schedule.task.id
             if (taskId !in active) continue
-            val start = entry.instant("scheduled_at") ?: continue
-            if (start.atZone(ZoneId.of(zone)).toLocalDate().toString() != day) continue
-            val lead = entry["schedule_reminder_lead_minutes"]?.jsonPrimitive?.intOrNull?.takeIf { it in 0..525600 } ?: continue
+            val source = state.items["day_plan:${schedule.sourcePlanId}"] ?: continue
+            if (source.conflict != null || source.conflictGroup.isNotEmpty()) continue
+            val start = schedule.start
+            val zone = schedule.sourcePlanId.substringAfter('@')
+            val lead = schedule.reminderLeadMinutes?.takeIf { it in 0..525600 } ?: continue
+            // Normal plans retain their existing identity. Migrating a legacy future block to
+            // its start-day plan must not replay an already delivered lead or discard its snooze.
+            val planId = "${start.atZone(ZoneId.of(zone)).toLocalDate()}@$zone"
             result += ReminderSource("schedule:$planId:$taskId", taskId, "schedule", start.minusSeconds(lead * 60L).toEpochMilli(),
                 zone = zone, fallbackMillis = start.toEpochMilli())
         }

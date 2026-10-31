@@ -25,7 +25,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.junit.After
 import org.junit.Assert.*
-import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -173,6 +172,7 @@ class AndroidCapabilitiesFlowTest {
         File(directory,name).outputStream().use {assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))}
     }
     private fun createTodayTask(title:String,nextAction:String):String {
+        compose.onNodeWithTag("tab_today").performClick()
         visible("add_item");compose.onNodeWithTag("add_item").performClick();visible("editor_text")
         compose.onNodeWithTag("editor_text").performTextReplacement(title)
         // Let the IME finish changing this bottom sheet's bounds before targeting the details toggle.
@@ -196,9 +196,7 @@ class AndroidCapabilitiesFlowTest {
         return saved.id
     }
     private fun openMenuAction(taskId:String,action:String) {
-        compose.onNodeWithTag("main_list").performScrollToNode(hasTestTag("task_$taskId"))
-        compose.onNodeWithTag("more_$taskId").performClick()
-        visible("${action}_$taskId");compose.onNodeWithTag("${action}_$taskId").performClick()
+        compose.openTaskAction(taskId,action)
     }
     private fun openRun(taskId:String) {
         openMenuAction(taskId,"run")
@@ -237,8 +235,8 @@ class AndroidCapabilitiesFlowTest {
         dialogButton("关闭").performClick();waitForNoDialog()
 
         for(id in listOf(externalId,secondExternalId)) {
-            openRun(id);dialogButton("外部推进").performScrollTo().performClick()
-            dialogButton("记录开始").performClick();waitForNoDialog()
+            openRun(id);dialogButton("任务已交给 AI 或别人？").performScrollTo().performClick()
+            dialogButton("开始记录等待").performClick();waitForNoDialog()
             compose.waitUntil(10_000) {execution()?.external?.any {it.taskId==id}==true}
         }
         assertEquals(originalRun.id,execution()!!.focus!!.id)
@@ -286,8 +284,8 @@ class AndroidCapabilitiesFlowTest {
         val at=Instant.parse(read().items.getValue("task:$taskId").content()!!["remindAt"]!!.jsonPrimitive.content)
         assertTrue(at>=before.plusSeconds(590) && at<=Instant.now().plusSeconds(610))
 
-        // A manually disabled OS notification channel is respected; this optional delivery test is reported skipped.
-        assumeTrue("QA device does not currently allow the Pare notification channel",reminders.notificationsAllowed())
+        // The isolated QA device must allow notification delivery for this acceptance flow.
+        assertTrue("QA device does not currently allow the Pare notification channel",reminders.notificationsAllowed())
         reminders.refresh(read())
         val event=reminders.readLedger().scheduled.values.single {it.taskId==taskId && it.kind=="task"}
         assertNull(reminders.lastError())

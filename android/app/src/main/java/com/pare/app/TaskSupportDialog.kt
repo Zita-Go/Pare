@@ -46,20 +46,20 @@ fun TaskSupportDialog(taskId: String, vm: PareViewModel, onDismiss: () -> Unit) 
             }
             Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("本地引导", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Text("可以先这样试试", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     Text(supportReasons.first { it.code == model.reason }.guidance, style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            PareFormField(model.nextAction, { model.nextAction = it }, "一个具体的下一步", enabled = enabled, minLines = 2,
+            PareFormField(model.nextAction, { model.nextAction = it }, "最小下一步：现在能做的一件小事", enabled = enabled, minLines = 2,
                 modifier = Modifier.fillMaxWidth().testTag("support_next_action"))
             PareFormField(model.definitionOfDone, { model.definitionOfDone = it }, "做到哪里就停", enabled = enabled, minLines = 2,
                 modifier = Modifier.fillMaxWidth().testTag("support_done"))
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (model.kind == "check") "这次安排一点检查时间" else "先给自己一点时间", style = MaterialTheme.typography.titleSmall)
+            Text(if (model.kind == "check") "留几分钟检查结果" else "先给自己一点时间", style = MaterialTheme.typography.titleSmall)
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 listOf(5, 10, 15).forEach { minutes ->
                     FilterChip(selected = !custom && model.minutes == minutes.toString(), onClick = { custom = false; model.minutes = minutes.toString() },
@@ -71,12 +71,13 @@ fun TaskSupportDialog(taskId: String, vm: PareViewModel, onDismiss: () -> Unit) 
                 modifier = Modifier.heightIn(min = 48.dp).testTag("support_custom_minutes")) {
                 Text(if (custom) "收起自定时间" else "自定时间")
             }
-            if (custom) WorkflowMinutes(model.minutes, { model.minutes = it }, enabled, "support_minutes")
+            if (custom) WorkflowMinutes(model.minutes, { model.minutes = it }, enabled, "support_minutes",
+                label = if (model.kind == "check") "今天检查结果要几分钟" else "今天想做几分钟")
             else Text("今天${if (model.kind == "check") "检查" else "投入"} ${model.minutes} 分钟", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("support_minutes"))
         }
         TimeBlockDisclosure(model)
-        Text("保存后记录这次卡点、更新下一步与停止标准，并安排今天。", style = MaterialTheme.typography.bodySmall,
+        Text("保存后会记下这些内容，并把这几分钟安排到今天。计时由你手动开始。", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

@@ -140,7 +140,7 @@ internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComple
     onToday: () -> Unit, onWin: (() -> Unit)? = null, inToday: Boolean = true,
     planLabel: String? = null, onPlan: (() -> Unit)? = null, onSupport: (() -> Unit)? = null, onOrigin: (() -> Unit)? = null,
     onExecution:(()->Unit)?=null,onAI:(()->Unit)?=null,onReminder:(()->Unit)?=null,executionLabel:String?=null,
-    executionPaused:Boolean=false,onExecutionToggle:(()->Unit)?=null,firstInGroup:Boolean=false,lastInGroup:Boolean=false) {
+    executionPaused:Boolean=false,onExecutionToggle:(()->Unit)?=null,firstInGroup:Boolean=false,lastInGroup:Boolean=false,onSchedule:(()->Unit)?=null) {
     val completed = item.completed()
     val content = item.content()
     var menu by remember { mutableStateOf(false) }
@@ -182,22 +182,11 @@ internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComple
                     Icon(Icons.Default.MoreVert, "更多操作：${item.title()}", Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    if(onExecution!=null && !completed) DropdownMenuItem(text={Text(if(executionLabel==null) "专注 / 外部推进" else "管理推进")},
+                    if(onSchedule!=null && !completed) DropdownMenuItem(text={Text("安排时间")},onClick={menu=false;onSchedule()},
+                        modifier=Modifier.heightIn(min=48.dp).testTag("schedule_${item.id}"))
+                    if(onExecution!=null && !completed) DropdownMenuItem(text={Text(if(executionLabel==null) "开始专注" else "查看进度")},
                         onClick={menu=false;onExecution()},modifier=Modifier.heightIn(min=48.dp).testTag("run_${item.id}"))
-                    if(onAI!=null && !completed) DropdownMenuItem(text={Text("AI 帮我找下一步")},
-                        onClick={menu=false;onAI()},modifier=Modifier.heightIn(min=48.dp).testTag("ai_${item.id}"))
-                    if (onPlan != null && !completed) DropdownMenuItem(text = { Text("今天怎么推进") },
-                        onClick = { menu = false; onPlan() }, modifier = Modifier.heightIn(min = 48.dp).testTag("plan_${item.id}"))
-                    if (onSupport != null && !completed) DropdownMenuItem(text = { Text("我卡住了") },
-                        onClick = { menu = false; onSupport() }, modifier = Modifier.heightIn(min = 48.dp).testTag("support_${item.id}"))
-                    DropdownMenuItem(text = { Text(if (inToday) "移出今天" else "加入今天") },
-                        onClick = { menu = false; onToday() }, modifier = Modifier.heightIn(min = 48.dp).testTag("today_${item.id}"))
-                    if (onWin != null) DropdownMenuItem(text = { Text(if (win) "取消重点" else "设为今日重点") },
-                        onClick = { menu = false; onWin() }, modifier = Modifier.heightIn(min = 48.dp).testTag("win_${item.id}"))
-                    if (onOrigin != null) DropdownMenuItem(text = { Text("查看关联想法") },
-                        onClick = { menu = false; onOrigin() }, modifier = Modifier.heightIn(min = 48.dp).testTag("origin_${item.id}"))
-                    if(onReminder!=null && !completed) DropdownMenuItem(text={Text("提醒我")},onClick={menu=false;onReminder()},
-                        modifier=Modifier.heightIn(min=48.dp).testTag("remind_${item.id}"))
+                    DropdownMenuItem(text={Text("任务详情")},onClick={menu=false;onEdit()},modifier=Modifier.heightIn(min=48.dp).testTag("details_${item.id}"))
                 }
             }
         }

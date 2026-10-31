@@ -83,7 +83,7 @@ class ExecutionController(
         require(targetMinutes in 1..1440) {"专注时长需为 1–1440 分钟"}
         reconcile();activeTask(engine.state.value,taskId)
         val old=current()
-        check(old.external.none {it.taskId==taskId}) {"这项任务正在外部推进，请先结束或取消外部记录"}
+        check(old.external.none {it.taskId==taskId}) {"这项任务正在等结果，请先结束或取消这段等待记录"}
         check(old.focus==null) {"本机已有个人专注，请先暂停并结束或取消上一段"}
         val now=clock.now()
         save(old.copy(focus=ExecutionRun(uid(),taskId,now.wallMillis,anchor=now,targetMinutes=targetMinutes,
@@ -94,7 +94,7 @@ class ExecutionController(
         reconcile();activeTask(engine.state.value,taskId)
         val old=current()
         check(old.focus?.taskId!=taskId) {"这项任务已有个人专注，请先结束或取消专注"}
-        check(old.external.none {it.taskId==taskId}) {"这项任务已有外部推进记录"}
+        check(old.external.none {it.taskId==taskId}) {"这项任务已经有一段等待记录"}
         val now=clock.now()
         save(old.copy(external=old.external+ExecutionRun(uid(),taskId,now.wallMillis,anchor=now,
             nextCheckAtMillis=checkAfterMinutes?.let {now.wallMillis+it*60_000L})))
@@ -119,7 +119,7 @@ class ExecutionController(
     @Synchronized fun setCheck(taskId:String,minutes:Int?) {
         minutes?.let {require(it in 1..10080) {"检查时间需为 1–10080 分钟"}}
         reconcile();val old=current()
-        val run=old.external.firstOrNull {it.taskId==taskId} ?: error("请先记录外部推进")
+        val run=old.external.firstOrNull {it.taskId==taskId} ?: error("请先记录一次等待")
         check(run.pendingFinish==null) {"上一段正在保存，请重试结束"}
         save(replace(old,run.copy(nextCheckAtMillis=minutes?.let {clock.now().wallMillis+it*60_000L})))
     }

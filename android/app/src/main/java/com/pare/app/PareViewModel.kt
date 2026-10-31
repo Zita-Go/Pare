@@ -38,6 +38,7 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
         }
     }
     fun editMobileAI(change:(SyncState)->SyncState,onResult:(Result<Unit>)->Unit)=edit(onResult,change)
+    fun editTimeline(change:(SyncState)->SyncState,onResult:(Result<Unit>)->Unit)=edit(onResult,change)
     fun saveReminder(taskId:String,expected:TaskReminderBaseline,at:Instant?,recurrence:String?,onResult:(Result<Unit>)->Unit)=
         edit(onResult) {TaskReminderActions.save(it,taskId,expected,at,recurrence,Instant.now())}
     private fun edit(onResult:(Result<Unit>)->Unit={},block:(SyncState)->SyncState) {
@@ -52,18 +53,20 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
     fun save(entity:Entity?,kind:String,text:String,note:String,q:Int,
              estimatedMinutes:Int?=entity?.content()?.get("estimatedMinutes")?.jsonPrimitive?.intOrNull,
              nextAction:String?=entity?.content()?.get("nextAction")?.jsonPrimitive?.contentOrNull,
-             addToToday:Boolean=false,expected:ContentEditBaseline=ContentEditBaseline.from(entity),onResult:(Result<Unit>)->Unit={}) {
+             addToToday:Boolean=false,expected:ContentEditBaseline=ContentEditBaseline.from(entity),targetPlanId:String?=null,onResult:(Result<Unit>)->Unit={}) {
         val id=entity?.id ?: uid()
         edit(onResult) {s ->
             require(text.isNotBlank()) {"请填写内容"}
             var next=StateMachine.edit(s,kind,id,ContentActions.save(s.items["$kind:$id"],kind,text,note,q,id,Instant.now(),estimatedMinutes=estimatedMinutes,nextAction=nextAction,expected=expected))
             if(addToToday && kind=="task") {
-                next=editPlan(next) {c ->
+                val planId=targetPlanId ?: ContentActions.planId(next,Instant.now())
+                require(TimelineDay.fromPlanId(planId).zone==TimelineDay.today(next,Instant.now()).zone) {"规划时区已改变，请重新选择日期；草稿已保留"}
+                next=editPlan(next,planId) {c ->
                     val ids=c.getValue("ordered_task_ids").jsonArray.map {it.jsonPrimitive.content}.toMutableList()
                     if(id !in ids) ids.add(id)
                     c["ordered_task_ids"]=JsonArray(ids.map {JsonPrimitive(it)})
                 }
-                next=StateMachine.group(next,setOf("task:$id","day_plan:${ContentActions.planId(next,Instant.now())}"))
+                next=StateMachine.group(next,setOf("task:$id","day_plan:$planId"))
             }
             next
         }
@@ -95,16 +98,24 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
     fun planningZone(s:SyncState,now:Instant=planningInstant.value)=ContentActions.planId(s,now).substringAfter('@')
     fun planningDate(s:SyncState,now:Instant=planningInstant.value)=ContentActions.planId(s,now).substringBefore('@')
     fun todayPlan(s:SyncState,now:Instant=planningInstant.value)=s.items["day_plan:${ContentActions.planId(s,now)}"]?.takeUnless {it.deleted}
-    private fun editPlan(s:SyncState,change:(MutableMap<String,JsonElement>)->Unit):SyncState {
-        val id=ContentActions.planId(s,Instant.now())
+    private fun editPlan(s:SyncState,id:String=ContentActions.planId(s,Instant.now()),change:(MutableMap<String,JsonElement>)->Unit):SyncState {
         val old=s.items["day_plan:$id"]
+        require(old?.deleted!=true && old?.conflict==null) {"日计划已删除或有同步冲突，请先查看最新内容"}
         val content=old?.content()?.toMutableMap() ?: mutableMapOf("day_key" to JsonPrimitive(id.substringBefore('@')),"time_zone" to JsonPrimitive(id.substringAfter('@')),"ordered_task_ids" to JsonArray(emptyList()),"task_plans" to JsonArray(emptyList()))
         change(content)
         return StateMachine.edit(s,"day_plan",id,JsonObject((old?.payload ?: JsonObject(emptyMap())).toMutableMap().apply {put("content",JsonObject(content))}))
     }
     fun toggleToday(e:Entity) = edit {s -> editPlan(s) {content ->
         val ids=content.getValue("ordered_task_ids").jsonArray.map {it.jsonPrimitive.content}.toMutableList()
-        if(e.id in ids) {ids.remove(e.id);if(content["daily_win_task_id"]?.jsonPrimitive?.contentOrNull==e.id)content.remove("daily_win_task_id");content["task_plans"]?.jsonArray?.let {plans -> content["task_plans"]=JsonArray(plans.filter {it.jsonObject["task_id"]?.jsonPrimitive?.content!=e.id})}}
+        if(e.id in ids) {ids.remove(e.id);if(content["daily_win_task_id"]?.jsonPrimitive?.contentOrNull==e.id)content.remove("daily_win_task_id");content["task_plans"]?.jsonArray?.let {plans -> content["task_plans"]=JsonArray(plans.map {entry ->
+            if(entry.jsonObject["task_id"]?.jsonPrimitive?.content==e.id) {
+                val planned=entry.jsonObject
+                val at=planned["scheduled_at"]?.jsonPrimitive?.contentOrNull?.let {runCatching {Instant.parse(it)}.getOrNull()}
+                val day=TimelineDay.today(s,Instant.now())
+                if(at!=null && at.atZone(day.zone).toLocalDate()!=day.date)entry
+                else JsonObject(planned.filterKeys {it !in setOf("allocation","scheduled_at","scheduled_minutes","schedule_reminder_lead_minutes")})
+            } else entry
+        })}}
         else ids.add(e.id)
         content["ordered_task_ids"]=JsonArray(ids.map {JsonPrimitive(it)})
     }}

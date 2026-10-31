@@ -51,7 +51,7 @@ import java.time.format.DateTimeFormatter
     AlertDialog(
         onDismissRequest={if(!busy) onDismiss()},
         containerColor=MaterialTheme.colorScheme.surface,
-        title={Text(if(run==null) "推进这一步" else if(isExternal) "外部推进" else "个人专注")},
+        title={Text(if(run==null) {if(external) "等结果" else "自己做"} else if(isExternal) "等待结果" else "正在专注")},
         text={Column(Modifier.heightIn(max=520.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             Text(task.title(),style=MaterialTheme.typography.titleMedium,color=MaterialTheme.colorScheme.onSurface)
             task.content()?.get("nextAction")?.let {element ->
@@ -63,7 +63,7 @@ import java.time.format.DateTimeFormatter
             }
             if(run!=null) {
                 val elapsed=run.elapsedMillis(now)/1000
-                val status=when {run.pendingFinish!=null -> "等待保存";run.due -> "已到点，等待确认";run.paused -> "已暂停";else -> "进行中"}
+                val status=when {run.pendingFinish!=null -> "等待保存";run.due -> "已到点，等待确认";run.paused -> "已暂停";isExternal -> "等待结果";else -> "进行中"}
                 Surface(color=MaterialTheme.colorScheme.surfaceContainerLow,shape=MaterialTheme.shapes.large) {
                     Column(Modifier.fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Text(if(isExternal) "已等待" else "已专注",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -82,40 +82,39 @@ import java.time.format.DateTimeFormatter
                 run.recoveryNotice?.let {Text(it,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                 if(isExternal) {
                     run.nextCheckAtMillis?.let {at ->
-                        Text("检查节点：${DateTimeFormatter.ofPattern("MM-dd HH:mm").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(at))}",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurface)
+                        Text("下次检查：${DateTimeFormatter.ofPattern("MM-dd HH:mm").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(at))}",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurface)
                     }
                     FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         TextButton(enabled=!busy,onClick={submit(ExecutionAction.SET_CHECK,15)},modifier=Modifier.heightIn(min=48.dp)) {Text("15 分钟后检查")}
-                        TextButton(enabled=!busy,onClick={submit(ExecutionAction.SET_CHECK,null)},modifier=Modifier.heightIn(min=48.dp)) {Text("取消检查节点")}
+                        TextButton(enabled=!busy,onClick={submit(ExecutionAction.SET_CHECK,null)},modifier=Modifier.heightIn(min=48.dp)) {Text("取消检查提醒")}
                     }
                 }
                 FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    if(!run.due && run.pendingFinish==null) OutlinedButton(shape=MaterialTheme.shapes.small,enabled=!busy,onClick={submit(if(run.paused) ExecutionAction.RESUME else ExecutionAction.PAUSE)},modifier=Modifier.heightIn(min=48.dp)) {Text(if(run.paused) "继续" else "暂停")}
+                    if(!run.due && run.pendingFinish==null) OutlinedButton(shape=MaterialTheme.shapes.small,enabled=!busy,onClick={submit(if(run.paused) ExecutionAction.RESUME else ExecutionAction.PAUSE)},modifier=Modifier.heightIn(min=48.dp)) {Text(if(isExternal) {if(run.paused) "继续记录" else "暂停记录"} else if(run.paused) "继续" else "暂停")}
                     TextButton(enabled=!busy && run.pendingFinish==null,onClick={confirm=ExecutionAction.CANCEL},modifier=Modifier.heightIn(min=48.dp)) {Text("取消这段记录")}
                 }
-                Text(if(isExternal) "手动记录外部工作状态，等待时长不计入个人投入。" else "到点会停下计时，任务是否完成由你决定。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if(isExternal) "这里只记录你等待了多久，不会控制 AI 或他人的工作，也不会自动获取结果。等待时长单独统计。" else "到点会停下计时，任务是否完成由你决定。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected=!external,onClick={external=false},label={Text("自己专注")},enabled=!busy,modifier=Modifier.heightIn(min=48.dp))
-                    FilterChip(selected=external,onClick={external=true},label={Text("外部推进")},enabled=!busy,modifier=Modifier.heightIn(min=48.dp))
-                }
                 if(external) {
-                    Text("记录外部 AI、其他机器或他人的推进状态；Pare 不连接或控制它们。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(value=checkMinutes,onValueChange={checkMinutes=it},label={Text("多少分钟后检查（可留空）")},singleLine=true,
+                    Text("已经在别处交给 AI 或别人了？在这里记下等待时间，提醒自己回来检查。Pare 不会启动它们或自动获取进度。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(value=checkMinutes,onValueChange={checkMinutes=it},label={Text("多少分钟后回来检查（可留空）")},singleLine=true,
                         keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),enabled=!busy,modifier=Modifier.fillMaxWidth())
-                    Text("检查通知取决于手机权限和提醒设置。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("等待时长不计入自己的专注时间；检查通知取决于手机权限和提醒设置。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(enabled=!busy,onClick={external=false},modifier=Modifier.heightIn(min=48.dp)) {Text("返回自己做")}
                 } else {
+                    Text("先专注一小段时间，从最小下一步开始。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf(5,10,15,25).forEach {value ->
                         FilterChip(selected=minutes==value.toString(),onClick={minutes=value.toString()},label={Text("$value 分")},enabled=!busy,modifier=Modifier.heightIn(min=48.dp))
                     }}
-                    OutlinedTextField(value=minutes,onValueChange={minutes=it},label={Text("专注分钟")},singleLine=true,
+                    OutlinedTextField(value=minutes,onValueChange={minutes=it},label={Text("这次专注几分钟")},singleLine=true,
                         keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),enabled=!busy,modifier=Modifier.fillMaxWidth())
-                    if(snapshot.focus!=null) Text("本机已有另一项个人专注，请先结束或取消那段记录。",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                    if(snapshot.focus!=null) Text("这台手机已有另一项专注，请先结束或取消那段记录。",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                    TextButton(enabled=!busy,onClick={external=true},modifier=Modifier.heightIn(min=48.dp)) {Text("任务已交给 AI 或别人？")}
                 }
             }
             HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
             MobileNotificationSettings()
-            Text("运行状态仅在本机；结束后的历史随任务同步。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("计时状态只保存在这台手机；结束后的记录随任务同步。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             error?.let {Text(it,color=MaterialTheme.colorScheme.error)}
         }},
         confirmButton={Button(shape=MaterialTheme.shapes.small,modifier=Modifier.heightIn(min=48.dp),enabled=!busy && (run!=null || external || snapshot.focus==null),onClick={
@@ -129,13 +128,13 @@ import java.time.format.DateTimeFormatter
                 if(value==null || value !in 1..1440) error="请填写 1–1440 分钟"
                 else submit(ExecutionAction.START_FOCUS,value,close=true)
             }
-        }) {Text(if(busy) "正在保存" else if(run!=null) "结束并记录" else if(external) "记录开始" else "开始专注")}},
+        }) {Text(if(busy) "正在保存" else if(run!=null) "结束并记录" else if(external) "开始记录等待" else "开始专注")}},
         dismissButton={TextButton(enabled=!busy,onClick=onDismiss,modifier=Modifier.heightIn(min=48.dp)) {Text("关闭")}}
     )
     confirm?.let {action ->
         AlertDialog(onDismissRequest={if(!busy) confirm=null},
             title={Text(if(action==ExecutionAction.CANCEL) "取消这段记录？" else "结束并记录？")},
-            text={Text(if(action==ExecutionAction.CANCEL) "这段尚未记录的时长将丢弃，任务内容保留。" else if(isExternal) "将记录外部推进时长，任务继续保留为未完成。" else "将记录这段个人投入，任务继续保留为未完成。")},
+            text={Text(if(action==ExecutionAction.CANCEL) "这段尚未记录的时长将丢弃，任务内容保留。" else if(isExternal) "保存这段等待时长，任务仍保留为未完成。" else "保存这段专注时长，任务仍保留为未完成。")},
             confirmButton={TextButton(enabled=!busy,onClick={confirm=null;submit(action,close=true)}) {Text("确认")}},
             dismissButton={TextButton(enabled=!busy,onClick={confirm=null}) {Text("返回")}})
     }

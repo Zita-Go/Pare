@@ -48,7 +48,7 @@ class MobileHintPreferences(context:Context) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding().testTag("review_dialog"),color=MaterialTheme.colorScheme.background) {
             Column {
                 Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(start=20.dp,end=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Text("近7天的推进",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
+                    Text("回看最近7天",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
                     TextButton(onClick=onDismiss,modifier=Modifier.heightIn(min=48.dp).testTag("review_close")) {Text("关闭")}
                 }
                 HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
@@ -58,12 +58,12 @@ class MobileHintPreferences(context:Context) {
                             Text("你的实际投入",style=MaterialTheme.typography.titleMedium)
                             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 ReviewStat("完成任务","${review.completedTasks.size} 件",Modifier.weight(1f))
-                                ReviewStat("个人专注","${review.focusMinutes} 分钟",Modifier.weight(1f))
+                                ReviewStat("自己专注","${review.focusMinutes} 分钟",Modifier.weight(1f))
                             }
                             Surface(color=MaterialTheme.colorScheme.surfaceContainerLow,shape=MaterialTheme.shapes.medium) {
                                 Column(Modifier.fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                                    Text("外部推进记录 ${review.externalMinutes} 分钟",style=MaterialTheme.typography.titleSmall)
-                                    Text("与个人专注分开统计；只计算实际记录，不含估时。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("等待结果 ${review.externalMinutes} 分钟",style=MaterialTheme.typography.titleSmall)
+                                    Text("交给 AI 或别人后记录的等待时长，与自己的专注时间分开统计；不含预估时间。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }

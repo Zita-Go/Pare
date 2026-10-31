@@ -74,7 +74,7 @@ class VisualClarityTest {
         compose.onNodeWithTag("account_close").performClick()
         compose.runOnIdle { assertTrue(closedAccount); screen.value = "review" }
 
-        assertDialogFontScale("近7天的推进", "review", 1f)
+        assertDialogFontScale("回看最近7天", "review", 1f)
         reachableAction("review_close")
         compose.onNodeWithText("1 件").assertIsDisplayed()
         compose.onNodeWithText("25 分钟").assertIsDisplayed()
@@ -107,7 +107,7 @@ class VisualClarityTest {
             }
         }
 
-        assertDialogFontScale("今天怎么推进", "planning", 1.6f)
+        assertDialogFontScale("安排今天的时间", "planning", 1.6f)
         assertTitleAboveFooter("allocation_save")
         reachableAction("allocation_cancel")
         reachableAction("allocation_save")

@@ -55,9 +55,9 @@ class PareMobileFlowTest {
     }
 
     @Test fun captureOrganizeTodayCompleteAndIdeaRemainLocal() {
-        waitFor("today_add_task")
+        waitFor("today_timeline")
         screenshot("01-today-empty.png")
-        compose.onNodeWithTag("today_add_task").performClick()
+        compose.onNodeWithTag("add_item").performClick()
         waitFor("editor_text")
         compose.onNodeWithTag("editor_text").assertIsFocused()
         compose.onNodeWithTag("editor_text").performTextReplacement("写出旅行清单的前三项")
@@ -76,6 +76,7 @@ class PareMobileFlowTest {
         Espresso.closeSoftKeyboard()
         screenshot("07-task-editor.png", dialog = true)
         saveAndWaitUntilClosed()
+        compose.onNodeWithTag("tab_organize").performClick()
         compose.onNodeWithText("写出旅行清单的前三项").assertIsDisplayed()
 
         // Simulate a newly received model version while an editing draft is
@@ -96,8 +97,7 @@ class PareMobileFlowTest {
             content["ordered_task_ids"] = JsonArray(content.getValue("ordered_task_ids").jsonArray + ids.map { JsonPrimitive(it) })
             StateMachine.edit(next, "day_plan", dayPlan.id, JsonObject(mapOf("content" to JsonObject(content))))
         } }
-        compose.onNodeWithTag("more_${originalTask.id}").performClick()
-        compose.onNodeWithTag("win_${originalTask.id}").performClick()
+        compose.openTaskAction(originalTask.id,"win")
         compose.waitUntil(10_000) { PareRepository(context).use { it.read().items.values.any { e -> e.kind == "day_plan" && e.content()?.get("daily_win_task_id")?.jsonPrimitive?.contentOrNull == originalTask.id } } }
         screenshot("02-today-task.png")
         val topBeforeSync = compose.onNodeWithTag("task_${originalTask.id}").fetchSemanticsNode().boundsInRoot.top
@@ -148,8 +148,8 @@ class PareMobileFlowTest {
         screenshot("06-account.png", dialog = true)
         compose.onNodeWithTag("account_close").performClick()
 
-        compose.onNodeWithTag("tab_today").performClick()
         val task = PareRepository(context).use { it.read().items.values.first { e -> e.kind == "task" && e.title() == "写出旅行清单的前三项" } }
+        compose.showTaskInLibrary(task.id)
         compose.onNodeWithTag("complete_${task.id}").performScrollTo().performClick()
         compose.waitUntil(10_000) { PareRepository(context).use { it.read().items.getValue(task.key).completed() } }
         scenario.recreate()

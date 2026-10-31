@@ -61,6 +61,8 @@ Android 0.6.0 从任务菜单开始专注、记录外部推进或设置提醒；
 
 Android 0.7.0 进一步统一了布局、字体、配色和圆角，突出任务、专注时间与 AI 建议；标准字号保持六任务首屏密度，并验证真实大字体弹窗。[查看前后对比与页面截图](docs/releases/android-v0.7.0.md)。
 
+Android 0.8.0 把「今天」改为可直接添加、移动和缩放事项的时间轴；待安排任务可拖动排序或拖入日程，菜单精简为三项。「等待结果」说明手动记录AI或他人处理的等待过程。[查看用法与实际截图](docs/releases/android-v0.8.0.md)，以及[已实现与尚未移植的功能清单](docs/android-feature-coverage.md)。
+
 此前更新：[自动同步](docs/releases/android-v0.2.0.md) · [视觉调整](docs/releases/android-v0.3.0.md) · [列表与快速记录](docs/releases/android-v0.4.0.md) · [想法到行动](docs/releases/android-v0.5.0.md)。产品方向遵循[Pare自己的产品原则](docs/product-principles.md)。
 
 ## 念头来了，先放下来

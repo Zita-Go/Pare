@@ -15,6 +15,18 @@ class ReminderPlannerTest {
             put("content", buildJsonObject { put("text", "虚构任务"); put("completed", completed); put("remindAt", at); recurrence?.let { put("recurrence", it) } })
         })
     private fun state(vararg entities: Entity) = SyncState(items = entities.associateBy { it.key })
+    private fun scheduleEntry(taskId: String, start: String?, lead: Int = 60) = buildJsonObject {
+        put("task_id", taskId)
+        if (start != null) {
+            put("scheduled_at", start); put("scheduled_minutes", 30); put("schedule_reminder_lead_minutes", lead)
+        }
+    }
+    private fun plan(id: String, vararg entries: JsonObject) = Entity("day_plan", id, buildJsonObject {
+        put("content", buildJsonObject {
+            put("day_key", id.substringBefore('@')); put("time_zone", id.substringAfter('@'))
+            put("ordered_task_ids", JsonArray(entries.map { it.getValue("task_id") })); put("task_plans", JsonArray(entries.toList()))
+        })
+    })
 
     @Test fun completedDeletedAndArchivedTasksNeverProduceReminderSources() {
         val active = task()
@@ -42,7 +54,7 @@ class ReminderPlannerTest {
         assertEquals(Instant.parse("2026-03-08T13:00:00Z").toEpochMilli(), source.next(Instant.parse("2026-03-08T00:00:00Z"))!!.atMillis)
     }
 
-    @Test fun currentDateScheduleUsesStartWhenLeadAlreadyPassedAndExcludesOtherDates() {
+    @Test fun currentScheduleFallsBackToStartWhileLegacyFutureScheduleRemainsScheduled() {
         val plan = Entity("day_plan", "2026-10-30@UTC", buildJsonObject { put("content", buildJsonObject {
             put("time_zone", "UTC"); put("day_key", "2026-10-30")
             put("task_plans", buildJsonArray {
@@ -51,8 +63,72 @@ class ReminderPlannerTest {
             })
         }) })
         val sources = ReminderPlanner.sources(state(task(), task("tomorrow"), plan), emptyList(), now).filter { it.kind == "schedule" }
+        assertEquals(2, sources.size)
+        assertEquals(Instant.parse("2026-10-30T08:05:00Z").toEpochMilli(), sources.single { it.taskId == "fictional" }.next(now)!!.atMillis)
+        assertEquals(Instant.parse("2026-10-31T08:50:00Z").toEpochMilli(), sources.single { it.taskId == "tomorrow" }.next(now)!!.atMillis)
+    }
+
+    @Test fun futureBlockLeadIsScheduledBeforeMidnightInItsPlanningZone() {
+        // Shanghai Nov 1 00:15, minus 60 minutes, is Oct 31 23:15 (15:15 UTC).
+        val beforeLead = Instant.parse("2026-10-31T14:00:00Z")
+        val schedule = plan("2026-11-01@Asia/Shanghai", scheduleEntry("fictional", "2026-10-31T16:15:00Z"))
+        val shared = state(task(), schedule)
+        val source = ReminderPlanner.sources(shared, emptyList(), beforeLead).single { it.kind == "schedule" }
+        assertEquals("Asia/Shanghai", source.zone)
+        val alarm = source.next(beforeLead)!!
+        assertEquals(Instant.parse("2026-10-31T15:15:00Z").toEpochMilli(), alarm.atMillis)
+        val pending = ReminderLedger(scheduled = mapOf(alarm.sourceKey to alarm))
+        val afterMidnight = Instant.parse("2026-10-31T16:00:00Z")
+        val refreshed = ReminderPlanner.sources(shared, emptyList(), afterMidnight).filter { it.kind == "schedule" }
+        assertEquals(listOf(alarm), ReminderPlanner.reconcile(refreshed, pending, afterMidnight))
+        assertTrue(ReminderPlanner.reconcile(refreshed, ReminderLedger(handled = setOf(alarm.token)), afterMidnight).isEmpty())
+    }
+
+    @Test fun authoritativeScheduleCancelsLegacyCopyWithoutDuplicateOrResurrectedReminder() {
+        val canonicalId = "2026-11-01@UTC"
+        val start = "2026-11-01T00:15:00Z"
+        val canonical = plan(canonicalId, scheduleEntry("fictional", start))
+        val legacy = plan("2026-10-30@UTC", scheduleEntry("fictional", start))
+        val shared = state(task(), canonical, legacy)
+        val sources = ReminderPlanner.sources(shared, emptyList(), now).filter { it.kind == "schedule" }
         assertEquals(1, sources.size)
-        assertEquals(Instant.parse("2026-10-30T08:05:00Z").toEpochMilli(), sources.single().next(now)!!.atMillis)
+        assertEquals("schedule:$canonicalId:fictional", sources.single().key)
+        assertEquals(Instant.parse("2026-10-31T23:15:00Z").toEpochMilli(), sources.single().next(now)!!.atMillis)
+        val alarm = sources.single().next(now)!!
+        val snoozed = alarm.copy(atMillis = alarm.atMillis + 600_000, suffix = "snooze:selected")
+        val cleared = state(task(), plan(canonicalId, scheduleEntry("fictional", null)), legacy)
+        val remaining = ReminderPlanner.sources(cleared, emptyList(), now).filter { it.kind == "schedule" }
+        assertTrue(remaining.isEmpty())
+        assertTrue(ReminderPlanner.reconcile(remaining, ReminderLedger(scheduled = mapOf(alarm.sourceKey to snoozed)), now).isEmpty())
+    }
+
+    @Test fun unresolvedCanonicalPlanDoesNotFallBackToItsLegacyReminderCopy() {
+        val canonical = plan("2026-11-01@UTC", scheduleEntry("fictional", "2026-11-01T00:15:00Z"))
+            .copy(conflictGroup = "fictional-conflict")
+        val legacy = plan("2026-10-30@UTC", scheduleEntry("fictional", "2026-11-01T00:15:00Z"))
+        val sources = ReminderPlanner.sources(state(task(), canonical, legacy), emptyList(), now)
+        assertTrue(sources.none { it.kind == "schedule" })
+    }
+
+    @Test fun movingLegacyScheduleToItsStartDayDoesNotReplayDeliveredLead() {
+        val start = "2026-11-01T00:15:00Z"
+        val legacyId = "2026-10-30@UTC"
+        val legacy = plan(legacyId, scheduleEntry("fictional", start))
+        val before = ReminderPlanner.sources(state(task(), legacy), emptyList(), now).single { it.kind == "schedule" }
+        val delivered = before.next(now)!!
+        val afterLead = Instant.parse("2026-11-01T00:00:00Z")
+        val migrated = state(task(), plan(legacyId, scheduleEntry("fictional", null)),
+            plan("2026-11-01@UTC", scheduleEntry("fictional", start)))
+        val after = ReminderPlanner.sources(migrated, emptyList(), afterLead).filter { it.kind == "schedule" }
+        assertEquals(before.key, after.single().key)
+        assertTrue(ReminderPlanner.reconcile(after, ReminderLedger(handled = setOf(delivered.token)), afterLead).isEmpty())
+    }
+
+    @Test fun tasksInUnresolvedAtomicConflictProduceNoReminderSources() {
+        val blocked = task().copy(conflictGroup = "fictional-conflict")
+        val schedule = plan("2026-10-30@UTC", scheduleEntry("fictional", "2026-10-30T09:00:00Z"))
+        val sources = ReminderPlanner.sources(state(blocked, schedule), emptyList(), now)
+        assertTrue(sources.isEmpty())
     }
 
     @Test fun identicalSyncPreservesPendingAlarmAndFiredOneShotNeverRearms() {

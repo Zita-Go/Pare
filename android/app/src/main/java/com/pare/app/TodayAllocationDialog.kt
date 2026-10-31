@@ -35,7 +35,7 @@ fun TodayAllocationDialog(taskId: String, vm: PareViewModel, onDismiss: () -> Un
     val task = state.items["task:$taskId"]
     val available = taskCanBePlanned(task)
     LaunchedEffect(model.saved) { if (model.saved) { model.clear(); onDismiss() } }
-    TodayWorkflowSurface("今天怎么推进", "allocation", model, available,
+    TodayWorkflowSurface("安排今天的时间", "allocation", model, available,
         canSave = model.allocation() != null,
         onSave = {
             val allocation = model.allocation()
@@ -49,17 +49,18 @@ fun TodayAllocationDialog(taskId: String, vm: PareViewModel, onDismiss: () -> Un
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("推进方式", style = MaterialTheme.typography.titleSmall)
+            Text("这件事准备怎么做", style = MaterialTheme.typography.titleSmall)
             WorkflowChoiceGroup { choiceModifier ->
-                WorkflowChoice("自己推进", model.kind == "personal", !model.saving && available, "allocation_personal", choiceModifier) { model.kind = "personal" }
-                WorkflowChoice("等待结果后检查", model.kind == "check", !model.saving && available, "allocation_check", choiceModifier) { model.kind = "check" }
+                WorkflowChoice("自己做", model.kind == "personal", !model.saving && available, "allocation_personal", choiceModifier) { model.kind = "personal" }
+                WorkflowChoice("等结果", model.kind == "check", !model.saving && available, "allocation_check", choiceModifier) { model.kind = "check" }
             }
-            if (model.kind == "check") Text("今天只安排检查结果所需时间。", style = MaterialTheme.typography.bodySmall,
+            if (model.kind == "check") Text("交给 AI 或别人后，给自己留一点检查结果的时间。这里填写检查要花的分钟数，不是等待多久。", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            WorkflowMinutes(model.minutes, { model.minutes = it }, !model.saving && available, "allocation_minutes")
-            Text("仅调整今天的投入，保留任务总预估。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            WorkflowMinutes(model.minutes, { model.minutes = it }, !model.saving && available, "allocation_minutes",
+                label = if (model.kind == "check") "今天检查结果要几分钟" else "今天想做几分钟")
+            Text("只安排今天的时间，不改任务总预估，也不会开始计时。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         TimeBlockDisclosure(model)
     }
@@ -94,8 +95,8 @@ internal fun WorkflowChoiceGroup(content: @Composable (Modifier) -> Unit) {
 }
 
 @Composable
-internal fun WorkflowMinutes(value: String, onChange: (String) -> Unit, enabled: Boolean, tag: String) {
-    PareFormField(value, onChange, "今天投入 / 检查的分钟数", enabled = enabled, singleLine = true,
+internal fun WorkflowMinutes(value: String, onChange: (String) -> Unit, enabled: Boolean, tag: String, label: String = "今天想做几分钟") {
+    PareFormField(value, onChange, label, enabled = enabled, singleLine = true,
         isError = validTodayMinutes(value) == null,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().testTag(tag))
     if (validTodayMinutes(value) == null) Text("请输入1–1440分钟", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

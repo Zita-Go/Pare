@@ -24,7 +24,7 @@ import org.junit.Test
 import java.io.File
 import java.time.Instant
 
-/** Fixed logical viewport verifies list density, independently of the emulator resolution. */
+/** Fixed logical viewport verifies task-library density, independently of the emulator resolution. */
 class TaskDensityTest {
     @get:Rule val compose = createComposeRule()
     private val models = ViewModelStore()
@@ -56,11 +56,13 @@ class TaskDensityTest {
                 }
             }
         }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("tab_organize").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("tab_organize").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("task_${ids[0]}").fetchSemanticsNodes().isNotEmpty() }
         val screen = compose.onNodeWithTag("density_screen").fetchSemanticsNode().boundsInRoot
         val scale = screen.width/360f
         val first = compose.onNodeWithTag("task_${ids[0]}").fetchSemanticsNode().boundsInRoot
-        assertTrue("First task starts too low: ${(first.top-screen.top)/scale}dp", (first.top-screen.top)/scale <= 180f)
+        assertTrue("First task starts too low: ${(first.top-screen.top)/scale}dp", (first.top-screen.top)/scale <= 240f)
         ids.forEach { id ->
             compose.onNodeWithTag("complete_$id").assertIsDisplayed()
             val row = compose.onNodeWithTag("task_$id").fetchSemanticsNode().boundsInRoot
@@ -79,8 +81,13 @@ class TaskDensityTest {
         saveScreenshot("08-density-light.png")
         compose.runOnIdle { dark.value = true }
         compose.waitForIdle()
-        ids.forEach { compose.onNodeWithTag("complete_$it").assertIsDisplayed() }
+        ids.forEach { id ->
+            compose.onNodeWithTag("complete_$id").assertIsDisplayed()
+            val row = compose.onNodeWithTag("task_$id").fetchSemanticsNode().boundsInRoot
+            assertTrue("Dark-theme task row extends under navigation", row.bottom <= screen.bottom - 80*scale)
+        }
         saveScreenshot("09-density-dark.png")
+        compose.onNodeWithTag("tab_today").performClick()
         compose.onNodeWithTag("add_item").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("editor_text").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("editor_text").assertIsFocused().performTextReplacement("只写标题也能创建的任务")

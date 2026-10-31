@@ -47,7 +47,9 @@ import androidx.compose.ui.window.DialogProperties
     onDismiss: () -> Unit,
     onDiscard: () -> Unit,
     latestVersion: EditorDraft? = null,
-    onReloadLatest: (() -> Unit)? = null
+    onReloadLatest: (() -> Unit)? = null,
+    taskActions: (@Composable () -> Unit)? = null,
+    plannedDayLabel:String? = null
 ) {
     var confirmClose by rememberSaveable(draft.entityId) { mutableStateOf(false) }
     var compareLatest by rememberSaveable(draft.entityId) { mutableStateOf(false) }
@@ -88,6 +90,8 @@ import androidx.compose.ui.window.DialogProperties
                                 field()
                             } }
                         )
+                        if(draft.isNew && plannedDayLabel!=null)Text(plannedDayLabel,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        if(!draft.isNew && draft.kind=="task")taskActions?.invoke()
                         if (draft.isNew && draft.kind != "inbox") TextButton(
                             onClick = { expanded = !expanded }, enabled = !saving,
                             contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("editor_details")
