@@ -10,7 +10,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TaskSupportDialog(taskId: String, vm: PareViewModel, onDismiss: () -> Unit) {
+fun TaskSupportDialog(taskId: String, vm: PareViewModel, onStart: ((String) -> Unit)? = null, onDismiss: () -> Unit) {
     val state by vm.state.collectAsState()
     val now by vm.planningInstant.collectAsState()
     val model: TodayWorkflowModel = viewModel(key = "support:${state.owner}:$taskId")
@@ -18,17 +18,20 @@ fun TaskSupportDialog(taskId: String, vm: PareViewModel, onDismiss: () -> Unit) 
     val task = state.items["task:$taskId"]
     val available = taskCanBePlanned(task)
     var custom by androidx.compose.runtime.saveable.rememberSaveable(taskId) { mutableStateOf(false) }
-    LaunchedEffect(model.saved) { if (model.saved) { model.clear(); onDismiss() } }
+    LaunchedEffect(model.saved) { if (model.saved) {
+        val start=model.consumeStartAfterSave()
+        model.clear();onDismiss()
+        if(start) onStart?.invoke(taskId)
+    } }
+    fun save(start:Boolean) {
+        val allocation=model.allocation();val expected=model.smallStepBaseline
+        if(allocation!=null && expected!=null && model.begin(startAfterSave=start)) vm.saveSmallStep(
+            taskId=taskId,nextAction=model.nextAction,definitionOfDone=model.definitionOfDone,
+            expected=expected,allocation=allocation,blockerReason=model.reason,blockerEntryId=model.blockerEntryId,onResult=model::finish)
+    }
     TodayWorkflowSurface("我卡住了", "support", model, available,
         canSave = model.nextAction.isNotBlank() && model.definitionOfDone.isNotBlank() && model.allocation() != null && model.smallStepBaseline != null,
-        onSave = {
-            val allocation = model.allocation()
-            val expected = model.smallStepBaseline
-            if (allocation != null && expected != null && model.begin()) vm.saveSmallStep(
-                taskId = taskId, nextAction = model.nextAction, definitionOfDone = model.definitionOfDone,
-                expected = expected, allocation = allocation, blockerReason = model.reason,
-                blockerEntryId = model.blockerEntryId, onResult = model::finish)
-        }, onDismiss = onDismiss, onReload = {
+        onSave = {save(false)}, onDismiss = onDismiss, onReload = {
             model.confirmReload(state, taskId, now, support = true)
             custom = false
         }) {
@@ -77,7 +80,9 @@ fun TaskSupportDialog(taskId: String, vm: PareViewModel, onDismiss: () -> Unit) 
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("support_minutes"))
         }
         TimeBlockDisclosure(model)
-        Text("保存后会记下这些内容，并把这几分钟安排到今天。计时由你手动开始。", style = MaterialTheme.typography.bodySmall,
+        if(onStart!=null) OutlinedButton(onClick={save(true)},enabled=enabled && model.nextAction.isNotBlank() && model.definitionOfDone.isNotBlank() && model.allocation()!=null,
+            modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("support_save_start")) {Text("保存并开始5分钟")}
+        Text(if(onStart==null) "保存会记录下一步和今日投入，计时由你手动开始。" else "保存会记录下一步和今日投入。选择“保存并开始5分钟”才请求启动专注；只保存不会启动。", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

@@ -68,3 +68,7 @@ The migration was applied to a new empty Free development project. The rollback 
 Supabase advisors report two intentional categories: [RLS enabled without policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) for the four private default-deny tables, and [authenticated SECURITY DEFINER functions](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable) for the two explicitly guarded RPCs. These were reviewed against their intended design; the report is not a claim that every production security check is complete. Independent-session concurrency, rate limits, authenticated HTTP flow and real two-device tests remain release gates.
 
 Project-specific URL and publishable key may be stored in ignored `project.local.json`. No database password, service-role key, LLM key or real task data belongs in this directory or migration fixtures.
+
+## Execution presence verification (2026-10-31)
+
+The separate presence migration `20261031074438` is deployed. See the [deployment and acceptance record](docs/presence-v1-acceptance.md) for passing rollback SQL checks, 18 live HTTP checks using two Swift clients, opt-in and lease semantics, cleanup counts, and remaining security-advisor follow-up. This does not claim Android-process or two-platform GUI acceptance.

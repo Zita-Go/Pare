@@ -131,7 +131,12 @@ class MobileNotificationRuntime(
                 // Commit before posting: process death cannot replay an already handled occurrence.
                 save(ledger)
                 if (notificationsAllowed()) {
-                    try { notifications.notify(token, 0, notification(event, state.items.getValue("task:${event.taskId}").title())) }
+                    try {
+                        val task=state.items.getValue("task:${event.taskId}")
+                        val actionText=(task.content()?.get("implementationPlan") as? kotlinx.serialization.json.JsonObject)?.get("action") as? kotlinx.serialization.json.JsonPrimitive
+                        val text=if(event.kind=="implementation") "${task.title()} · ${actionText?.content.orEmpty()}" else task.title()
+                        notifications.notify(token, 0, notification(event, text))
+                    }
                     catch (_: SecurityException) { /* Permission can be revoked between check and post. */ }
                 }
             }
@@ -171,7 +176,7 @@ class MobileNotificationRuntime(
             .setData(Uri.parse("pare-task://${app.packageName}/${Uri.encode(event.taskId)}"))
             .putExtra(TASK_ID_EXTRA, event.taskId).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val title = when (event.kind) { "focus" -> "这段专注到目标时间了"; "check" -> "回来看看等待的结果"; "schedule" -> "安排的行动快开始了"; else -> "该做这件事了" }
+        val title = when (event.kind) { "focus" -> "这段专注到目标时间了"; "check" -> "回来看看等待的结果"; "schedule" -> "安排的行动快开始了"; "implementation" -> "如果到这个时刻，那么先行动"; else -> "该做这件事了" }
         val publicVersion = Notification.Builder(app, CHANNEL).setSmallIcon(R.drawable.pare_notification).setContentTitle("Pare 提醒")
             .setContentText("打开 Pare 查看安排").setVisibility(Notification.VISIBILITY_PUBLIC).build()
         return Notification.Builder(app, CHANNEL).setSmallIcon(R.drawable.pare_notification).setContentTitle(title).setContentText(text.take(240))

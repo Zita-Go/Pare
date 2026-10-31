@@ -33,21 +33,25 @@ struct SyncSettingsView: View {
                     }
                     if let preview = store.syncMergePreview { mergePreview(preview) }
                     conflicts
+                    presenceCard
                     HStack {
                         Button("立即同步") { coordinator.syncNow() }
                             .buttonStyle(SecondaryActionStyle())
-                            .disabled(store.syncState?.enabled != true)
+                            .disabled(store.syncState?.enabled != true || coordinator.isBusy)
+                        if store.syncState?.enabled == true {
+                            Button("暂停同步") { coordinator.pauseSync() }.buttonStyle(TertiaryActionStyle())
+                        }
                         Spacer()
                         Button("退出同步账号") { showingSignOut = true }
                             .buttonStyle(TertiaryActionStyle())
-                    }.disabled(coordinator.isBusy)
+                    }
                 } else { loginForm }
             }
             DisclosureGroup("哪些内容会同步？") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("任务与备注、想法与探索记录、长期目标、每日计划、已结束的进展记录，以及你填写的规划背景与偏好。")
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("正在运行的计时、系统通知设置、AI 服务密钥和 AI 原始请求历史留在本机。")
+                    Text("运行状态共享默认关闭，需在本机另行开启。开启后仅共享任务标识、专注或等待状态与计时摘要，约每15秒更新，超过90秒未续期会标记过期。运行控制、系统通知设置、AI 服务密钥和 AI 原始请求历史留在本机。")
                         .fixedSize(horizontal: false, vertical: true)
                     Text("采用加密连接和账号隔离；云服务管理员仍可能访问服务端数据。同步开启后，修改会自动上传。")
                         .fixedSize(horizontal: false, vertical: true)
@@ -59,8 +63,69 @@ struct SyncSettingsView: View {
             Button("取消", role: .cancel) {}
             Button("退出") { coordinator.signOut() }
         } message: {
-            Text("本机内容和待同步修改会保留，云端数据也不会删除。再次登录同一账号后可以继续。")
+            Text("本机内容和待同步修改会保留，云端数据不会删除。退出立即停止运行状态共享；本机对此账号的共享选择保留，重新登录并开启内容同步后沿用。")
         }
+    }
+
+    private var presenceCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("共享本机运行状态并查看其他设备", isOn: Binding(
+                get: { coordinator.presenceSharingEnabled },
+                set: { coordinator.setPresenceSharingEnabled($0) }))
+                .font(Theme.font(13, weight: .medium))
+            Text("默认关闭，选择仅保存在这台 Mac 的当前账号。关闭只停止运行状态共享，不影响任务内容同步；暂停同步或退出账号也会停止共享。")
+                .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Text("其他设备上的进展").font(Theme.font(14, weight: .medium))
+                Spacer()
+                Button("刷新状态") { coordinator.refreshPresence() }
+                    .buttonStyle(TertiaryActionStyle())
+                    .disabled(!coordinator.presenceSharingEnabled || coordinator.isBusy || coordinator.isPresenceBusy || store.syncState?.enabled != true || store.syncState?.mergeConfirmed != true)
+            }
+            Text(coordinator.presenceStatus).font(Theme.font(12)).foregroundColor(Theme.textDim)
+            if coordinator.hasOtherActiveFocus {
+                Text("另一台设备正在专注。开始新的专注前，请先确认那边是否已结束。")
+                    .font(Theme.font(12)).foregroundColor(Theme.amber)
+            }
+            ForEach(coordinator.remotePresenceDevices) { device in
+                let fresh = coordinator.isPresenceFresh(device)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text(device.label).font(Theme.font(12, weight: .medium))
+                        Text(fresh ? "最近在线" : "状态已过期，当前情况未知")
+                            .font(Theme.font(11)).foregroundColor(fresh ? Theme.success : Theme.amber)
+                    }
+                    if device.runs.isEmpty {
+                        Text(fresh ? "最近报告没有运行中的任务" : "过期报告中没有运行中的任务")
+                            .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                    }
+                    ForEach(device.runs) { run in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text((store.tasks + store.archive).first(where: { $0.id == run.taskID })?.text ?? "任务尚未同步到本机")
+                                .font(Theme.font(12)).foregroundColor(Theme.text)
+                            let kind = run.kind == .personal ? "自己专注" : "等待结果"
+                            let state = run.state == .running ? "进行中" : "已暂停"
+                            Text("\(fresh ? "" : "上次报告：")\(kind) · \(state) · 已记录\(run.elapsedSeconds / 60)分钟")
+                                .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                        }
+                    }
+                    Text("服务端最近收到：\(device.lastSeen.formatted(date: .abbreviated, time: .shortened))")
+                        .font(Theme.font(10)).foregroundColor(Theme.textFaint)
+                }.padding(.vertical, 5)
+            }
+            if let error = coordinator.presenceError {
+                Text(error).font(Theme.font(11)).foregroundColor(Theme.amber)
+            }
+            if coordinator.presenceOmittedCount > 0 {
+                Text("本机另有\(coordinator.presenceOmittedCount)项等待记录未共享；每台设备最多共享32项运行。")
+                    .font(Theme.font(11)).foregroundColor(Theme.amber)
+            }
+            Text("这里提供状态参考；只能在运行所在设备暂停、结束或继续。离线时请留意过期标记。")
+                .font(Theme.font(11)).foregroundColor(Theme.textFaint)
+        }.foregroundColor(Theme.text).padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.Radius.card))
     }
 
     private var statusCard: some View {

@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -26,7 +27,8 @@ import java.time.format.DateTimeFormatter
     task:Entity,
     snapshot:ExecutionSnapshot,
     onCommand:(ExecutionCommand,(Result<Unit>)->Unit)->Unit,
-    onDismiss:()->Unit
+    onDismiss:()->Unit,
+    otherFocusLabel:String?=null
 ) {
     var external by rememberSaveable(task.id) {mutableStateOf(false)}
     var minutes by rememberSaveable(task.id) {mutableStateOf("5")}
@@ -34,6 +36,7 @@ import java.time.format.DateTimeFormatter
     var busy by remember {mutableStateOf(false)}
     var error by remember {mutableStateOf<String?>(null)}
     var confirm by remember {mutableStateOf<ExecutionAction?>(null)}
+    var peerMinutes by rememberSaveable(task.id) {mutableStateOf<Int?>(null)}
     val run=snapshot.runFor(task.id)
     val isExternal=snapshot.external.any {it.taskId==task.id}
     val context=LocalContext.current
@@ -126,7 +129,7 @@ import java.time.format.DateTimeFormatter
             } else {
                 val value=minutes.toIntOrNull()
                 if(value==null || value !in 1..1440) error="请填写 1–1440 分钟"
-                else submit(ExecutionAction.START_FOCUS,value,close=true)
+                else if(otherFocusLabel!=null)peerMinutes=value else submit(ExecutionAction.START_FOCUS,value,close=true)
             }
         }) {Text(if(busy) "正在保存" else if(run!=null) "结束并记录" else if(external) "开始记录等待" else "开始专注")}},
         dismissButton={TextButton(enabled=!busy,onClick=onDismiss,modifier=Modifier.heightIn(min=48.dp)) {Text("关闭")}}
@@ -137,5 +140,11 @@ import java.time.format.DateTimeFormatter
             text={Text(if(action==ExecutionAction.CANCEL) "这段尚未记录的时长将丢弃，任务内容保留。" else if(isExternal) "保存这段等待时长，任务仍保留为未完成。" else "保存这段专注时长，任务仍保留为未完成。")},
             confirmButton={TextButton(enabled=!busy,onClick={confirm=null;submit(action,close=true)}) {Text("确认")}},
             dismissButton={TextButton(enabled=!busy,onClick={confirm=null}) {Text("返回")}})
+    }
+    peerMinutes?.let {value ->
+        AlertDialog(onDismissRequest={peerMinutes=null},title={Text("另一台设备还有专注记录")},
+            text={Text("${otherFocusLabel ?: "其他设备"} 最近仍显示正在专注。本机开始不会停止那台设备，两段时间会分别记录。")},
+            confirmButton={TextButton(onClick={peerMinutes=null;submit(ExecutionAction.START_FOCUS,value,close=true)},modifier=Modifier.heightIn(min=48.dp).testTag("presence_start_anyway")){Text("仍在本机开始")}},
+            dismissButton={TextButton(onClick={peerMinutes=null},modifier=Modifier.heightIn(min=48.dp).testTag("presence_start_cancel")){Text("先不开始")}})
     }
 }

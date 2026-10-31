@@ -6,6 +6,9 @@ import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 class ExecutionControllerTest {
     private val a="00000000-0000-0000-0000-000000000001"
@@ -185,5 +188,40 @@ class ExecutionControllerTest {
         f.second.advance(300_000);execution.reconcile()
         assertEquals(generation+1,execution.state.value.focus!!.deadlineGeneration)
         assertTrue(execution.state.value.focus!!.due)
+    }
+
+    @Test(timeout=10_000) fun startingFocusCannotSlipBetweenArchiveCheckAndCommit() {
+        val f=fixture();val execution=f.controller()
+        val entered=CountDownLatch(1);val release=CountDownLatch(1);val startAttempt=CountDownLatch(1);val started=CountDownLatch(1)
+        val archiveError=AtomicReference<Throwable?>();val startError=AtomicReference<Throwable?>()
+        val archive=Thread {
+            try {
+                WorkspaceChanges.edit(f.first,execution,true) {before ->
+                    entered.countDown()
+                    check(release.await(5,TimeUnit.SECONDS)) {"test archive gate timed out"}
+                    LibraryActions.archive(before,a,LibraryBaseline.from(before.items.getValue("task:$a")))
+                }
+            } catch(error:Throwable) {archiveError.set(error)}
+        }
+        val start=Thread {
+            startAttempt.countDown()
+            try {execution.startFocus(a,5)} catch(error:Throwable) {startError.set(error)}
+            finally {started.countDown()}
+        }
+        try {
+            archive.start();assertTrue(entered.await(3,TimeUnit.SECONDS))
+            start.start();assertTrue(startAttempt.await(3,TimeUnit.SECONDS))
+            val deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(2)
+            while(start.state!=Thread.State.BLOCKED && started.count>0 && System.nanoTime()<deadline) Thread.yield()
+            assertEquals("The start must wait on the same execution monitor until archive commits",Thread.State.BLOCKED,start.state)
+            assertEquals(1L,started.count)
+        } finally {
+            release.countDown();archive.join(3_000);if(start.state!=Thread.State.NEW)start.join(3_000)
+        }
+        assertFalse(archive.isAlive);assertFalse(start.isAlive);assertNull(archiveError.get())
+        assertTrue(startError.get() is IllegalStateException)
+        assertEquals(JsonPrimitive("archived"),f.first.task(a).payload?.get("lifecycle"))
+        assertNull(execution.state.value.focus);assertNull(f.third.saved?.focus)
+        assertEquals(7,f.first.task(a).content()?.get("actualMinutes")?.jsonPrimitive?.int)
     }
 }

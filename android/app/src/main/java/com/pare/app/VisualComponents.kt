@@ -38,8 +38,8 @@ internal fun PareHeader(tab: Int, status: String, busy: Boolean, signedIn: Boole
             modifier=Modifier.heightIn(min=48.dp).testTag("ai_open")) {Text("AI 助手")}}
         onReview?.let {TextButton(onClick=it,colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.onSurfaceVariant),modifier=Modifier.heightIn(min=48.dp).testTag("review_open")) {Text("回看")}}
         Box {
-            IconButton(onClick = onAccount, modifier = Modifier.size(48.dp).testTag("account_open")) {
-                Icon(Icons.Default.Person, if (signedIn) "账号与同步：$status" else "打开账号：$status", Modifier.size(22.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+            IconButton(onClick = onAccount, modifier = Modifier.size(48.dp).testTag("more_workspace")) {
+                Icon(Icons.Default.MoreVert, "更多功能与设置：$status", Modifier.size(22.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (busy) CircularProgressIndicator(Modifier.align(Alignment.TopEnd).padding(6.dp).size(8.dp), strokeWidth = 1.5.dp)
             else if (signedIn) Box(Modifier.align(Alignment.TopEnd).padding(8.dp).size(5.dp)

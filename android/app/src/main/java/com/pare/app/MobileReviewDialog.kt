@@ -13,6 +13,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -44,6 +47,10 @@ class MobileHintPreferences(context:Context) {
     onOpen:(ReviewAttention)->Unit,onAI:(String)->Unit,onDismiss:()->Unit) {
     val review=remember(state,now) {MobileReview.calculate(state,now)}
     var showCompleted by remember {mutableStateOf(false)}
+    var showAnalytics by remember {mutableStateOf(false)}
+    var copyStatus by remember {mutableStateOf("")}
+    val context=LocalContext.current
+    val analytics=remember(state,now) {ReviewAnalytics.calculate(state,now)}
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding().testTag("review_dialog"),color=MaterialTheme.colorScheme.background) {
             Column {
@@ -80,6 +87,35 @@ class MobileHintPreferences(context:Context) {
                                 }
                             }
                         }
+                    }
+                    item {
+                        TextButton(onClick={showAnalytics=!showAnalytics},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("review_analytics_toggle")) {Text(if(showAnalytics) "收起8周趋势与估时校准" else "查看8周趋势与估时校准")}
+                        if(showAnalytics) Column(verticalArrangement=Arrangement.spacedBy(12.dp),modifier=Modifier.testTag("review_analytics")) {
+                            Text("按规划时区 ${analytics.zone} 的自然周统计；本周未结束。只使用已有记录，不含已删除或冲突条目。",style=MaterialTheme.typography.bodySmall)
+                            if(!analytics.hasRecords) Text("这8周还没有完成或投入记录。",style=MaterialTheme.typography.bodyMedium)
+                            analytics.weeks.forEach {week->
+                                Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                                    Text("${week.start}${if(week.current) " · 本周" else "起"}",style=MaterialTheme.typography.labelLarge)
+                                    Text("完成 ${week.completed} 件 · 专注 ${week.focusMinutes} 分钟 · 等待 ${week.waitingMinutes} 分钟",style=MaterialTheme.typography.bodySmall)
+                                    val max=analytics.weeks.maxOf {it.focusMinutes}.coerceAtLeast(1)
+                                    LinearProgressIndicator(progress={week.focusMinutes.toFloat()/max.toFloat()},modifier=Modifier.fillMaxWidth(),color=MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Text("8周完成任务的象限分布",style=MaterialTheme.typography.titleSmall)
+                            val names=listOf("重要且紧急","重要不紧急","紧急不重要","不紧急不重要")
+                            analytics.quadrantCompletions.forEach {(quadrant,count)->Text("${names[quadrant]} · $count 件",style=MaterialTheme.typography.bodyMedium)}
+                            val c=analytics.calibration
+                            Text("估时校准",style=MaterialTheme.typography.titleSmall)
+                            Text(if(c==null) "尚无同时填写预计与实际分钟的已完成任务，不作推算。" else "${c.pairs} 件完整样本：预计 ${c.estimatedMinutes} 分钟，实际 ${c.actualMinutes} 分钟；实际/预计 ${String.format(java.util.Locale.ROOT,"%.2f",c.ratio)} 倍。",style=MaterialTheme.typography.bodyMedium)
+                        }
+                        OutlinedButton(onClick={
+                            val text=ReviewAnalytics.export(state,now)
+                            copyStatus=try {
+                                (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Pare 本地回顾",text))
+                                "已复制汇总；不含任务标题或 AI 原始记录"
+                            } catch(_:Exception) {"复制失败，请重试"}
+                        },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("review_copy")) {Text("复制本地回顾")}
+                        if(copyStatus.isNotEmpty())Text(copyStatus,style=MaterialTheme.typography.bodySmall,modifier=Modifier.testTag("review_copy_status"))
                     }
                     item {Text("值得回看",style=MaterialTheme.typography.titleMedium,modifier=Modifier.padding(top=8.dp))}
                     if(review.attention.isEmpty()) item {

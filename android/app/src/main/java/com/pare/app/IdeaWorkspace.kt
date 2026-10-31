@@ -33,7 +33,7 @@ import kotlinx.serialization.json.*
 @Composable
 internal fun IdeaWorkspaceDialog(
     ideaId: String, vm: PareViewModel, onDismiss: () -> Unit,
-    onEditIdea: (Entity) -> Unit, onOpenTask: (Entity) -> Unit
+    onEditIdea: (Entity) -> Unit, onOpenTask: (Entity) -> Unit, onManage: (() -> Unit)? = null, onAI: (() -> Unit)? = null
 ) {
     val state by vm.state.collectAsState()
     val now by vm.planningInstant.collectAsState()
@@ -217,6 +217,10 @@ internal fun IdeaWorkspaceDialog(
                         if (drafts.entry != null || drafts.action != null) Text("有未保存的草稿，可以继续填写。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (!canGrow) Text("想法已归档，探索记录与关联行动仍然保留。", style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            onAI?.let {TextButton(onClick=it,modifier=Modifier.heightIn(min=48.dp).testTag("idea_ai")){Text("和 AI 一起探索")}}
+                            onManage?.let {TextButton(onClick=it,modifier=Modifier.heightIn(min=48.dp).testTag("idea_manage")){Text("关联行动与回看")}}
+                        }
                         val linked = IdeaLinkedTasks.project(state, idea)
                         WorkspaceSection("关联行动", linked.size)
                         if (linked.isEmpty()) Text("行动准备好时，再从这个想法中拆出第一步。", color = MaterialTheme.colorScheme.onSurfaceVariant)

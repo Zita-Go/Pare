@@ -36,6 +36,8 @@ class TodayWorkflowModel : ViewModel() {
     var saved by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var reloadRequested by mutableStateOf(false); private set
+    private var startAfterSave = false
+    private var startConsumed = false
 
     internal fun initialize(state: SyncState, taskId: String, now: Instant, support: Boolean) {
         if (initialized) return
@@ -56,10 +58,17 @@ class TodayWorkflowModel : ViewModel() {
         return TodayAllocationDraft(expected.planId, kind, amount, allocationId, expected)
     }
 
-    fun begin(): Boolean {
+    fun begin(startAfterSave:Boolean=false): Boolean {
         if (saving || saved) return false
         saving = true
         error = null
+        this.startAfterSave=startAfterSave;startConsumed=false
+        return true
+    }
+    /** Retained with the successful save across rotation, and claimed exactly once by the UI. */
+    fun consumeStartAfterSave():Boolean {
+        if(!saved || !startAfterSave || startConsumed) return false
+        startConsumed=true
         return true
     }
     fun finish(result: Result<Unit>) {
@@ -76,6 +85,7 @@ class TodayWorkflowModel : ViewModel() {
     }
     internal fun clear() {
         initialized = false; saved = false; error = null; reloadRequested = false
+        startAfterSave=false;startConsumed=false
         allocationBaseline = null; smallStepBaseline = null
         allocationId = uid(); blockerEntryId = uid()
         reason = "unclear"

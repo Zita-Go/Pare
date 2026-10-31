@@ -24,6 +24,7 @@ interface SyncRemote {
     suspend fun pull(session:Session,cursor:Long):Page
     suspend fun push(session:Session,request:Push):Reply
     suspend fun logout(session:Session)
+    suspend fun presence(session:Session,request:DevicePresenceRequest):DevicePresenceReply = throw DevicePresenceUnavailableException()
 }
 interface SyncSchedule {
     fun schedule(hasPending:Boolean)
@@ -71,6 +72,40 @@ class SyncEngine(
         }
     }
     private fun eligible(s:SyncState=store.read())=initialized.value && !revoked && !authBlocked && s.enabled && s.owner!=null && session.value?.owner==s.owner
+    /** Presence uses the same consent/auth policy without exposing credentials to callers. */
+    fun canExchangePresence():Boolean = eligible()
+    suspend fun exchangePresence(request:DevicePresenceRequest,expectedOwner:String?=state.value.owner,permit:()->Boolean={true}):DevicePresenceReply? {
+        val requestedGeneration=generation.get()
+        return network.withLock {
+            if(!eligible() || requestedGeneration!=generation.get() || store.read().owner!=expectedOwner || !permit()) return@withLock null
+            request.validate()
+            require(request.deviceId==store.read().device) {"运行状态所属设备已改变"}
+            val ticket=generation.get()
+            try {
+                withTimeout(60_000) {
+                    val credentials=try {activeSession(ticket,manual=false)}
+                    catch(e:CancellationException) {throw e}
+                    catch(e:Exception) {handleFailure(e);throw e}
+                    if(!permit()) return@withTimeout null
+                    checkpoint(ticket,manual=false)
+                    require(request.deviceId==store.read().device) {"运行状态所属设备已改变"}
+                    if(!permit()) return@withTimeout null
+                    val reply=remote.presence(credentials,request)
+                    checkpoint(ticket,manual=false)
+                    if(!permit()) return@withTimeout null
+                    require(request.deviceId==store.read().device) {"运行状态所属设备已改变"}
+                    reply.validate(request)
+                    reply
+                }
+            } catch(_:SyncRevoked) {null}
+            catch(e:CancellationException) {throw e}
+            catch(e:Exception) {
+                // A missing/failed optional RPC must never disable durable content sync.
+                if(e is ApiFailure && e.code==401) handleFailure(e)
+                throw e
+            }
+        }
+    }
     private fun hasPending(s:SyncState)=s.pending!=null || s.items.values.any {it.dirty && it.conflict==null}
     private fun reconcile() = synchronized(policy) {
         val s=store.read()

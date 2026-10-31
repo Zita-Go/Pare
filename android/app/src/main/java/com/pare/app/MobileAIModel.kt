@@ -20,6 +20,7 @@ class MobileAITaskDraft {
 class MobileAIModel internal constructor(app:Application,private val vault:MobileAIStore,private val client:MobileAIClient):AndroidViewModel(app) {
     constructor(app:Application):this(app,MobileAIVault(app),MobileAIClient())
     private val drafts=mutableMapOf<String,MobileAITaskDraft>()
+    private val planningDrafts=mutableMapOf<String,PlanningAIDraft>()
     private var saved=MobileAIPrivateData()
     var endpoint by mutableStateOf("")
     var modelName by mutableStateOf("")
@@ -54,7 +55,7 @@ class MobileAIModel internal constructor(app:Application,private val vault:Mobil
         prepare(state,taskId)
     }
     fun saveSettings() {
-        if(!ready || saving || drafts.values.any {it.busy}) return
+        if(!ready || saving || (drafts.values.any {it.busy} || planningDrafts.values.any {it.busy})) return
         val config=try {MobileAIConfig(endpoint,modelName).validated()} catch(e:MobileAIException) {settingsStatus=e.message.orEmpty();return}
         if(apiKey.isBlank() || apiKey.length>4096 || apiKey.any {it.isISOControl()}) {settingsStatus="请填写有效的 API 密钥";return}
         val next=MobileAIPrivateData(config,apiKey,history);saving=true
@@ -66,7 +67,7 @@ class MobileAIModel internal constructor(app:Application,private val vault:Mobil
     }
     fun generate(state:SyncState,taskId:String) {
         val d=draft(taskId);val input=d.input ?: return
-        if(!ready || saving || drafts.values.any {it.busy}) return
+        if(!ready || saving || (drafts.values.any {it.busy} || planningDrafts.values.any {it.busy})) return
         try {
             MobileAIContext.requireFresh(state,input)
             if(saved.apiKey.isBlank() || saved.config!=MobileAIConfig(endpoint,modelName).validated() || saved.apiKey!=apiKey)
@@ -108,10 +109,67 @@ class MobileAIModel internal constructor(app:Application,private val vault:Mobil
             else d.status=if(result.exceptionOrNull() is MobileAIException) result.exceptionOrNull()?.message.orEmpty() else "撤销未保存，请稍后重试"
         }
     }
+    fun planningDraft(state:SyncState,kind:PlanningAIKind,subjectId:String?,planId:String):PlanningAIDraft =
+        planningDrafts.getOrPut("${state.owner}:${state.device}:$kind:$subjectId:$planId") {PlanningAIDraft(kind,subjectId,planId,PlanningAIContext.defaults(state,kind,subjectId,planId))}
+    fun preparePlanning(state:SyncState,d:PlanningAIDraft) {
+        if(d.busy || d.undo!=null) return
+        try {d.input=PlanningAIContext.prepare(state,d.kind,d.subjectId,d.planId,d.options,history);d.proposal=null;d.selected=emptySet();d.status="请查看将发送的内容，再手动生成"}
+        catch(e:Exception) {d.input=null;d.status=e.message ?: "无法准备本次参考内容"}
+    }
+    fun generatePlanning(state:SyncState,d:PlanningAIDraft) {
+        val input=d.input ?: return
+        if(!ready || saving || drafts.values.any {it.busy} || planningDrafts.values.any {it.busy}) return
+        try {
+            PlanningAIContext.requireFresh(state,input)
+            if(saved.apiKey.isBlank() || saved.config!=MobileAIConfig(endpoint,modelName).validated() || saved.apiKey!=apiKey)
+                throw MobileAIException("请先保存本机服务设置，再生成建议")
+        } catch(e:Exception) {d.status=e.message ?: "请重新预览";return}
+        d.busy=true;d.status="正在请求建议…";val settings=saved
+        viewModelScope.launch {
+            var trace:MobileAITrace?=null
+            try {
+                val p=withContext(Dispatchers.IO) {client.generate(settings.config,settings.apiKey,input) {trace=it}}
+                d.proposal=p;d.selected=p.actions.map {it.id}.toSet();d.status="勾选要采纳的行动，确认后才修改资料"
+            } catch(e:MobileAIException) {d.status=e.message.orEmpty()}
+            catch(e:CancellationException) {throw e}
+            catch(_:Exception) {d.status="请求未完成，参考内容已保留"}
+            finally {
+                trace?.let {record->
+                    val updated=MobileAIHistory.append(history,record);val next=MobileAIPrivateData(saved.config,saved.apiKey,updated)
+                    try {withContext(NonCancellable+Dispatchers.IO) {vault.save(next)};saved=next;history=updated}
+                    catch(_:Exception) {d.status+="；本机请求记录保存失败"}
+                }
+                d.busy=false
+            }
+        }
+    }
+    fun adoptPlanning(d:PlanningAIDraft,onEdit:((SyncState)->SyncState,(Result<Unit>)->Unit)->Unit) {
+        val input=d.input ?: return;val proposal=d.proposal ?: return
+        if(d.busy || d.undo!=null || d.selected.isEmpty()) return
+        val selection=d.selected.toSet();val at=Instant.now();d.busy=true
+        var receipt:PlanningAIUndo?=null
+        onEdit({state->PlanningReviewActions.adopt(state,input,proposal,selection,at).also {receipt=PlanningAIUndo.capture(state,it)}}) {result->
+            d.busy=false
+            if(result.isSuccess) {d.undo=receipt;d.status="已采纳勾选行动，可以撤销本次采纳"}
+            else d.status=result.exceptionOrNull()?.message ?: "保存失败，建议草稿已保留"
+        }
+    }
+    fun undoPlanning(d:PlanningAIDraft,onEdit:((SyncState)->SyncState,(Result<Unit>)->Unit)->Unit) {
+        val receipt=d.undo ?: return;if(d.busy) return;d.busy=true
+        onEdit({receipt.apply(it)}) {result->
+            d.busy=false
+            if(result.isSuccess) {d.undo=null;d.input=null;d.proposal=null;d.selected=emptySet();d.status="已撤销本次采纳，请重新预览后继续"}
+            else d.status=result.exceptionOrNull()?.message ?: "撤销未保存，请重试"
+        }
+    }
+    fun nextPlanningRound(state:SyncState,d:PlanningAIDraft) {
+        if(d.busy) return
+        d.undo=null;d.proposal=null;d.input=null;d.selected=emptySet();preparePlanning(state,d)
+    }
     fun deleteTrace(id:String) = updateHistory(MobileAIHistory.remove(history,id))
     fun clearHistory() = updateHistory(emptyList())
     private fun updateHistory(nextHistory:List<MobileAITrace>) {
-        if(!ready || saving || drafts.values.any {it.busy}) return
+        if(!ready || saving || (drafts.values.any {it.busy} || planningDrafts.values.any {it.busy})) return
         saving=true;val next=MobileAIPrivateData(saved.config,saved.apiKey,nextHistory)
         viewModelScope.launch {
             try {withContext(Dispatchers.IO) {vault.save(next)};saved=next;history=nextHistory;settingsStatus="本机记录已删除"}
@@ -120,11 +178,16 @@ class MobileAIModel internal constructor(app:Application,private val vault:Mobil
         }
     }
     fun clearPrivateData() {
-        if(saving || drafts.values.any {it.busy}) return;saving=true
+        if(saving) return
+        if(drafts.values.any {it.busy} || planningDrafts.values.any {it.busy}) {
+            settingsStatus="还有 AI 请求正在进行，本机设置与记录尚未清除；请求结束后可重试"
+            return
+        }
+        saving=true
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {vault.clear()};saved=MobileAIPrivateData();history=emptyList()
-                endpoint="";modelName="";apiKey="";drafts.clear();ready=true;settingsStatus="本机 AI 设置与记录已清除"
+                endpoint="";modelName="";apiKey="";drafts.clear();planningDrafts.clear();ready=true;settingsStatus="本机 AI 设置与记录已清除"
             } catch(_:Exception) {settingsStatus="本机 AI 资料清除失败，请重试"}
             finally {saving=false}
         }

@@ -61,7 +61,9 @@ fun TodayTimeline(
     onChangeSchedule: (TimelineBlock, Instant, Int, TimelineScheduleBaseline) -> Unit,
     onReorderUnscheduled: (TimelineDay, List<String>, TimelineOrderBaseline) -> Unit,
     revealUnscheduledKey: Int = 0,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onMoveToDay: ((TimelineBlock, Instant, TimelineMoveBaseline) -> Unit)? = null,
+    revealAt: Instant? = null
 ) {
     val day = remember(state, selectedDate) { TimelineDay.from(state, selectedDate) }
     val projection = remember(state, day) { TimelineProjection.project(state, day) }
@@ -70,6 +72,7 @@ fun TodayTimeline(
     val plannedLoad = remember(state, day.planId) { TodayLoad.calculate(state, day.start) }
     val latestState by rememberUpdatedState(state)
     val changeSchedule by rememberUpdatedState(onChangeSchedule)
+    val moveToDay by rememberUpdatedState(onMoveToDay)
     val reorder by rememberUpdatedState(onReorderUnscheduled)
     val scheduleTask by rememberUpdatedState(onScheduleTask)
     val density = LocalDensity.current
@@ -92,6 +95,11 @@ fun TodayTimeline(
     var rowBounds by remember { mutableStateOf<Map<String, Rect>>(emptyMap()) }
     var rowOrigins by remember { mutableStateOf<Map<String, Offset>>(emptyMap()) }
     var previewOrder by remember { mutableStateOf<List<String>?>(null) }
+    var dateDropBounds by remember {mutableStateOf<Map<Int,Rect>>(emptyMap())}
+    var dateDropOffset by remember {mutableStateOf<Int?>(null)}
+    var dateDropExpected by remember {mutableStateOf<TimelineMoveBaseline?>(null)}
+    var dateDropStart by remember {mutableStateOf<Instant?>(null)}
+    var dateDropError by remember {mutableStateOf<String?>(null)}
     val currentDrag = drag
     val selectedBlock = projection.blocks.firstOrNull { it.key == selectedBlockKey }
     val visual = remember(projection.blocks, minimumBlockMinutes) { timelineVisualLanes(projection.blocks, minimumBlockMinutes.toDouble()) }
@@ -99,6 +107,21 @@ fun TodayTimeline(
 
     fun updateDrag(pointer: Offset) {
         val old = drag ?: return
+        val destination=if(old.block!=null && !old.resize && moveToDay!=null) dateDropBounds.entries.firstOrNull {it.value.contains(pointer)}?.key else null
+        if(destination!=null) {
+            if(destination!=dateDropOffset) {
+                dateDropOffset=destination;dateDropExpected=null;dateDropStart=null;dateDropError=null
+                try {
+                    val target=TimelineDay(day.date.plusDays(destination.toLong()),day.zone)
+                    dateDropStart=TimelineTime.onDate(old.block!!.start,target)
+                    dateDropExpected=TimelineMoveBaseline.capture(latestState,requireNotNull(old.scheduleBaseline),target.planId)
+                } catch(e:Exception) {dateDropError=e.message ?: "无法移到这个日期，请用调整时间查看"}
+            }
+            // The original card remains composed on this date; its pointer recognizer owns the whole gesture.
+            drag=old.copy(pointerRoot=pointer,start=old.block!!.start,minutes=old.block.durationMinutes)
+            return
+        }
+        dateDropOffset=null;dateDropExpected=null;dateDropStart=null;dateDropError=null
         if (old.block == null) {
             val minute = TimelineTime.snapMinute(((pointer.y - gridBounds.top) / pxPerMinute).toDouble())
                 .coerceIn(0, (day.minutes - 15).coerceAtLeast(0))
@@ -125,10 +148,18 @@ fun TodayTimeline(
     }
     fun finishDrag() {
         val finished = drag ?: return
+        val crossDate=dateDropOffset
+        val crossExpected=dateDropExpected
+        val crossStart=dateDropStart
         drag = null
+        dateDropOffset=null;dateDropExpected=null;dateDropStart=null
         val order = previewOrder
         previewOrder = null
         val block = finished.block
+        if(block!=null && crossDate!=null) {
+            if(crossExpected!=null && crossStart!=null) moveToDay?.invoke(block,crossStart,crossExpected)
+            return
+        }
         if (block != null) {
             val baseline = finished.scheduleBaseline ?: return
             if (finished.start != block.start || finished.minutes != block.durationMinutes)
@@ -139,7 +170,7 @@ fun TodayTimeline(
             reorder(day, order, finished.orderBaseline)
         }
     }
-    fun cancelDrag() { drag = null; previewOrder = null }
+    fun cancelDrag() { drag = null; previewOrder = null; dateDropOffset=null;dateDropExpected=null;dateDropStart=null;dateDropError=null }
 
     // Keep dragging usable at either edge without committing intermediate positions.
     LaunchedEffect(currentDrag != null) {
@@ -147,6 +178,7 @@ fun TodayTimeline(
             val active = drag ?: break
             val edge = with(density) { 48.dp.toPx() }
             val speed = when {
+                dateDropOffset!=null -> 0f
                 active.pointerRoot.y < viewport.top + edge && active.pointerRoot.y >= viewport.top -> -12f
                 active.pointerRoot.y > viewport.bottom - edge && active.pointerRoot.y <= viewport.bottom -> 12f
                 else -> 0f
@@ -166,9 +198,11 @@ fun TodayTimeline(
             delay(32)
         }
     }
-    LaunchedEffect(day.planId) {
+    LaunchedEffect(day.planId, revealAt) {
         cancelDrag()
-        val initial = if (now >= day.start && now < day.end) {
+        val initial = if(revealAt!=null && revealAt>=day.start && revealAt<day.end) {
+            (Duration.between(day.start,revealAt).toMinutes()-30).coerceAtLeast(0)
+        } else if (now >= day.start && now < day.end) {
             (Duration.between(day.start, now).toMinutes() - 90).coerceAtLeast(0)
         } else 8 * 60L
         scroll.scrollTo((initial * pxPerMinute).roundToInt())
@@ -253,8 +287,29 @@ fun TodayTimeline(
             }
         }
         // This slot never changes height when selection or dragging begins, keeping the axis still.
-        Box(Modifier.fillMaxWidth().height(if (density.fontScale > 1.3f) 64.dp else 48.dp).background(if (currentDrag != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface), contentAlignment = Alignment.CenterStart) {
-            if (currentDrag == null && selectedBlock != null) {
+        Box(Modifier.fillMaxWidth().height(if (density.fontScale > 1.3f) 64.dp else 48.dp).background(if (currentDrag != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+            .then(if(currentDrag?.block!=null && !currentDrag.resize && onMoveToDay!=null) Modifier.testTag("timeline_drag_preview") else Modifier), contentAlignment = Alignment.CenterStart) {
+            if(currentDrag?.block!=null && !currentDrag.resize && onMoveToDay!=null) {
+                Row(Modifier.fillMaxSize().testTag("timeline_date_drop_targets")) {
+                    listOf(-1,1).forEach {offset->
+                        val target=day.date.plusDays(offset.toLong())
+                        Box(Modifier.weight(1f).fillMaxHeight().padding(2.dp)
+                            .onGloballyPositioned {dateDropBounds=dateDropBounds+(offset to it.boundsInRoot())}
+                            .background(if(dateDropOffset==offset) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,MaterialTheme.shapes.small)
+                            .testTag(if(offset<0) "timeline_drop_previous_day" else "timeline_drop_next_day")
+                            .semantics {contentDescription="拖到${target}，保持${timelineTime(currentDrag.block.start,day)}和${currentDrag.block.durationMinutes}分钟"},contentAlignment=Alignment.Center) {
+                            Text(if(dateDropOffset==offset && dateDropError!=null) dateDropError!! else "${if(offset<0) "前一天" else "后一天"} · ${target.format(DateTimeFormatter.ofPattern("M月d日"))}\n${timelineTime(currentDrag.block.start,day)} · ${currentDrag.block.durationMinutes} 分钟，松手移动",
+                                style=MaterialTheme.typography.bodySmall,maxLines=2,color=if(dateDropError!=null && dateDropOffset==offset) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                                modifier=Modifier.padding(horizontal=4.dp))
+                        }
+                    }
+                }
+            } else if(currentDrag==null && dateDropError!=null) {
+                Row(Modifier.fillMaxSize(),verticalAlignment=Alignment.CenterVertically) {
+                    Text(dateDropError!!,Modifier.weight(1f).padding(start=12.dp).testTag("timeline_move_date_error"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error,maxLines=2)
+                    TextButton(onClick={dateDropError=null}) {Text("关闭")}
+                }
+            } else if (currentDrag == null && selectedBlock != null) {
                 val selectedTask = selectedBlock.task
                 val completed = selectedTask.completed()
                 Row(Modifier.fillMaxSize().padding(horizontal = 4.dp).testTag("timeline_context_actions"), verticalAlignment = Alignment.CenterVertically) {
@@ -331,6 +386,7 @@ fun TodayTimeline(
                                 if (!resize && !canMove) return
                                 val origin = cardBounds.topLeft + offset
                                 selectedBlockKey = block.key
+                                dateDropError=null;dateDropOffset=null;dateDropExpected=null;dateDropStart=null
                                 drag = TimelineDrag(block.task, block, resize, origin, origin, scroll.value, block.start, block.durationMinutes,
                                     eventBaseline, null)
                             }

@@ -63,11 +63,29 @@ class MobileAIClient(private val transport:MobileAITransport=MobileAIHttpsTransp
             }
             if(reply.body.toByteArray(Charsets.UTF_8).size>128_000) throw MobileAIException("AI 返回内容过大")
             output=reply.body
-            return decode(output,input).also {success=true}
+            return decode(sanitizedOutput(output,key),input).also {success=true}
         } catch(e:MobileAIException) {throw e}
         catch(_:Exception) {throw MobileAIException("AI 请求未完成，请检查网络后手动重试")}
         finally {record(MobileAITrace(input.id,input.taskId,Instant.now().toString(),request,output,success).redacted(key))}
     }
+    fun generate(config:MobileAIConfig,key:String,input:PlanningAIRequest,record:(MobileAITrace)->Unit={}):PlanningAIProposal {
+        val safe=config.validated()
+        if(key.isBlank() || key.length>4096 || key.any {it.isISOControl()}) throw MobileAIException("请在本机设置有效的 API 密钥")
+        val request=PlanningAIWire.body(safe,input);var output="";var success=false
+        try {
+            val reply=transport.post(safe,key,request)
+            if(reply.status!=200) {
+                output="HTTP ${reply.status}"
+                throw MobileAIException(when(reply.status) {401,403->"AI 服务拒绝认证，请检查本机密钥与模型权限";429->"AI 服务繁忙或额度不足，请稍后手动重试";in 300..399->"AI 地址返回重定向，已停止；请填写最终 HTTPS 地址";else->"AI 服务未完成请求，请检查设置后手动重试"})
+            }
+            if(reply.body.toByteArray().size>128_000) throw MobileAIException("AI 返回内容过大")
+            output=reply.body
+            return PlanningAIWire.decode(sanitizedOutput(output,key),input).also {success=true}
+        } catch(e:MobileAIException) {throw e}
+        catch(_:Exception) {throw MobileAIException("AI 请求未完成，请检查网络后手动重试")}
+        finally {record(MobileAITrace(input.id,input.subjectId.orEmpty(),Instant.now().toString(),request,output,success,input.kind.name,input.options.taskIds).redacted(key))}
+    }
+    private fun sanitizedOutput(output:String,key:String)=MobileAITrace("","","","",output,false).redacted(key).output
     companion object {
         val instructions="""
             你是 Pare 的行动助手。只使用获准发送的 evidence，为指定 taskId 提议一个 2–5 分钟可开始的具体动作。

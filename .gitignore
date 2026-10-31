@@ -21,3 +21,6 @@ docs/rfcs/
 .env
 .env.*
 !.env.example
+
+# Supabase CLI local metadata
+backend/supabase/.temp/

@@ -54,7 +54,7 @@ object MobileAIContext {
     }
     fun prepare(state:SyncState,taskId:String,options:MobileAIOptions,history:List<MobileAITrace>,now:Instant=Instant.now()):MobileAIRequest {
         val id=uid();val evidence=evidence(state,taskId,options,now)
-        val localHistory=if(options.history) history.filter {it.taskId==taskId}.takeLast(3) else emptyList()
+        val localHistory=if(options.history) history.filter {it.kind=="NEXT_STEP" && it.taskId==taskId}.takeLast(3) else emptyList()
         val preview=buildJsonObject {
             put("version",1);put("requestId",id);put("taskId",taskId);put("evidence",evidence)
             // Raw prior requests include older consent scopes. Only earlier model output from this task is eligible.
@@ -106,7 +106,7 @@ object MobileAIActions {
     }
 }
 
-@Serializable data class MobileAITrace(val id:String,val taskId:String,val at:String,val input:String,val output:String,val success:Boolean) {
+@Serializable data class MobileAITrace(val id:String,val taskId:String,val at:String,val input:String,val output:String,val success:Boolean,val kind:String="NEXT_STEP",val taskIds:List<String> = listOf(taskId)) {
     fun redacted(key:String):MobileAITrace {
         fun redact(value:String):String {
             val escaped=JsonPrimitive(key).toString().removeSurrounding("\"")

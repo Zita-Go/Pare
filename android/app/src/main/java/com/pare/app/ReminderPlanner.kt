@@ -83,6 +83,7 @@ object ReminderPlanner {
             result += ReminderSource("${deadline.kind}:${deadline.identity}", deadline.taskId, deadline.kind, deadline.atMillis,
                 zone = "UTC", identityStamp = deadline.revision)
         }
+        result += ImplementationPlanActions.sources(state,now)
         return result.distinctBy { it.key }
     }
 

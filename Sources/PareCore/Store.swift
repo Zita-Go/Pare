@@ -25,6 +25,8 @@ public final class Store: ObservableObject {
     @Published public private(set) var dailyAllocations: [DailyAllocation] = []
     @Published public private(set) var activeTimer: ActiveTimer?
     @Published public private(set) var parallelRuns: [ParallelTaskRun] = []
+    /// Device coordination is a UI decision, never serialized into task or backup data.
+    public var confirmFocusStart: ((UUID) -> Bool)?
     /// A short-lived, UI-friendly description of the last destructive action.
     @Published public private(set) var undoMessage: String?
     /// Persistence diagnostics surfaced wherever the user is working.
@@ -964,6 +966,11 @@ public final class Store: ObservableObject {
 
     @discardableResult
     public func startTimer(_ taskID: UUID, now: Date = Date(), targetMinutes: Int? = nil) -> Bool {
+        guard tasks.contains(where: { $0.id == taskID && !$0.completed }),
+              !parallelRuns.contains(where: { $0.taskID == taskID }) else { return false }
+        if activeTimer?.taskID == taskID { return true }
+        guard confirmFocusStart?(taskID) ?? true else { return false }
+        // A modal confirmation can run the main loop while sync changes the task list.
         guard let taskIndex = tasks.firstIndex(where: { $0.id == taskID && !$0.completed }),
               !parallelRuns.contains(where: { $0.taskID == taskID }) else { return false }
         if activeTimer?.taskID == taskID { return true }

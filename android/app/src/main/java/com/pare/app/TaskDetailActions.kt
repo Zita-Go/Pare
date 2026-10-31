@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
         if(more) {
             val options=buildList {
                 if(!task.completed()) {add(Triple("ai","AI 帮我找下一步","ai"));add(Triple("support","把下一步拆小一点","support"));add(Triple("remind","提醒我","remind"));add(Triple("plan","设置今天投入多久","plan"))}
+                add(Triple("metadata","截止日期与实际用时","metadata"))
+                if(!task.completed())add(Triple("implementation","到什么时间开始做","implementation"))
                 add(Triple("today",if(inToday) "移出今天" else "加入今天","today"))
                 add(Triple("win",if(win) "取消今日重点" else "设为今日重点","win"))
                 if(hasOrigin)add(Triple("origin","查看关联想法","origin"))

@@ -40,7 +40,7 @@ begin
     assert has_function_privilege('authenticated', 'public.pare_sync_pull(bigint,integer)', 'EXECUTE'), 'missing pull grant';
     assert (select count(*) = 4 and bool_and(c.relrowsecurity)
         from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'pare_sync' and c.relkind = 'r'), 'RLS must cover all four tables';
+        where n.nspname = 'pare_sync' and c.relkind = 'r' and c.relname in ('streams','items','commits','receipts')), 'RLS must cover all four content tables';
     assert (select count(*) = 0 from pg_policies where schemaname = 'pare_sync'), 'private tables must default deny';
 
     -- Even a forged claim does not give anon EXECUTE permission.

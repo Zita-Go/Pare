@@ -32,6 +32,11 @@ data class TimelineDay(val date: LocalDate, val zone: ZoneId) {
 }
 
 object TimelineTime {
+    /** Explicit cross-date movement keeps the wall clock, never silently normalizes a DST gap/fold. */
+    fun onDate(start:Instant,target:TimelineDay):Instant {
+        val clock=start.atZone(target.zone).toLocalTime()
+        return resolveLocal(target,clock.hour*60+clock.minute).plusSeconds(clock.second.toLong()).plusNanos(clock.nano.toLong())
+    }
     fun snapMinute(rawMinute: Double, step: Int = 15): Int {
         require(rawMinute.isFinite() && step > 0)
         return ((rawMinute / step).roundToInt().toLong() * step).coerceIn(0, Int.MAX_VALUE.toLong()).toInt()

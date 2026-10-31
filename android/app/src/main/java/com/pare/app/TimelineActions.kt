@@ -21,7 +21,9 @@ data class TimelineScheduleBaseline(
     val planDeleted: Boolean,
     val planExists: Boolean,
     val canonical: TimelineCanonicalBaseline? = null,
-    val legacyPeers: List<TimelineLegacyPeerBaseline> = emptyList()
+    val legacyPeers: List<TimelineLegacyPeerBaseline> = emptyList(),
+    val owner: String? = null,
+    val device: String? = null
 ) {
     companion object {
         fun from(state: SyncState, planId: String, taskId: String): TimelineScheduleBaseline {
@@ -43,7 +45,32 @@ data class TimelineScheduleBaseline(
                 .filter {it.planId.substringBefore('@') < planId.substringBefore('@')}
             return TimelineScheduleBaseline(planId, taskId, timelinePlanningZone(state), entry?.timelineString("scheduled_at"),
                 entry?.timelineInt("scheduled_minutes"), entry?.timelineInt("schedule_reminder_lead_minutes"),
-                taskId in content.timelineIds(), task?.title(), task != null, plan?.deleted == true, plan != null, canonical, peers)
+                taskId in content.timelineIds(), task?.title(), task != null, plan?.deleted == true, plan != null, canonical, peers, state.owner, state.device)
+        }
+    }
+}
+
+/** Captured when the destination is selected; no destination state is inferred at commit time. */
+data class TimelineMoveBaseline(val owner:String?,val device:String,val source:TimelineScheduleBaseline,val targetPlanId:String,
+    val plans:Map<String,Entity?>,val peerPlanIds:Set<String>) {
+    companion object {
+        fun capture(state:SyncState,source:TimelineScheduleBaseline,targetPlanId:String):TimelineMoveBaseline {
+            val target=TimelineDay.fromPlanId(targetPlanId)
+            check(source.device==null || (source.device==state.device && source.owner==state.owner)) {"资料库已改变，请重新打开安排"}
+            check(TimelineDay.fromPlanId(source.planId).zone.id==source.planningZone) {"原安排采用不同的规划时区，请先确认原日期的时区"}
+            check(target.zone.id==source.planningZone && timelinePlanningZone(state)==source.planningZone) {"规划时区已改变，请重新打开安排"}
+            val current=TimelineScheduleBaseline.from(state,source.planId,source.taskId)
+            check(source.scheduledAt!=null && current.scheduledAt==source.scheduledAt && current.scheduledMinutes==source.scheduledMinutes &&
+                current.reminderLeadMinutes==source.reminderLeadMinutes && current.included==source.included && current.taskTitle==source.taskTitle) {"原安排已更新，请重新打开"}
+            check(TimelineProjection.schedules(state).any {it.sourcePlanId==source.planId && it.task.id==source.taskId && it.start==Instant.parse(source.scheduledAt)}) {"原安排已被新版本替代，请重新打开"}
+            require(TimelineProjection.schedules(state).none {it.task.id==source.taskId && it.start.atZone(target.zone).toLocalDate()==target.date &&
+                (it.sourcePlanId!=source.planId || it.start!=Instant.parse(source.scheduledAt))}) {"目标日期已有这项任务的时间块，请先处理目标安排"}
+            val legacy=timelineLegacyPeers(state,source.taskId,source.planningZone)
+            val lastSnapshot=legacy.filter {Instant.parse(it.scheduledAt)==Instant.parse(source.scheduledAt)}.maxByOrNull {it.planId}
+            val peers=if(lastSnapshot==null) emptySet() else legacy.filter {it.planId<=lastSnapshot.planId && it.planId!=source.planId}.map {it.planId}.toSet()
+            val ids=setOf(source.planId,targetPlanId)+peers
+            ids.forEach {id->state.items["day_plan:$id"]?.let {check(!it.deleted && it.content()!=null && it.conflict==null && it.conflictGroup.isEmpty()) {"相关日期已删除或存在冲突，请先处理"}}}
+            return TimelineMoveBaseline(state.owner,state.device,source,targetPlanId,ids.associateWith {state.items["day_plan:$it"]},peers)
         }
     }
 }
@@ -74,6 +101,71 @@ object TimelineActions {
             if (reminderLeadMinutes == null) entry.remove("schedule_reminder_lead_minutes")
             else entry["schedule_reminder_lead_minutes"] = JsonPrimitive(reminderLeadMinutes)
         }
+    }
+
+    /** Relocate one occurrence; preserve its allocation/reminder and leave unrelated occurrences intact. */
+    fun moveToDay(state:SyncState,taskId:String,start:Instant,durationMinutes:Int,expected:TimelineMoveBaseline,
+        reminderLeadMinutes:Int?=expected.source.reminderLeadMinutes):SyncState {
+        check(state.owner==expected.owner && state.device==expected.device) {"资料库已改变，安排未移动"}
+        val source=expected.source;val destination=TimelineDay.fromPlanId(expected.targetPlanId)
+        require(taskId==source.taskId && start.atZone(destination.zone).toLocalDate()==destination.date) {"目标日期不匹配"}
+        require(durationMinutes in 1..1440 && (reminderLeadMinutes==null || reminderLeadMinutes in 0..525600)) {"时长或提醒提前量无效"}
+        check(timelinePlanningZone(state)==source.planningZone && destination.zone.id==source.planningZone) {"规划时区已改变，请重新打开安排"}
+        state.items["profile:profile"]?.let {check(it.conflict==null && it.conflictGroup.isEmpty()) {"请先处理规划时区的同步冲突"}}
+        val task=state.items["task:$taskId"] ?: throw StaleContentEditException(StaleEditReason.DELETED)
+        guardEntity(task);check(timelineActiveTask(task) && task.title()==source.taskTitle) {"任务状态已改变，安排未移动"}
+        val original=expected.plans.getValue(source.planId) ?: throw StaleContentEditException(StaleEditReason.DELETED)
+        val sourceEntry=(original.content()?.get("task_plans") as? JsonArray).orEmpty().filterIsInstance<JsonObject>().first {it.timelineString("task_id")==taskId}
+        val target=expected.plans.getValue(expected.targetPlanId)
+        if(expected.targetPlanId!=source.planId) {
+            val occupied=taskId in target?.content().timelineIds() || (target?.content()?.get("task_plans") as? JsonArray).orEmpty().any {(it as? JsonObject)?.timelineString("task_id")==taskId}
+            require(!occupied) {"目标日期已有这项任务的安排或投入，请先在目标日期处理；没有覆盖已有内容"}
+        }
+        val desired=expected.plans.mapValues {(_,e)->e?.payload}.toMutableMap()
+        fun content(id:String):MutableMap<String,JsonElement> = (desired[id]?.get("content") as? JsonObject)?.toMutableMap() ?: mutableMapOf(
+            "day_key" to JsonPrimitive(id.substringBefore('@')),"time_zone" to JsonPrimitive(id.substringAfter('@')),
+            "ordered_task_ids" to JsonArray(emptyList()),"task_plans" to JsonArray(emptyList()))
+        fun put(id:String,c:Map<String,JsonElement>) {desired[id]=JsonObject((desired[id] ?: JsonObject(emptyMap())).toMutableMap().apply {this["content"]=JsonObject(c)})}
+        if(source.planId!=expected.targetPlanId) {
+            val c=content(source.planId)
+            c["ordered_task_ids"]=JsonArray(JsonObject(c).timelineIds().filterNot {it==taskId}.map(::JsonPrimitive))
+            c["task_plans"]=JsonArray((c["task_plans"] as? JsonArray).orEmpty().filterNot {(it as? JsonObject)?.timelineString("task_id")==taskId})
+            if((c["daily_win_task_id"] as? JsonPrimitive)?.contentOrNull==taskId)c.remove("daily_win_task_id")
+            put(source.planId,c)
+        }
+        expected.peerPlanIds.filter {it!=expected.targetPlanId}.forEach {id->
+            val c=content(id)
+            c["task_plans"]=JsonArray((c["task_plans"] as? JsonArray).orEmpty().map {value->
+                val e=value as? JsonObject
+                if(e?.timelineString("task_id")==taskId) JsonObject(e.toMutableMap().apply {remove("scheduled_at");remove("scheduled_minutes");remove("schedule_reminder_lead_minutes")}) else value
+            });put(id,c)
+        }
+        val targetContent=content(expected.targetPlanId)
+        targetContent["ordered_task_ids"]=JsonArray((JsonObject(targetContent).timelineIds()+taskId).distinct().map(::JsonPrimitive))
+        val moved=sourceEntry.toMutableMap().apply {
+            put("scheduled_at",JsonPrimitive(start.toString()));put("scheduled_minutes",JsonPrimitive(durationMinutes))
+            if(reminderLeadMinutes==null)remove("schedule_reminder_lead_minutes") else put("schedule_reminder_lead_minutes",JsonPrimitive(reminderLeadMinutes))
+        }
+        targetContent["task_plans"]=JsonArray((targetContent["task_plans"] as? JsonArray).orEmpty().filterNot {(it as? JsonObject)?.timelineString("task_id")==taskId}+JsonObject(moved))
+        put(expected.targetPlanId,targetContent)
+        // Repeated callback after a successful commit is a no-op; any later edit is protected.
+        if(desired.all {(id,payload)->state.items["day_plan:$id"]?.let {!it.deleted && it.conflict==null && it.conflictGroup.isEmpty() && it.payload==payload}==true}) return state
+        expected.plans.forEach {(id,old)->
+            guardPlan(state,id,source.planningZone,old!=null)
+            val current=state.items["day_plan:$id"]
+            staleIf(current?.payload!=old?.payload || current?.deleted!=old?.deleted)
+        }
+        // New source snapshots must not be left behind to revive after the move.
+        val recaptured=TimelineMoveBaseline.capture(state,source,expected.targetPlanId)
+        staleIf(recaptured.peerPlanIds!=expected.peerPlanIds)
+        var next=state
+        desired.forEach {(id,payload)->next=StateMachine.edit(next,"day_plan",id,requireNotNull(payload))}
+        val keys=desired.keys.map {"day_plan:$it"}.toSet()
+        val grouped=StateMachine.group(next,keys);val groups=keys.map {grouped.items.getValue(it).group}.toSet()
+        val members=grouped.items.values.filter {it.dirty && it.group in groups}
+        require(members.size<=100 && wire.encodeToString(members.map {Mutation(it.kind,it.id,it.revision,deleted=it.deleted,payload=it.payload)}).toByteArray().size<=1_048_576) {"这次移动关联内容超过同步上限，尚未保存"}
+        desired.forEach {(id,payload)->PayloadValidation.validate("day_plan",id,requireNotNull(payload))}
+        return grouped
     }
 
     /** Keeps membership, ordering, daily win, allocation and every unknown field. */

@@ -27,6 +27,12 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
     val executionReady=runtime.executionReady
     val deviceError=runtime.localError
     val reminderError=runtime.reminderError
+    val presence=runtime.presence.state
+    val presenceSharingEnabled=runtime.presenceSharingEnabled
+    val presenceSharingError=runtime.presenceSharingError
+    fun setPresenceSharing(enabled:Boolean)=runtime.setPresenceSharing(enabled)
+    fun refreshPresence()=runtime.refreshPresenceManually()
+    fun peerFocusLabels():String?=runtime.presence.freshPeerFocus().takeIf {it.isNotEmpty()}?.joinToString("、") {it.label}.orEmpty().ifBlank {null}
     val notificationTask=MutableStateFlow<String?>(null)
     fun openNotificationTask(id:String?) {notificationTask.value=id?.takeIf {runCatching {java.util.UUID.fromString(it)}.isSuccess}}
     fun consumeNotificationTask() {notificationTask.value=null}
@@ -38,6 +44,13 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
         }
     }
     fun editMobileAI(change:(SyncState)->SyncState,onResult:(Result<Unit>)->Unit)=edit(onResult,change)
+    fun editWorkspace(change:(SyncState)->SyncState,onResult:(Result<Unit>)->Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result=runCatching {WorkspaceChanges.edit(engine,runtime.execution,executionReady.value,change);Unit}
+            withContext(Dispatchers.Main.immediate) {onResult(result)}
+            if(result.isSuccess)runtime.requestSync()
+        }
+    }
     fun editTimeline(change:(SyncState)->SyncState,onResult:(Result<Unit>)->Unit)=edit(onResult,change)
     fun saveReminder(taskId:String,expected:TaskReminderBaseline,at:Instant?,recurrence:String?,onResult:(Result<Unit>)->Unit)=
         edit(onResult) {TaskReminderActions.save(it,taskId,expected,at,recurrence,Instant.now())}
@@ -134,20 +147,21 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
     }
     fun authenticate(email:String,password:String,signup:Boolean)=action {engine.authenticate(email,password,signup)}
     fun enableSync()=action {engine.enable();runtime.requestSync()}
-    fun pauseSync() {engine.revoke();runtime.persistControl {engine.pause()}}
+    fun pauseSync() {engine.revoke();runtime.presence.clear();runtime.persistControl {engine.pause()}}
     fun onForeground() {
         planningInstant.value=Instant.now()
         runtime.refreshDeviceState()
+        runtime.refreshPresence()
         connectivity.start()
         runtime.requestSync()
         if(foregroundPolling?.isActive==true) return
         foregroundPolling=viewModelScope.launch {
-            while(isActive) {delay(15_000);planningInstant.value=Instant.now();runtime.refreshDeviceState();runtime.requestSync()}
+            while(isActive) {delay(15_000);planningInstant.value=Instant.now();runtime.refreshDeviceState();runtime.requestSync();runtime.refreshPresence()}
         }
     }
     fun onBackground() {foregroundPolling?.cancel();foregroundPolling=null;connectivity.stop();runtime.refreshDeviceState()}
     fun sync(manual:Boolean=false)=runtime.requestSync(manual)
     fun resolve(key:String,local:Boolean)=edit {StateMachine.resolve(it,key,local)}
-    fun signOut() {engine.revoke();runtime.persistControl {engine.signOut()}}
+    fun signOut() {engine.revoke();runtime.presence.clear();runtime.persistControl {engine.signOut()}}
     override fun onCleared() {onBackground();super.onCleared()}
 }

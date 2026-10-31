@@ -41,6 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.rolloverIfNeeded()
         syncCoordinator = SyncCoordinator(store: store)
         syncCoordinator.start()
+        store.confirmFocusStart = { [weak self] taskID in
+            self?.syncCoordinator.confirmOtherFocus(taskID: taskID) ?? true
+        }
 
         popoverController = PopoverController(store: store, onOpenOrganize: { [weak self] in
             self?.openOrganize()

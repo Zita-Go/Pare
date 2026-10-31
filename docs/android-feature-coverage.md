@@ -32,3 +32,30 @@
 上述表格保留0.7基线。0.8已经加入可操作日期时间轴：点空白创建、待安排排序/拖入、已排事项移动/缩放、重叠分栏、跨午夜显示、精确时间表单和条件撤销。任务菜单缩为三项，其他工具集中到详情；今日重点与投入反馈保留。未来日期快速记录不会误写今天，跨午夜提前提醒与旧Mac未来日程迁移已覆盖。
 
 本轮208项单元测试、17条模拟器流程通过，真实手势验证拖动中不写入、松手才保存和撤销恢复。Mac解码兼容通过虚构载荷；不等同于真实账号网络同步或实体手机验收。查看[0.8用法与截图](releases/android-v0.8.0.md)。其余表内缺口继续存在，未通过统一改名宣称完成。
+
+## 0.9 实现增量
+
+以下记录0.9开发版已实现并验收的流程，不改写上面的0.7基线或0.8验收记录。云端状态服务已部署，应用安装包供本地验收，尚未发布新的公开Release。
+
+| 用户流程 | 0.9 实现范围 | 保留的边界与依据 |
+|---|---|---|
+| 日期时间轴 | 原有日内拖动之外，可长按时间块拖到前一天/后一天的落区，保持原当地时刻和时长；编辑表单可选任意日期。源/目标及受影响旧快照作为一组保存，目标已有同任务安排时拒绝覆盖。 | 不自动挪开其他预约。DST 无效或有歧义的时刻拒绝自动纠正；不同规划时区须先确认。条件撤销以尚未被后续修改的保存结果为准。[TimelineActions](../android/app/src/main/java/com/pare/app/TimelineActions.kt)、[TodayTimeline](../android/app/src/main/java/com/pare/app/TodayTimeline.kt)。 |
+| 搜索与资料库 | 从“更多”或任务/想法入口查询任务、想法、随手记和目标；支持分类、截止清单、任务归档/恢复、显式删除。 | 不替代四象限取舍、想法孵化或今日容量。[LibraryDialog](../android/app/src/main/java/com/pare/app/LibraryDialog.kt)、[LibraryActions](../android/app/src/main/java/com/pare/app/LibraryActions.kt)。 |
+| 本机回收站 | 删除与恢复资料在同一次本地事务中保存，重启后仍可管理；原删除状态未变时恢复原记录，否则可明确恢复为新副本。 | 回收资料留在本机，不进内容同步流；最多 100 项/2 MB，满额时拒绝新的删除。30 天仅作为可清理提示，不自动清除。副本不自动占用原任务日程。[LocalTrash](../android/app/src/main/java/com/pare/app/LocalTrash.kt)。 |
+| 想法管理 | 关联/解除已有任务，编辑回看日期，结合资料库搜索和阶段管理；原探索记录、问题和拆出行动流程保留。 | 解除关联不删除任务，删除想法不连带删除行动。[IdeaManagementDialog](../android/app/src/main/java/com/pare/app/IdeaManagementDialog.kt)、[IdeaManagementActions](../android/app/src/main/java/com/pare/app/IdeaManagementActions.kt)。 |
+| 长期目标与偏好 | 创建/编辑/删除目标，关联已有任务或明确创建一个起步任务；管理背景、规划与起步分钟、文字偏好，以及带范围和有效期的确认偏好。 | 不自动推断偏好，不把未确认的模型建议写成长期记忆；保留不认识的同步字段，冲突或陈旧编辑须重新确认。[GoalsWorkspace](../android/app/src/main/java/com/pare/app/GoalsWorkspace.kt)、[PreferencesWorkspace](../android/app/src/main/java/com/pare/app/PreferencesWorkspace.kt)。 |
+| 多种 AI 协助 | 顶部默认“安排这一天”，参考所选日期、候选任务、容量与精力；想法内可探索并追加发现/问题或创建关联行动；随手记可审阅后归为任务或想法；目标可生成一件新关联行动，也可为显式选择的已有任务更新下一步。 | 每次先预览再主动发送、逐项采纳。目标默认仅发送该目标资料；新任务不自动加入今日。保留现有时间块、个人/检查类型和未选安排；不是自动路线图或后台代理。非法、越权、过量或陈旧结果不能写入。[PlanningAI](../android/app/src/main/java/com/pare/app/PlanningAI.kt)、[PlanningReview](../android/app/src/main/java/com/pare/app/PlanningReview.kt)。 |
+| AI 隐私与历史 | 新旧流程共用本机加密服务配置、密钥与有界请求历史；完整发送内容可展开，额外目标、想法、偏好和历史均由用户明确选择。 | 不新增固定服务地址；不自动调用真实模型。历史只在授权的工作流/主题/候选任务范围内参与后续请求，先前原始请求不作为隐含授权。[MobileAIModel](../android/app/src/main/java/com/pare/app/MobileAIModel.kt)、[MobileAIVault](../android/app/src/main/java/com/pare/app/MobileAIVault.kt)。 |
+| 卡点到开始 | 保留“只保存”，另可选择“保存并开始5分钟”；仅在保存成功后请求启动，失败不启动，旋转后保留待完成的意图并防止重复触发。 | 真实启动仍经过本机运行状态与跨端提示；有其他设备状态时先确认，不把保存成功称作已经计时。[TaskSupportDialog](../android/app/src/main/java/com/pare/app/TaskSupportDialog.kt)、[TodayWorkflowModels](../android/app/src/main/java/com/pare/app/TodayWorkflowModels.kt)。 |
+| 任务日期与行动触发 | 可独立编辑截止日期、记录实际用时；编辑 `time/hour/minute/action` 型“如果到这个时刻，就先做……”计划，并使用已有通知机制提醒当天已选任务。 | 截止、普通提醒、日程时间块和行动提示彼此独立。过点新设置不补发；返回电脑/打开其他应用的触发条件只读保留，手机不冒充能监听这些事件，不自动开始计时或 AI。[TaskMetadataDialog](../android/app/src/main/java/com/pare/app/TaskMetadataDialog.kt)、[ImplementationPlanActions](../android/app/src/main/java/com/pare/app/ImplementationPlanActions.kt)。 |
+| 回顾与复制 | 默认保留滚动近 7 天回看；按需展开规划时区下的 8 个自然周实际完成/专注/等待趋势、象限完成分布和估时校准。可主动复制本地汇总。 | 本周未结束会注明；校准只用同时有预计和实际分钟的已完成样本，缺失时明确无数据。等待不算个人专注，复制不含任务标题、备注或 AI 原始记录。[ReviewAnalytics](../android/app/src/main/java/com/pare/app/ReviewAnalytics.kt)、[MobileReviewDialog](../android/app/src/main/java/com/pare/app/MobileReviewDialog.kt)。 |
+| 跨端运行状态 | Mac/Android 实现独立的短期运行摘要协议与设备展示：专注/等待状态、计时摘要、新鲜度及重复开始前的提示；共享默认关闭，由本机针对账号和设备明确开启。 | 状态参考不是远程计时控制：不能从手机暂停/接管 Mac，也不能控制其他 AI。关闭共享不影响内容同步；暂停同步或退出停止共享，旧报告超时后视为未知。服务部署与实际 HTTP 联通验收另记，不用界面入口代替验收。[DevicePresenceController](../android/app/src/main/java/com/pare/app/DevicePresenceController.kt)、[SyncCoordinator](../Sources/Pare/SyncCoordinator.swift)。 |
+
+仍未宣称完整移植：桌面全局快捷键与窗口操作、返回电脑/应用启动监听、远程控制另一设备计时、自动管理外部 AI、账号间独立资料库切换，以及生产签名发布。手机采用适合触控的入口，不逐项复制 Mac 或竞品菜单。
+
+0.9 验收记录：
+
+- Android：324项单元测试、29条不同设备流程通过；跨日表单测试修正日期语义定位后，5条主界面流程重跑通过。Debug构建成功，Lint 0错误、26警告、1提示。
+- Mac：343项测试、Release构建及签名检查通过；Android 0.9虚构目标/偏好/行动触发/跨日计划等载荷通过正式Mac解码器。
+- 云端：状态接口已部署；SQL回滚回归和18项真实HTTPS检查通过。使用两个独立Swift客户端模拟设备协议，不等同于Android进程或双端GUI联网验收；测试账号与关联资料已清理。
+- 产物：Android 0.9.0 debug APK，Mac 2.14.0 ad-hoc包；均为开发验收产物。Android普通模拟器已升级并保留原数据，真实Mac安装未替换。截图为隔离虚构资料的1080像素原图，已目视检查。详见[0.9用法](releases/android-v0.9.0.md)。

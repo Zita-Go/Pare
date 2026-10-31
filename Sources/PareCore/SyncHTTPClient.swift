@@ -165,6 +165,22 @@ public final class SyncHTTPClient: @unchecked Sendable {
         } catch { throw SyncHTTPError.invalidResponse }
     }
 
+    public func exchangePresence(_ request: ExecutionPresenceRequest, accessToken: String) async throws -> ExecutionPresenceResponse {
+        let body = try request.data()
+        let data = try await send(path: "/rest/v1/rpc/pare_presence_exchange", body: body, accessToken: accessToken, maximumResponseBytes: 1_048_576)
+        let response = try ExecutionPresenceResponse.decode(data)
+        guard let accepted = response.acceptedSequence, accepted >= request.sequence,
+              let own = response.devices.first(where: { $0.deviceID == request.deviceID }), own.sequence == accepted else {
+            throw SyncHTTPError.invalidResponse
+        }
+        if accepted == request.sequence {
+            // Compare what was actually sent: ISO-8601 wire encoding truncates Date sub-seconds.
+            let sentRuns = try SyncWire.decoder().decode([ExecutionPresenceRun].self, from: SyncWire.encoder().encode(request.runs))
+            guard own.label == request.label, own.runs == sentRuns else { throw SyncHTTPError.invalidResponse }
+        }
+        return response
+    }
+
     private func credentials(email: String, password: String) throws -> Data {
         let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let parts = email.split(separator: "@", omittingEmptySubsequences: false)
@@ -181,7 +197,7 @@ public final class SyncHTTPClient: @unchecked Sendable {
         catch { throw SyncHTTPError.invalidResponse }
     }
 
-    private func send(path: String, query: String? = nil, body: Data, accessToken: String? = nil) async throws -> Data {
+    private func send(path: String, query: String? = nil, body: Data, accessToken: String? = nil, maximumResponseBytes: Int = 8 * 1024 * 1024) async throws -> Data {
         try Task.checkCancellation()
         if let accessToken { try validateToken(accessToken) }
         guard var components = URLComponents(url: configuration.projectURL, resolvingAgainstBaseURL: false) else {
@@ -197,7 +213,7 @@ public final class SyncHTTPClient: @unchecked Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(configuration.publishableKey, forHTTPHeaderField: "apikey")
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
-        let result = try await SyncHTTPTransfer().perform(request: request, configuration: sessionConfiguration)
+        let result = try await SyncHTTPTransfer(maximumBytes: maximumResponseBytes).perform(request: request, configuration: sessionConfiguration)
         switch result.status {
         case 200..<300: return result.data
         case 300..<400: throw SyncHTTPError.redirectRejected
@@ -252,7 +268,7 @@ private struct AuthResponse: Decodable {
 private final class SyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     struct Response { var status: Int; var data: Data }
     private let lock = NSLock()
-    private let maximumBytes = 8 * 1024 * 1024
+    private let maximumBytes: Int
     private var continuation: CheckedContinuation<Response, Error>?
     private var session: URLSession?
     private var task: URLSessionDataTask?
@@ -260,6 +276,8 @@ private final class SyncHTTPTransfer: NSObject, URLSessionDataDelegate, @uncheck
     private var data = Data()
     private var cancelled = false
     private var finished = false
+
+    init(maximumBytes: Int) { self.maximumBytes = maximumBytes; super.init() }
 
     func perform(request: URLRequest, configuration: URLSessionConfiguration) async throws -> Response {
         try await withTaskCancellationHandler {

@@ -24,6 +24,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.ViewModel
 import java.time.Instant
 import java.time.LocalTime
+import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
@@ -31,6 +32,9 @@ import java.time.format.DateTimeFormatter
 class TimelineScheduleModel : ViewModel() {
     var initialized by mutableStateOf(false); private set
     var expected: TimelineScheduleBaseline? by mutableStateOf(null); private set
+    var moveExpected: TimelineMoveBaseline? by mutableStateOf(null); private set
+    private var originalExpected: TimelineScheduleBaseline? = null
+    private var originalDate: LocalDate? = null
     var day: TimelineDay? by mutableStateOf(null); private set
     var taskId by mutableStateOf(""); private set
     var isNewTask by mutableStateOf(false); private set
@@ -56,12 +60,14 @@ class TimelineScheduleModel : ViewModel() {
         title = task?.title().orEmpty()
         val baseline = TimelineScheduleBaseline.from(state, sourcePlanId, taskId)
         expected = baseline
+        originalExpected = baseline
         val scheduled = baseline.scheduledAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
         val sourceDay = TimelineDay.fromPlanId(sourcePlanId)
         // Old Mac records can store a future block inside an earlier plan. Keep the source
         // baseline for the atomic migration, but edit the actual occurrence's local date.
         val formDay = if (scheduled != null) TimelineDay(scheduled.atZone(sourceDay.zone).toLocalDate(), sourceDay.zone) else day
         this.day = formDay
+        originalDate = formDay.date
         val chosen = start ?: scheduled ?: formDay.date.atTime(9, 0).atZone(formDay.zone).toInstant()
         val local = chosen.atZone(formDay.zone)
         time = local.format(DateTimeFormatter.ofPattern("HH:mm"))
@@ -72,13 +78,28 @@ class TimelineScheduleModel : ViewModel() {
         reminderMinutes = (baseline.reminderLeadMinutes ?: 0).toString()
     }
 
+    fun selectDate(state:SyncState,date:LocalDate) {
+        if(saving || saved) return
+        val oldDay=day ?: return;val source=originalExpected ?: return
+        val target=TimelineDay(date,oldDay.zone)
+        try {
+            check(timelinePlanningZone(state)==source.planningZone) {"规划时区已改变，请取消后重新打开"}
+            val moving=!isNewTask && source.scheduledAt!=null && date!=originalDate
+            val nextMove=if(moving) TimelineMoveBaseline.capture(state,source,target.planId) else null
+            val nextExpected=if(source.scheduledAt==null) TimelineScheduleBaseline.from(state,target.planId,taskId) else source
+            if(!isNewTask && source.scheduledAt==null && target.planId!=source.planId)
+                check(!nextExpected.included && nextExpected.scheduledAt==null) {"目标日期已有这项任务，请取消后查看目标安排"}
+            day=target;moveExpected=nextMove;expected=nextExpected;error=null
+        } catch(e:Exception) {error=e.message ?: "无法选择这个日期，草稿已保留"}
+    }
+
     fun startInstant(): Instant? {
         val selectedDay = day ?: return null
         val clockText = time.trim()
         if (!Regex("(?:[01]?\\d|2[0-3]):[0-5]\\d").matches(clockText)) return null
         val local = runCatching { LocalTime.parse(clockText, DateTimeFormatter.ofPattern("H:mm")) }.getOrNull() ?: return null
         return runCatching {
-            TimelineTime.resolveLocal(selectedDay, local.hour * 60 + local.minute, initialOffset.takeIf { time == initialTime })
+            TimelineTime.resolveLocal(selectedDay, local.hour * 60 + local.minute, initialOffset.takeIf { time == initialTime && selectedDay.date == originalDate })
         }.getOrNull()
     }
     fun durationMinutes(): Int? = minutes.trim().toIntOrNull()?.takeIf { it in 1..1440 }
@@ -113,7 +134,7 @@ class TimelineScheduleModel : ViewModel() {
     }
     fun clear() {
         if (saving) return
-        initialized = false; expected = null; day = null; taskId = ""; isNewTask = false
+        initialized = false; expected = null; moveExpected = null; originalExpected = null; originalDate = null; day = null; taskId = ""; isNewTask = false
         title = ""; time = "09:00"; minutes = "30"; reminderEnabled = false; reminderMinutes = "0"
         saved = false; error = null; initialTime = null; initialOffset = null
         lastAttemptWasUnschedule = false
@@ -122,19 +143,27 @@ class TimelineScheduleModel : ViewModel() {
 }
 
 /** Pinned save and cancel actions remain accessible above the keyboard and with enlarged text. */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TimelineScheduleDialog(
     model: TimelineScheduleModel,
     available: Boolean,
     onSave: () -> Unit,
     onUnschedule: (() -> Unit)?,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onSelectDate: ((LocalDate) -> Unit)? = null
 ) {
     val day = model.day ?: return
     val enabled = available && !model.saving
     val start = model.startInstant()
     val duration = model.durationMinutes()
+    var showDatePicker by remember {mutableStateOf(false)}
+    if(showDatePicker && onSelectDate!=null) {
+        val picker=rememberDatePickerState(initialSelectedDateMillis=day.date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+        DatePickerDialog(onDismissRequest={showDatePicker=false},confirmButton={TextButton(onClick={
+            picker.selectedDateMillis?.let {onSelectDate(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate())};showDatePicker=false
+        },enabled=picker.selectedDateMillis!=null) {Text("选择日期")}},dismissButton={TextButton(onClick={showDatePicker=false}) {Text("取消")}}) {DatePicker(picker)}
+    }
     Dialog(onDismissRequest = { if (!model.saving) onDismiss() }, properties = DialogProperties(
         usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
         dismissOnBackPress = !model.saving, dismissOnClickOutside = !model.saving)) {
@@ -165,6 +194,8 @@ fun TimelineScheduleDialog(
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(day.date.format(DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE")), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("timeline_schedule_date"))
                             Text(day.zone.id, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if(onSelectDate!=null) TextButton(onClick={showDatePicker=true},enabled=enabled,modifier=Modifier.heightIn(min=48.dp).testTag("timeline_schedule_choose_date")) {Text("更改日期")}
+                            model.moveExpected?.let {move->Text("从 ${Instant.parse(move.source.scheduledAt).atZone(day.zone).toLocalDate()} 移到 ${day.date}；保留投入类型，原日期重点将取消。",style=MaterialTheme.typography.bodySmall)}
                         }
                         PareFormField(model.time, { model.time = it }, "开始时间 · 24小时制，例如 09:30", enabled = enabled,
                             singleLine = true, isError = start == null,

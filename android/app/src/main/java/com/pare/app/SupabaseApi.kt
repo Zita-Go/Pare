@@ -53,5 +53,9 @@ class SupabaseApi {
     fun refresh(s:Session):Session = parseSession(post("auth/v1/token?grant_type=refresh_token",buildJsonObject {put("refresh_token",s.refreshToken)}),System.currentTimeMillis()/1000) ?: error("请重新登录")
     fun pull(s:Session,cursor:Long):Page = wire.decodeFromJsonElement(post("rest/v1/rpc/pare_sync_pull",buildJsonObject {put("p_after",cursor);put("p_limit",1)},s.accessToken))
     fun push(s:Session,request:Push):Reply = wire.decodeFromJsonElement(post("rest/v1/rpc/pare_sync_apply",wire.encodeToJsonElement(request).jsonObject,s.accessToken))
+    fun presence(s:Session,request:DevicePresenceRequest):DevicePresenceReply {
+        request.validate()
+        return wire.decodeFromJsonElement<DevicePresenceReply>(post("rest/v1/rpc/pare_presence_exchange",wire.encodeToJsonElement(request).jsonObject,s.accessToken)).also {it.validate(request)}
+    }
     fun logout(s:Session) {post("auth/v1/logout?scope=local",JsonObject(emptyMap()),s.accessToken)}
 }

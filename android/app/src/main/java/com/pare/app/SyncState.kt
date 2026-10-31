@@ -15,7 +15,7 @@ fun uid() = UUID.randomUUID().toString()
 @Serializable data class Reply(@SerialName("protocol_version") val version: Int, val status: String, val sequence: Long, val entities: List<Remote> = emptyList(), val conflicts: List<Conflict> = emptyList())
 @Serializable data class Commit(val sequence: Long, @SerialName("operation_id") val operation: String, @SerialName("device_id") val device: String, val entities: List<Remote>)
 @Serializable data class Page(@SerialName("protocol_version") val version: Int, val cursor: Long, @SerialName("has_more") val more: Boolean, val commits: List<Commit>)
-@Serializable data class SyncState(val owner: String? = null, val device: String = uid(), val cursor: Long = 0, val items: Map<String, Entity> = emptyMap(), val pending: Push? = null, val enabled: Boolean = false)
+@Serializable data class SyncState(val owner: String? = null, val device: String = uid(), val cursor: Long = 0, val items: Map<String, Entity> = emptyMap(), val pending: Push? = null, val enabled: Boolean = false, val localTrash: List<LocalTrashEntry> = emptyList())
 
 object StateMachine {
     private val kinds = setOf("inbox", "task", "idea", "goal", "profile", "day_plan")
