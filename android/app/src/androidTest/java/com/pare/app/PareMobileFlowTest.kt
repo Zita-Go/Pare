@@ -55,7 +55,7 @@ class PareMobileFlowTest {
     }
 
     @Test fun captureOrganizeTodayCompleteAndIdeaRemainLocal() {
-        waitFor("today_timeline")
+        waitFor("today_overview")
         screenshot("01-today-empty.png")
         compose.onNodeWithTag("add_item").performClick()
         waitFor("editor_text")

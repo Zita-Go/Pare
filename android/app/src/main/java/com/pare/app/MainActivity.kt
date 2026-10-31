@@ -99,6 +99,8 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     val busy by vm.busy.collectAsState()
     val previewReady by vm.previewReady.collectAsState()
     val snackbars=remember {SnackbarHostState()}
+    var timelineMode by rememberSaveable {mutableStateOf(false)}
+    val todayViewStates=rememberSaveableStateHolder()
     var calendarDate by rememberSaveable {mutableStateOf<String?>(null)}
     val selectedDate=calendarDate?.let(LocalDate::parse) ?: LocalDate.parse(vm.planningDate(state,planningNow))
     val scheduleModel:TimelineScheduleModel=viewModel(key="timeline-form:${state.owner}")
@@ -171,7 +173,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             localScope.launch {
                 snackbars.currentSnackbarData?.dismiss()
                 if(result.isFailure)snackbars.showSnackbar(result.exceptionOrNull()?.message ?: "安排没有保存，请重试")
-                else { onSaved();if(snackbars.showSnackbar(label,actionLabel=if(undo!=null) "撤销" else null)==SnackbarResult.ActionPerformed) {
+                else { onSaved();if(snackbars.showSnackbar(label,actionLabel=if(undo!=null) "撤销" else null,withDismissAction=true,duration=SnackbarDuration.Short)==SnackbarResult.ActionPerformed) {
                     undo?.let {receipt ->vm.editTimeline(receipt::apply) {back ->
                         if(back.isSuccess) {calendarDate=originalDate;timelineReveal=undoReveal}
                         localScope.launch {snackbars.showSnackbar(if(back.isSuccess) "已撤销这次安排" else back.exceptionOrNull()?.message ?: "撤销未保存")}
@@ -216,7 +218,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             val id=draft.entityId;val action=pendingEditorAction
             val newPlan=capturePlanId.takeIf {draft.isNew && draft.kind=="task" && draft.addToToday}
             clearDraft()
-            if(newPlan!=null) {val date=newPlan.substringBefore('@');calendarDate=if(date==vm.planningDate(state,Instant.now()))null else date;revealUnscheduled++;localScope.launch {snackbars.showSnackbar("已放入待安排，可拖到时间轴")}}
+            if(newPlan!=null) {val date=newPlan.substringBefore('@');calendarDate=if(date==vm.planningDate(state,Instant.now()))null else date;revealUnscheduled++;localScope.launch {snackbars.showSnackbar(if(timelineMode) "已放入待安排，可拖到时间轴" else "已加入这一天的清单")}}
             if(action.isNotEmpty())performTaskAction(action,id)
         }
     }
@@ -253,7 +255,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     val capture: () -> Unit = { openEditor(kind = when (tab) { 0 -> "task"; 2 -> "idea"; else -> "inbox" }, today = tab == 0) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost={SnackbarHost(snackbars)},
+        snackbarHost={SnackbarHost(snackbars) {data ->Snackbar(data,modifier=Modifier.testTag("workspace_snackbar"))}},
         topBar = { Column(Modifier.statusBarsPadding()) { PareHeader(tab, status, busy, session != null, onAccount = { moreOpen = true }, onAI={openPlanning()},onReview={reviewOpen=true}) } },
         bottomBar = { PareNavigation(tab, onTab = { tab = it }) },
         floatingActionButton = {
@@ -273,7 +275,19 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                 TextButton(onClick={openReviewItem(gentleHint)},modifier=Modifier.weight(1f).heightIn(min=48.dp)){Text("值得回看：${gentleHint.title}",maxLines=1,overflow=TextOverflow.Ellipsis)}
                 TextButton(onClick={localScope.launch {try {withContext(Dispatchers.IO){hintPreferences.defer(gentleHint,planningNow)};hintVersion++}catch(_:Exception){vm.deviceError.value="暂放没有保存，请重试。"}}},modifier=Modifier.heightIn(min=48.dp)){Text("暂放")}
             }
-            TodayTimeline(state,selectedDate,planningNow,
+            Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected=!timelineMode,onClick={timelineMode=false},label={Text("清单")},modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("today_mode_list"))
+                FilterChip(selected=timelineMode,onClick={timelineMode=true},label={Text("时间轴")},modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("today_mode_timeline"))
+            }
+            todayViewStates.SaveableStateProvider(if(timelineMode) "timeline" else "list") {
+            if(!timelineMode) TodayOverview(state,selectedDate,planningNow,
+                onSelectDate={date->timelineReveal=null;calendarDate=if(date==LocalDate.parse(vm.planningDate(state,planningNow)))null else date.toString()},
+                onOpenTask={openEditor(it)},onComplete=vm::complete,
+                onScheduleTask={task,day->openSchedule(task,day)},
+                onEditSchedule={block->openSchedule(block.task,TimelineDay.from(state,block.start.atZone(TimelineDay.from(state,selectedDate).zone).toLocalDate()),block.start,block.sourcePlanId)},
+                onExecution={task->if(execution.runFor(task.id)!=null)toggleExecution(task.id) else executionTaskId=task.id},
+                executionLabel=::executionLabel,executionPaused={id->execution.runFor(id)?.let {it.paused && !it.due && it.pendingFinish==null}==true},modifier=Modifier.weight(1f))
+            else TodayTimeline(state,selectedDate,planningNow,
                 onSelectDate={date ->timelineReveal=null;calendarDate=if(date==LocalDate.parse(vm.planningDate(state,planningNow)))null else date.toString()},
                 onOpenTask={openEditor(it)},onComplete={vm.complete(it)},
                 onCreateAt={day,at->openSchedule(null,day,at)},
@@ -291,6 +305,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                         TimelineActions.moveToDay(it,block.task.id,start,block.durationMinutes,expected)
                     }
                 },revealAt=timelineReveal?.let(Instant::parse))
+            }
         } else         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("main_list"),
             contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 88.dp)) {
             if (draft.entityId.isNotEmpty() && !editorOpen) item {

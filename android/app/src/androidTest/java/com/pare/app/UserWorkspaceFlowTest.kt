@@ -47,6 +47,7 @@ class UserWorkspaceFlowTest {
         runtime.presence.clear()
         runtime.engine.edit { fixture(it.device) }
         scenario = ActivityScenario.launch(MainActivity::class.java)
+        visible("today_mode_timeline"); compose.onNodeWithTag("today_mode_timeline").performClick()
         visible("today_timeline")
         compose.waitUntil(10_000) { runtime.executionReady.value }
         runtime.execution.reconcile()
@@ -91,7 +92,9 @@ class UserWorkspaceFlowTest {
         visible("more_$destination"); compose.onNodeWithTag("more_$destination").performClick()
     }
     private fun scope(name: String) {
-        Espresso.closeSoftKeyboard()
+        // The search keyboard was already closed before the task menu opened. Wait for
+        // that popup to leave instead of asking Espresso to choose an unfocused base root.
+        compose.waitUntil(5_000) { compose.onAllNodes(isPopup()).fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("library_scope").performClick()
         visible("library_scope_$name"); compose.onNodeWithTag("library_scope_$name").performScrollTo().performClick()
     }

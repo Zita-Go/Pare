@@ -83,6 +83,8 @@ fun TodayTimeline(
     val minimumBlockHeight = 48.dp
     val minimumBlockMinutes = with(density) { minimumBlockHeight.toPx() } / pxPerMinute
     val scroll = rememberScrollState()
+    var positionedPlan by rememberSaveable {mutableStateOf<String?>(null)}
+    var positionedReveal by rememberSaveable {mutableStateOf<String?>(null)}
     val trayScroll = rememberScrollState()
     val horizontal = rememberScrollState()
     var expanded by rememberSaveable(selectedDate.toString()) { mutableStateOf(false) }
@@ -200,12 +202,14 @@ fun TodayTimeline(
     }
     LaunchedEffect(day.planId, revealAt) {
         cancelDrag()
+        if(positionedPlan==day.planId && positionedReveal==revealAt?.toString())return@LaunchedEffect
         val initial = if(revealAt!=null && revealAt>=day.start && revealAt<day.end) {
             (Duration.between(day.start,revealAt).toMinutes()-30).coerceAtLeast(0)
         } else if (now >= day.start && now < day.end) {
             (Duration.between(day.start, now).toMinutes() - 90).coerceAtLeast(0)
         } else 8 * 60L
         scroll.scrollTo((initial * pxPerMinute).roundToInt())
+        positionedPlan=day.planId;positionedReveal=revealAt?.toString()
     }
     LaunchedEffect(revealUnscheduledKey) {
         if (revealUnscheduledKey > 0 && revealUnscheduledKey != handledRevealKey) {
@@ -220,15 +224,7 @@ fun TodayTimeline(
     }
 
     Column(modifier.fillMaxSize().testTag("today_timeline")) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { onSelectDate(selectedDate.minusDays(1)) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag("timeline_previous_day").semantics { contentDescription = "前一天" }) { Text("‹", style = MaterialTheme.typography.headlineSmall) }
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(selectedDate.format(DateTimeFormatter.ofPattern("M月d日 EEEE", java.util.Locale.SIMPLIFIED_CHINESE)), style = MaterialTheme.typography.titleMedium)
-                Text(day.zone.id, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            TextButton(onClick = { onSelectDate(selectedDate.plusDays(1)) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag("timeline_next_day").semantics { contentDescription = "后一天" }) { Text("›", style = MaterialTheme.typography.headlineSmall) }
-            if (selectedDate != now.atZone(day.zone).toLocalDate()) TextButton(onClick = { onSelectDate(now.atZone(day.zone).toLocalDate()) }, modifier = Modifier.heightIn(min = 48.dp).testTag("timeline_today")) { Text("今天") }
-        }
+        TodayDateHeader(day,now,onSelectDate)
         if (plannedLoad.personalMinutes != 0L || plannedLoad.checkMinutes != 0L || plannedLoad.unplannedCount != 0) {
             val summary=listOfNotNull(
                 if(plannedLoad.personalMinutes>0) "自己做 ${plannedLoad.personalMinutes} 分钟" else null,

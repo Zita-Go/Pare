@@ -50,6 +50,7 @@ class TimelineFlowTest {
         planId = "$date@UTC"
         runtime.engine.edit { current -> fixture(current.device, now) }
         scenario = ActivityScenario.launch(MainActivity::class.java)
+        visible("today_mode_timeline"); compose.onNodeWithTag("today_mode_timeline").performClick()
         visible("today_timeline")
         compose.waitUntil(10_000) { runtime.executionReady.value }
         runtime.execution.reconcile()
