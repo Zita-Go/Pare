@@ -1,16 +1,21 @@
 package com.pare.app
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -28,7 +33,8 @@ import java.time.format.DateTimeFormatter
     snapshot:ExecutionSnapshot,
     onCommand:(ExecutionCommand,(Result<Unit>)->Unit)->Unit,
     onDismiss:()->Unit,
-    otherFocusLabel:String?=null
+    otherFocusLabel:String?=null,
+    modifier:Modifier=Modifier
 ) {
     var external by rememberSaveable(task.id) {mutableStateOf(false)}
     var minutes by rememberSaveable(task.id) {mutableStateOf("5")}
@@ -52,6 +58,7 @@ import java.time.format.DateTimeFormatter
         }
     }
     AlertDialog(
+        modifier=modifier,
         onDismissRequest={if(!busy) onDismiss()},
         containerColor=MaterialTheme.colorScheme.surface,
         title={Text(if(run==null) {if(external) "等结果" else "自己做"} else if(isExternal) "等待结果" else "正在专注")},
@@ -106,11 +113,23 @@ import java.time.format.DateTimeFormatter
                     TextButton(enabled=!busy,onClick={external=false},modifier=Modifier.heightIn(min=48.dp)) {Text("返回自己做")}
                 } else {
                     Text("先专注一小段时间，从最小下一步开始。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf(5,10,15,25).forEach {value ->
-                        FilterChip(selected=minutes==value.toString(),onClick={minutes=value.toString()},label={Text("$value 分")},enabled=!busy,modifier=Modifier.heightIn(min=48.dp))
-                    }}
+                    Row(Modifier.fillMaxWidth().selectableGroup().testTag("focus_presets"),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                        listOf(5,15,30,60).forEach {value ->
+                            val selected=minutes==value.toString()
+                            Surface(selected=selected,onClick={minutes=value.toString()},enabled=!busy,shape=MaterialTheme.shapes.small,
+                                color=if(selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                                contentColor=if(selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                border=if(selected) null else BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
+                                modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("focus_preset_$value").semantics {role=Role.RadioButton}) {
+                                Box(Modifier.padding(horizontal=2.dp,vertical=10.dp),contentAlignment=Alignment.Center) {
+                                    Text("${value}分",style=MaterialTheme.typography.labelLarge,maxLines=1,softWrap=false,
+                                        modifier=Modifier.semantics {contentDescription="$value 分钟"})
+                                }
+                            }
+                        }
+                    }
                     OutlinedTextField(value=minutes,onValueChange={minutes=it},label={Text("这次专注几分钟")},singleLine=true,
-                        keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),enabled=!busy,modifier=Modifier.fillMaxWidth())
+                        keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),enabled=!busy,modifier=Modifier.fillMaxWidth().testTag("focus_minutes"))
                     if(snapshot.focus!=null) Text("这台手机已有另一项专注，请先结束或取消那段记录。",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                     TextButton(enabled=!busy,onClick={external=true},modifier=Modifier.heightIn(min=48.dp)) {Text("任务已交给 AI 或别人？")}
                 }
@@ -120,7 +139,7 @@ import java.time.format.DateTimeFormatter
             Text("计时状态只保存在这台手机；结束后的记录随任务同步。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             error?.let {Text(it,color=MaterialTheme.colorScheme.error)}
         }},
-        confirmButton={Button(shape=MaterialTheme.shapes.small,modifier=Modifier.heightIn(min=48.dp),enabled=!busy && (run!=null || external || snapshot.focus==null),onClick={
+        confirmButton={Button(shape=MaterialTheme.shapes.small,modifier=Modifier.heightIn(min=48.dp).testTag("execution_primary"),enabled=!busy && (run!=null || external || snapshot.focus==null),onClick={
             if(run!=null) confirm=ExecutionAction.FINISH
             else if(external) {
                 val value=checkMinutes.trim().takeIf {it.isNotEmpty()}?.toIntOrNull()
