@@ -6,6 +6,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Build
+import android.util.SizeF
+import android.view.View
 import android.os.UserManager
 import android.widget.RemoteViews
 import androidx.work.*
@@ -33,21 +36,58 @@ class HomeWidgetProvider:AppWidgetProvider() {
 }
 
 object HomeWidgetViews {
-    fun create(context:Context,id:Int,model:HomeWidgetModel)=RemoteViews(context.packageName,R.layout.home_widget).apply {
-        val height=AppWidgetManager.getInstance(context).getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,240)
-        val compact=height<260
-        setInt(R.id.widget_title,"setMaxLines",if(compact)1 else 2)
-        setInt(R.id.widget_status,"setMaxLines",if(compact)1 else 2)
-        setTextViewText(R.id.widget_heading,model.heading)
-        setTextViewText(R.id.widget_title,model.title)
-        setTextViewText(R.id.widget_next_step,model.nextStep)
-        setTextViewText(R.id.widget_status,model.status)
-        setTextViewText(R.id.widget_focus,model.actionLabel)
-        setContentDescription(R.id.widget_body,"${model.heading}，${model.title}，${model.nextStep}，${model.status}。打开今日规划")
-        setContentDescription(R.id.widget_focus,"${model.actionLabel}，${model.status}")
-        setOnClickPendingIntent(R.id.widget_body,HomeWidgetActions.pendingIntent(context,id,HomeWidgetRequest(HomeWidgetAction.TODAY)))
-        setOnClickPendingIntent(R.id.widget_capture,HomeWidgetActions.pendingIntent(context,id,HomeWidgetRequest(HomeWidgetAction.CAPTURE)))
-        setOnClickPendingIntent(R.id.widget_focus,HomeWidgetActions.pendingIntent(context,id,model.request))
+    fun create(context:Context,id:Int,model:HomeWidgetModel):RemoteViews {
+        if(Build.VERSION.SDK_INT>=31)return RemoteViews(linkedMapOf(
+            SizeF(110f,110f) to createForSize(context,id,model,110,110),
+            SizeF(110f,200f) to createForSize(context,id,model,110,200),
+            SizeF(110f,260f) to createForSize(context,id,model,110,260),
+            SizeF(156f,156f) to createForSize(context,id,model,156,156),
+            SizeF(280f,240f) to createForSize(context,id,model,280,240),
+            SizeF(280f,300f) to createForSize(context,id,model,280,300)
+        ))
+        val options=AppWidgetManager.getInstance(context).getAppWidgetOptions(id)
+        val minWidth=options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH,156)
+        val minHeight=options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,156)
+        val maxWidth=options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH,minWidth)
+        val maxHeight=options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT,minHeight)
+        return RemoteViews(createForSize(context,id,model,maxWidth,minHeight),createForSize(context,id,model,minWidth,maxHeight))
+    }
+
+    /** Also used for exact-size rendering acceptance; every responsive variant goes through here. */
+    fun createForSize(context:Context,id:Int,model:HomeWidgetModel,width:Int,height:Int):RemoteViews {
+        val expanded=width>=280 && height>=240
+        val tallCompact=!expanded && height>=260
+        val short=height<156
+        val largeText=context.resources.configuration.fontScale>1.35f
+        return RemoteViews(context.packageName,if(expanded)R.layout.home_widget_expanded else if(tallCompact)R.layout.home_widget_tall else R.layout.home_widget).apply {
+            val roomy=expanded && height>=300 && !largeText
+            setInt(R.id.widget_title,"setMaxLines",if(roomy || (!expanded && !short && (context.resources.configuration.fontScale<=1.1f || height>=200)))2 else 1)
+            setInt(R.id.widget_status,"setMaxLines",if(roomy)2 else 1)
+            setInt(R.id.widget_next_step,"setMaxLines",if(tallCompact || (expanded && (!largeText || roomy)))2 else 1)
+            if(!expanded) {
+                setViewVisibility(R.id.widget_heading,if(short)View.GONE else View.VISIBLE)
+                setViewVisibility(R.id.widget_next_step,if(short && context.resources.configuration.fontScale>1.1f)View.GONE else View.VISIBLE)
+                setViewVisibility(R.id.widget_status,if(tallCompact)View.VISIBLE else View.GONE)
+            }
+            setTextViewText(R.id.widget_heading,model.heading)
+            setTextViewText(R.id.widget_title,model.title)
+            setTextViewText(R.id.widget_next_step,model.nextStep)
+            setTextViewText(R.id.widget_status,model.status)
+            setTextViewText(R.id.widget_capture,if(expanded)"快速收集" else "记下")
+            setTextViewText(R.id.widget_focus,if(expanded)model.actionLabel else when(model.request.action) {
+                HomeWidgetAction.START_FOCUS->"开始";HomeWidgetAction.PAUSE_FOCUS->"暂停"
+                HomeWidgetAction.RESUME_FOCUS->"继续";HomeWidgetAction.REVIEW_FOCUS->"查看"
+                else->"打开"
+            })
+            val bodyRequest=if(model.request.runId!=null)model.request.copy(action=HomeWidgetAction.REVIEW_FOCUS) else HomeWidgetRequest(HomeWidgetAction.TODAY)
+            val destination=if(bodyRequest.runId!=null)"打开这件事的推进记录" else "打开今日规划"
+            setContentDescription(R.id.widget_body,"${model.heading}，${model.title}，${model.nextStep}，${model.status}。$destination")
+            setContentDescription(R.id.widget_capture,"快速收集想法")
+            setContentDescription(R.id.widget_focus,"${model.actionLabel}：${model.title}，${model.status}")
+            setOnClickPendingIntent(R.id.widget_body,HomeWidgetActions.pendingIntent(context,id,bodyRequest))
+            setOnClickPendingIntent(R.id.widget_capture,HomeWidgetActions.pendingIntent(context,id,HomeWidgetRequest(HomeWidgetAction.CAPTURE)))
+            setOnClickPendingIntent(R.id.widget_focus,HomeWidgetActions.pendingIntent(context,id,model.request))
+        }
     }
 }
 

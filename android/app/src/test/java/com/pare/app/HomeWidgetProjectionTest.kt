@@ -33,9 +33,13 @@ class HomeWidgetProjectionTest {
         val completed=StateMachine.edit(state,"task",b,JsonObject(task.payload!!+("content" to JsonObject(task.content()!!+("completed" to JsonPrimitive(true))))))
         assertEquals(a,HomeWidgetProjection.project(completed,null,now).request.taskId)
     }
-    @Test fun activeFocusControlsItsOwnRunWithoutReplacingTodayPriority() {
-        val state=fixture();val result=HomeWidgetProjection.project(state,focus(state),now)
-        assertEquals("示例任务 2",result.title)
+    @Test fun activeFocusDisplaysTheSameTaskAndNextStepAsItsControls() {
+        val original=fixture();val task=original.items.getValue("task:$a")
+        val state=libraryReplace(original,task,task.content()!!.toMutableMap().apply {put("nextAction",JsonPrimitive("专注任务自己的下一步"))})
+        val result=HomeWidgetProjection.project(state,focus(state),now)
+        assertEquals("示例任务 1",result.title)
+        assertEquals("下一步 · 专注任务自己的下一步",result.nextStep)
+        assertTrue(result.heading.contains("正在专注"))
         assertTrue(result.status.contains("示例任务 1"))
         assertEquals(HomeWidgetRequest(HomeWidgetAction.PAUSE_FOCUS,a,runId),result.request)
     }
@@ -73,6 +77,7 @@ class HomeWidgetProjectionTest {
         val execution=ExecutionSnapshot(device=state.device,external=listOf(ExecutionRun(runId,b,now.wallMillis,anchor=now)))
         val result=HomeWidgetProjection.project(state,execution,now)
         assertEquals("查看推进",result.actionLabel)
+        assertTrue(result.heading.contains("等待结果"))
         assertTrue(result.status.contains("等待结果"))
         assertEquals(HomeWidgetRequest(HomeWidgetAction.REVIEW_FOCUS,b,runId),result.request)
     }

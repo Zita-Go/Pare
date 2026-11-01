@@ -119,6 +119,9 @@ class HomeWidgetPinLauncherTest {
         assertEquals(launcherPackage, confirmation.packageName)
         assertTrue(confirmation.identifiesPare)
         assertTrue(confirmation.hasConfirmationControl)
+        assertTrue("Default widget must request 2×2 launcher cells: ${confirmation.labels}",confirmation.labels.any {
+            it.replace(" ","").contains("2×2") || it.contains("2 by 2",ignoreCase=true)
+        })
         optionalNativeScreenshot(confirmation)
         cancelNativeConfirmation()
 

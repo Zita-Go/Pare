@@ -41,7 +41,7 @@ object HomeWidgetProjection {
             if(selected==null)"本机内容 · 离线可用" else "从最小下一步开始",
             if(selected==null)"打开今日" else "开始专注",
             if(selected==null)HomeWidgetRequest(HomeWidgetAction.TODAY) else HomeWidgetRequest(HomeWidgetAction.START_FOCUS,selected.id))
-        if(executionUnavailable)return model.copy(status="专注状态暂不可用，请打开 Pare 检查",actionLabel="打开 Pare",request=HomeWidgetRequest(HomeWidgetAction.TODAY))
+        if(executionUnavailable)return model.copy(heading="${date.monthValue}/${date.dayOfMonth} · 状态待检查",status="专注状态暂不可用，请打开 Pare 检查",actionLabel="打开 Pare",request=HomeWidgetRequest(HomeWidgetAction.TODAY))
         if(focus!=null) {
             val name=state.items.getValue("task:${focus.taskId}").title().take(80)
             val uncertain=!focus.paused && (focus.anchor?.bootId!=now.bootId || now.elapsedMillis<(focus.anchor?.elapsedMillis ?: Long.MAX_VALUE))
@@ -59,17 +59,21 @@ object HomeWidgetProjection {
                 focus.paused -> "专注已暂停"
                 else -> "正在专注"
             }
-            model=model.copy(status="$status · $name",actionLabel=when(action) {
+            val focusedTask=state.items.getValue("task:${focus.taskId}")
+            val focusedNext=focusedTask.content()?.timelineString("nextAction")?.trim()?.takeIf {it.isNotEmpty()}
+            model=model.copy(heading="${date.monthValue}/${date.dayOfMonth} · $status",title=focusedTask.title().take(180),
+                nextStep=focusedNext?.let {"下一步 · ${it.take(200)}"} ?: "打开任务补充一小步",
+                status="$status · $name",actionLabel=when(action) {
                 HomeWidgetAction.PAUSE_FOCUS -> "暂停专注"
                 HomeWidgetAction.RESUME_FOCUS -> "继续专注"
                 else -> "查看专注"
             },request=HomeWidgetRequest(action,focus.taskId,focus.id))
         } else if(selected?.conflict!=null) {
-            model=model.copy(status="这件事有同步冲突，请先查看",actionLabel="打开今日",request=HomeWidgetRequest(HomeWidgetAction.TODAY))
+            model=model.copy(heading="${date.monthValue}/${date.dayOfMonth} · 待处理冲突",status="这件事有同步冲突，请先查看",actionLabel="打开今日",request=HomeWidgetRequest(HomeWidgetAction.TODAY))
         } else if(selected!=null) {
             val waiting=execution?.takeIf {it.device==state.device && it.owner==state.owner}
                 ?.external?.firstOrNull {it.taskId==selected.id}
-            if(waiting!=null)model=model.copy(status=if(waiting.paused)"等待记录已暂停" else "正在等待结果 · 未计入个人专注",
+            if(waiting!=null)model=model.copy(heading="${date.monthValue}/${date.dayOfMonth} · "+if(waiting.paused)"等待已暂停" else "等待结果",status=if(waiting.paused)"等待记录已暂停" else "正在等待结果 · 未计入个人专注",
                 actionLabel="查看推进",request=HomeWidgetRequest(HomeWidgetAction.REVIEW_FOCUS,selected.id,waiting.id))
         }
         return model

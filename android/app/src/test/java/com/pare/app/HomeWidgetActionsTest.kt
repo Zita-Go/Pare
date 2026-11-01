@@ -49,8 +49,10 @@ class HomeWidgetActionsTest {
     @Test fun realRemoteViewsButtonsDispatchCaptureAndBoundFocusRequests() {
         val request=HomeWidgetRequest(HomeWidgetAction.PAUSE_FOCUS,task,run)
         val model=HomeWidgetModel("11/1 · 今日重点","虚构桌面任务","下一步 · 写下第一句","正在专注","暂停专注",request)
-        val view=HomeWidgetViews.create(context,74,model).apply(context,FrameLayout(context))
+        val view=HomeWidgetViews.createForSize(context,74,model,156,156).apply(context,FrameLayout(context))
         val app=shadowOf(context as Application)
+        view.findViewById<android.view.View>(R.id.widget_body).performClick()
+        assertEquals(request.copy(action=HomeWidgetAction.REVIEW_FOCUS),HomeWidgetActions.consume(app.nextStartedActivity,context.packageName))
         view.findViewById<android.view.View>(R.id.widget_capture).performClick()
         assertEquals(HomeWidgetRequest(HomeWidgetAction.CAPTURE),HomeWidgetActions.consume(app.nextStartedActivity,context.packageName))
         view.findViewById<android.view.View>(R.id.widget_focus).performClick()
