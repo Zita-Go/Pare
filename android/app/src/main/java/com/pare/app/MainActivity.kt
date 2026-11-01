@@ -73,6 +73,8 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     var executionChooser by rememberSaveable {mutableStateOf(false)}
     var reviewOpen by rememberSaveable {mutableStateOf(false)}
     var moreOpen by rememberSaveable {mutableStateOf(false)}
+    var widgetPinOpen by rememberSaveable {mutableStateOf(false)}
+    val widgetPinModel:HomeWidgetPinModel=viewModel(key="widget-pin")
     var libraryOpen by rememberSaveable {mutableStateOf(false)}
     var goalsOpen by rememberSaveable {mutableStateOf(false)}
     var preferencesOpen by rememberSaveable {mutableStateOf(false)}
@@ -480,9 +482,10 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
         "preferences"->preferencesOpen=true
         "devices"->{devicesOpen=true;vm.refreshPresence()}
         "account"->account=true
-        "widget"->if(!HomeWidgetProvider.requestPin(context))localScope.launch {snackbars.showSnackbar("请长按手机桌面，在小组件中选择 Pare",withDismissAction=true,duration=SnackbarDuration.Short)}
+        "widget"->{widgetPinModel.reset();widgetPinOpen=true}
     }},onDismiss={moreOpen=false})
     choosingTaskPlanId?.let {planId->ChooseTaskForDayDialog(state,planId,onChoose={addExistingTask(it,planId,true)},saving=choosingTaskSave.saving,error=choosingTaskSave.error,onDismiss={if(!choosingTaskSave.saving)choosingTaskPlanId=null})}
+    if(widgetPinOpen)HomeWidgetPinDialog(widgetPinModel,onDismiss={widgetPinOpen=false})
     if(libraryOpen)LibraryDialog(state,vm::editWorkspace,onDismiss={libraryOpen=false},onOpenTask={openEditor(it)},onOpenIdea={workspaceId=it.id},
         onOpenEntity={if(it.kind=="goal"){initialGoalId=it.id;goalsOpen=true}else openEditor(it)})
     if(goalsOpen)GoalsWorkspace(state,vm::editWorkspace,onDismiss={goalsOpen=false;initialGoalId=null},onOpenTask={openEditor(it)},initialGoalId=initialGoalId,onPlanGoal={openPlanning("goal",it)})
