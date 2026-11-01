@@ -4,5 +4,5 @@
     android:minResizeWidth="110dp" android:minResizeHeight="110dp"
     android:targetCellWidth="2" android:targetCellHeight="2"
     android:resizeMode="horizontal|vertical" android:updatePeriodMillis="0"
-    android:initialLayout="@layout/home_widget" android:previewLayout="@layout/home_widget_preview"
+    android:initialLayout="@layout/widget_card_compact" android:previewLayout="@layout/widget_card_preview"
     android:description="@string/home_widget_description" android:widgetCategory="home_screen" />

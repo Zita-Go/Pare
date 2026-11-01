@@ -41,6 +41,7 @@ object HomeWidgetViews {
             SizeF(110f,110f) to createForSize(context,id,model,110,110),
             SizeF(110f,200f) to createForSize(context,id,model,110,200),
             SizeF(110f,260f) to createForSize(context,id,model,110,260),
+            SizeF(140f,260f) to createForSize(context,id,model,140,260),
             SizeF(156f,156f) to createForSize(context,id,model,156,156),
             SizeF(280f,240f) to createForSize(context,id,model,280,240),
             SizeF(280f,300f) to createForSize(context,id,model,280,300)
@@ -54,26 +55,35 @@ object HomeWidgetViews {
     }
 
     /** Also used for exact-size rendering acceptance; every responsive variant goes through here. */
+    // Distinct IDs force already-placed widgets to reinflate after the Button→ImageButton change.
     fun createForSize(context:Context,id:Int,model:HomeWidgetModel,width:Int,height:Int):RemoteViews {
         val expanded=width>=280 && height>=240
         val tallCompact=!expanded && height>=260
         val short=height<156
         val largeText=context.resources.configuration.fontScale>1.35f
-        return RemoteViews(context.packageName,if(expanded)R.layout.home_widget_expanded else if(tallCompact)R.layout.home_widget_tall else R.layout.home_widget).apply {
+        return RemoteViews(context.packageName,if(expanded)R.layout.widget_card_expanded else if(tallCompact)R.layout.widget_card_tall else R.layout.widget_card_compact).apply {
             val roomy=expanded && height>=300 && !largeText
             setInt(R.id.widget_title,"setMaxLines",if(roomy || (!expanded && !short && (context.resources.configuration.fontScale<=1.1f || height>=200)))2 else 1)
             setInt(R.id.widget_status,"setMaxLines",if(roomy)2 else 1)
             setInt(R.id.widget_next_step,"setMaxLines",if(tallCompact || (expanded && (!largeText || roomy)))2 else 1)
             if(!expanded) {
+                val density=context.resources.displayMetrics.density
+                val horizontal=if(width>=132)10 else 6
+                val vertical=if(tallCompact)10 else 6
+                setViewPadding(android.R.id.background,(horizontal*density).toInt(),(vertical*density).toInt(),(horizontal*density).toInt(),(vertical*density).toInt())
                 setViewVisibility(R.id.widget_heading,if(short)View.GONE else View.VISIBLE)
                 setViewVisibility(R.id.widget_next_step,if(short && context.resources.configuration.fontScale>1.1f)View.GONE else View.VISIBLE)
                 setViewVisibility(R.id.widget_status,if(tallCompact)View.VISIBLE else View.GONE)
             }
+            setViewVisibility(R.id.widget_status,if(model.statusImportant && !short)View.VISIBLE else View.GONE)
+            if(model.statusImportant) {
+                setViewVisibility(R.id.widget_next_step,View.GONE)
+                if(!expanded && !tallCompact && largeText)setViewVisibility(R.id.widget_heading,View.GONE)
+            }
             setTextViewText(R.id.widget_heading,model.heading)
-            setTextViewText(R.id.widget_title,model.title)
+            setTextViewText(R.id.widget_title,if(model.statusImportant && short)model.status else model.title)
             setTextViewText(R.id.widget_next_step,model.nextStep)
             setTextViewText(R.id.widget_status,model.status)
-            setTextViewText(R.id.widget_capture,if(expanded)"快速收集" else "记下")
             setTextViewText(R.id.widget_focus,if(expanded)model.actionLabel else when(model.request.action) {
                 HomeWidgetAction.START_FOCUS->"开始";HomeWidgetAction.PAUSE_FOCUS->"暂停"
                 HomeWidgetAction.RESUME_FOCUS->"继续";HomeWidgetAction.REVIEW_FOCUS->"查看"
@@ -81,9 +91,9 @@ object HomeWidgetViews {
             })
             val bodyRequest=if(model.request.runId!=null)model.request.copy(action=HomeWidgetAction.REVIEW_FOCUS) else HomeWidgetRequest(HomeWidgetAction.TODAY)
             val destination=if(bodyRequest.runId!=null)"打开这件事的推进记录" else "打开今日规划"
-            setContentDescription(R.id.widget_body,"${model.heading}，${model.title}，${model.nextStep}，${model.status}。$destination")
+            setContentDescription(R.id.widget_body,listOfNotNull(model.heading,model.title,model.nextStep,model.status.takeIf {model.statusImportant}).joinToString("，")+"。$destination")
             setContentDescription(R.id.widget_capture,"快速收集想法")
-            setContentDescription(R.id.widget_focus,"${model.actionLabel}：${model.title}，${model.status}")
+            setContentDescription(R.id.widget_focus,"${model.actionLabel}：${model.title}"+if(model.statusImportant)"，${model.status}" else "")
             setOnClickPendingIntent(R.id.widget_body,HomeWidgetActions.pendingIntent(context,id,bodyRequest))
             setOnClickPendingIntent(R.id.widget_capture,HomeWidgetActions.pendingIntent(context,id,HomeWidgetRequest(HomeWidgetAction.CAPTURE)))
             setOnClickPendingIntent(R.id.widget_focus,HomeWidgetActions.pendingIntent(context,id,model.request))

@@ -7,7 +7,7 @@ import java.time.ZoneId
 
 data class HomeWidgetModel(
     val heading:String,val title:String,val nextStep:String,val status:String,
-    val actionLabel:String,val request:HomeWidgetRequest
+    val actionLabel:String,val request:HomeWidgetRequest,val statusImportant:Boolean=false
 )
 
 /** Read-only projection of the same planning date/order as Today. No estimates or invented progress. */
@@ -15,7 +15,7 @@ object HomeWidgetProjection {
     fun unavailable(locked:Boolean=false)=HomeWidgetModel("Pare · 今日重点",
         if(locked)"解锁后查看今日重点" else "暂时无法读取今日重点",
         if(locked)"解锁设备后再打开 Pare" else "请打开 Pare 重试，原记录已保留",
-        "本机内容", "打开 Pare",HomeWidgetRequest(HomeWidgetAction.TODAY))
+        if(locked)"解锁后再打开 Pare" else "打开 Pare 重试，原记录已保留", "打开 Pare",HomeWidgetRequest(HomeWidgetAction.TODAY),statusImportant=true)
 
     private fun usable(entity:Entity?)=entity!=null && !entity.deleted && entity.content()!=null && !entity.completed() &&
         entity.payload?.get("lifecycle")?.jsonPrimitive?.contentOrNull!="archived"
@@ -41,7 +41,7 @@ object HomeWidgetProjection {
             if(selected==null)"本机内容 · 离线可用" else "从最小下一步开始",
             if(selected==null)"打开今日" else "开始专注",
             if(selected==null)HomeWidgetRequest(HomeWidgetAction.TODAY) else HomeWidgetRequest(HomeWidgetAction.START_FOCUS,selected.id))
-        if(executionUnavailable)return model.copy(heading="${date.monthValue}/${date.dayOfMonth} · 状态待检查",status="专注状态暂不可用，请打开 Pare 检查",actionLabel="打开 Pare",request=HomeWidgetRequest(HomeWidgetAction.TODAY))
+        if(executionUnavailable)return model.copy(heading="${date.monthValue}/${date.dayOfMonth} · 状态待检查",status="专注状态暂不可用，请打开 Pare 检查",actionLabel="打开 Pare",request=HomeWidgetRequest(HomeWidgetAction.TODAY),statusImportant=true)
         if(focus!=null) {
             val name=state.items.getValue("task:${focus.taskId}").title().take(80)
             val uncertain=!focus.paused && (focus.anchor?.bootId!=now.bootId || now.elapsedMillis<(focus.anchor?.elapsedMillis ?: Long.MAX_VALUE))
@@ -67,9 +67,9 @@ object HomeWidgetProjection {
                 HomeWidgetAction.PAUSE_FOCUS -> "暂停专注"
                 HomeWidgetAction.RESUME_FOCUS -> "继续专注"
                 else -> "查看专注"
-            },request=HomeWidgetRequest(action,focus.taskId,focus.id))
+            },request=HomeWidgetRequest(action,focus.taskId,focus.id),statusImportant=action==HomeWidgetAction.REVIEW_FOCUS)
         } else if(selected?.conflict!=null) {
-            model=model.copy(heading="${date.monthValue}/${date.dayOfMonth} · 待处理冲突",status="这件事有同步冲突，请先查看",actionLabel="打开今日",request=HomeWidgetRequest(HomeWidgetAction.TODAY))
+            model=model.copy(heading="${date.monthValue}/${date.dayOfMonth} · 待处理冲突",status="这件事有同步冲突，请先查看",actionLabel="打开今日",request=HomeWidgetRequest(HomeWidgetAction.TODAY),statusImportant=true)
         } else if(selected!=null) {
             val waiting=execution?.takeIf {it.device==state.device && it.owner==state.owner}
                 ?.external?.firstOrNull {it.taskId==selected.id}

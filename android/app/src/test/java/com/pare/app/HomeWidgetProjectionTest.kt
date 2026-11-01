@@ -6,6 +6,17 @@ import org.junit.Test
 import java.time.Instant
 
 class HomeWidgetProjectionTest {
+    @Test fun routineHintsStayQuietWhileRecoveryAndDueStatusRemainImportant() {
+        val state=fixture()
+        assertFalse(HomeWidgetProjection.project(state,null,now).statusImportant)
+        assertFalse(HomeWidgetProjection.project(state,focus(state),now).statusImportant)
+        assertFalse(HomeWidgetProjection.project(state,focus(state,true),now).statusImportant)
+        assertTrue(HomeWidgetProjection.project(state,focus(state),now.copy(wallMillis=now.wallMillis+300_000,elapsedMillis=now.elapsedMillis+300_000)).statusImportant)
+        assertTrue(HomeWidgetProjection.project(state,null,now,executionUnavailable=true).statusImportant)
+        val failure=HomeWidgetProjection.unavailable()
+        assertTrue(failure.statusImportant)
+        assertTrue(failure.status.contains("重试"))
+    }
     private val a="00000000-0000-4000-8000-000000000001"
     private val b="00000000-0000-4000-8000-000000000002"
     private val runId="00000000-0000-4000-8000-000000000003"

@@ -6,4 +6,5 @@
     <color name="widget_primary">#A4D3B5</color>
     <color name="widget_on_primary">#123B27</color>
     <color name="widget_outline">#36443A</color>
+    <color name="widget_touch_ripple">#33A3D3B7</color>
 </resources>

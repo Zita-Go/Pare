@@ -198,8 +198,9 @@ class HomeWidgetPlacementTest {
         }
         assertTrue("Body must not overlap actions", body.bounds.bottom <= minOf(capture.bounds.top, focus.bounds.top))
         assertFalse("Action touch targets must not overlap", Rect.intersects(capture.bounds, focus.bounds))
-        assertEquals("Compact capture action", "记下", capture.text)
+        assertTrue("Capture icon must announce its purpose", capture.description.contains("快速收集"))
         assertEquals("Compact focus action", "开始", focus.text)
+        assertFalse("Ordinary widget must not show duplicate generic encouragement", actual.nodes.any { it.id.endsWith(":id/widget_status") })
     }
 
     private fun visible(tag: String) = compose.waitUntil(10_000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }

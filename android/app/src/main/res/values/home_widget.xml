@@ -8,4 +8,5 @@
     <color name="widget_primary">#285E49</color>
     <color name="widget_on_primary">#FFFFFF</color>
     <color name="widget_outline">#DDE4DC</color>
+    <color name="widget_touch_ripple">#20285E49</color>
 </resources>

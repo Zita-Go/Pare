@@ -1,0 +1,206 @@
+{
+    "package": "com.pare.app.qa",
+    "launcher": "com.android.launcher3",
+    "widgetId": 9,
+    "addClickCount": 1,
+    "targetColumns": 2,
+    "targetRows": 2,
+    "density": 2.625,
+    "minWidthDp": 145,
+    "minHeightDp": 134,
+    "maxWidthDp": 265,
+    "maxHeightDp": 273,
+    "publishedSizesDp": [
+        {
+            "width": 145.5238,
+            "height": 273.5238
+        },
+        {
+            "width": 145.5238,
+            "height": 272.0
+        },
+        {
+            "width": 265.14285,
+            "height": 134.85715
+        },
+        {
+            "width": 265.14285,
+            "height": 134.85715
+        }
+    ],
+    "hostBounds": {
+        "left": 39,
+        "top": 180,
+        "right": 421,
+        "bottom": 898,
+        "widthDp": 145.5238,
+        "heightDp": 273.5238
+    },
+    "widgetBounds": {
+        "left": 39,
+        "top": 180,
+        "right": 421,
+        "bottom": 652,
+        "widthDp": 145.5238,
+        "heightDp": 179.80952
+    },
+    "defaultWidgetPaddingPx": {
+        "left": 21,
+        "top": 21,
+        "right": 21,
+        "bottom": 21
+    },
+    "nativeGridEvidence": "Host options and measured bounds; launcher exposes no collection cell spans",
+    "qaWidgetNodes": [
+        {
+            "id": "",
+            "class": "com.android.launcher3.widget.LauncherAppWidgetHostView",
+            "text": "",
+            "description": "Pare · 今日与专注",
+            "clickable": false,
+            "bounds": {
+                "left": 39,
+                "top": 180,
+                "right": 421,
+                "bottom": 898,
+                "widthDp": 145.5238,
+                "heightDp": 273.5238
+            }
+        },
+        {
+            "id": "",
+            "class": "android.widget.FrameLayout",
+            "text": "",
+            "description": "",
+            "clickable": false,
+            "bounds": {
+                "left": 39,
+                "top": 180,
+                "right": 421,
+                "bottom": 898,
+                "widthDp": 145.5238,
+                "heightDp": 273.5238
+            }
+        },
+        {
+            "id": "android:id/background",
+            "class": "android.widget.LinearLayout",
+            "text": "",
+            "description": "",
+            "clickable": false,
+            "bounds": {
+                "left": 39,
+                "top": 180,
+                "right": 421,
+                "bottom": 652,
+                "widthDp": 145.5238,
+                "heightDp": 179.80952
+            }
+        },
+        {
+            "id": "com.pare.app.qa:id/widget_body",
+            "class": "android.widget.LinearLayout",
+            "text": "",
+            "description": "11/1 · 今日重点，虚构：整理桌面观察，下一步 · 写下一条虚构观察。打开今日规划",
+            "clickable": true,
+            "bounds": {
+                "left": 65,
+                "top": 206,
+                "right": 395,
+                "bottom": 484,
+                "widthDp": 125.71429,
+                "heightDp": 105.90476
+            }
+        },
+        {
+            "id": "com.pare.app.qa:id/widget_heading",
+            "class": "android.widget.TextView",
+            "text": "11/1 · 今日重点",
+            "description": "",
+            "clickable": false,
+            "bounds": {
+                "left": 65,
+                "top": 206,
+                "right": 395,
+                "bottom": 248,
+                "widthDp": 125.71429,
+                "heightDp": 16.0
+            }
+        },
+        {
+            "id": "com.pare.app.qa:id/widget_title",
+            "class": "android.widget.TextView",
+            "text": "虚构：整理桌面观察",
+            "description": "",
+            "clickable": false,
+            "bounds": {
+                "left": 65,
+                "top": 264,
+                "right": 395,
+                "bottom": 376,
+                "widthDp": 125.71429,
+                "heightDp": 42.666668
+            }
+        },
+        {
+            "id": "com.pare.app.qa:id/widget_next_step",
+            "class": "android.widget.TextView",
+            "text": "下一步 · 写下一条虚构观察",
+            "description": "",
+            "clickable": false,
+            "bounds": {
+                "left": 65,
+                "top": 392,
+                "right": 395,
+                "bottom": 484,
+                "widthDp": 125.71429,
+                "heightDp": 35.04762
+            }
+        },
+        {
+            "id": "",
+            "class": "android.widget.LinearLayout",
+            "text": "",
+            "description": "",
+            "clickable": false,
+            "bounds": {
+                "left": 65,
+                "top": 500,
+                "right": 395,
+                "bottom": 626,
+                "widthDp": 125.71429,
+                "heightDp": 48.0
+            }
+        },
+        {
+            "id": "com.pare.app.qa:id/widget_capture",
+            "class": "android.widget.ImageButton",
+            "text": "",
+            "description": "快速收集想法",
+            "clickable": true,
+            "bounds": {
+                "left": 65,
+                "top": 500,
+                "right": 191,
+                "bottom": 626,
+                "widthDp": 48.0,
+                "heightDp": 48.0
+            }
+        },
+        {
+            "id": "com.pare.app.qa:id/widget_focus",
+            "class": "android.widget.Button",
+            "text": "开始",
+            "description": "开始专注：虚构：整理桌面观察",
+            "clickable": true,
+            "bounds": {
+                "left": 196,
+                "top": 500,
+                "right": 395,
+                "bottom": 626,
+                "widthDp": 75.809525,
+                "heightDp": 48.0
+            }
+        }
+    ]
+}

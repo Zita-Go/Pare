@@ -14,8 +14,8 @@ android {
         applicationId = "com.pare.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "0.13.2"
+        versionCode = 18
+        versionName = "0.13.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SUPABASE_URL", quoted(local.getProperty("supabase.url", "")))
         buildConfigField("String", "SUPABASE_PUBLIC_KEY", quoted(local.getProperty("supabase.publicKey", "")))
