@@ -9,9 +9,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -19,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,7 +57,7 @@ internal fun IdeaWorkspaceDialog(
                     backModifier = Modifier.testTag(if (drafts.form.isEmpty()) "idea_workspace_close" else "idea_workspace_back"),
                     actions = { if (drafts.form.isEmpty() && idea != null) IconButton(
                         onClick = { onEditIdea(idea) }, modifier = Modifier.size(48.dp).testTag("idea_edit")) {
-                        Icon(Icons.Default.Edit, "编辑标题与背景")
+                        PareIcon(PareIcons.Edit, "编辑标题与背景", Modifier.size(20.dp))
                     } }
                 ) },
                 containerColor = MaterialTheme.colorScheme.surface
@@ -83,6 +82,7 @@ internal fun IdeaWorkspaceDialog(
                                             onClick = { drafts.context = draft.copy(stage = stage) },
                                             enabled = !drafts.saving && idea != null,
                                             label = { Text(ideaStageLabel(stage)) },
+                                            leadingIcon = { PareIcon(ideaStageIcon(stage), null, Modifier.size(20.dp)) },
                                             modifier = Modifier.heightIn(min = 48.dp).testTag("idea_stage_$stage"))
                                     }
                                 }
@@ -111,6 +111,7 @@ internal fun IdeaWorkspaceDialog(
                                             onClick = { drafts.entry = draft.copy(kind = kind) },
                                             enabled = !drafts.saving && canGrow,
                                             label = { Text(ideaEntryKindLabel(kind)) },
+                                            leadingIcon = { PareIcon(ideaEntryIcon(kind), null, Modifier.size(20.dp)) },
                                             modifier = Modifier.heightIn(min = 48.dp).testTag("idea_entry_kind_$kind"))
                                     }
                                 }
@@ -173,80 +174,122 @@ internal fun IdeaWorkspaceDialog(
                         }
                     } else if (idea != null) {
                         val content = idea.content()
-                        Text(idea.title(), style = MaterialTheme.typography.titleLarge)
-                        Text(ideaStageLabel(content?.get("stage")?.jsonPrimitive?.contentOrNull),
-                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        val stage = content?.get("stage")?.jsonPrimitive?.contentOrNull
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(idea.title(), style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.testTag("idea_workspace_title").semantics { heading() })
+                            Surface(shape = MaterialTheme.shapes.small,
+                                color = if (canGrow) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                contentColor = if (canGrow) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant) {
+                                Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    PareIcon(ideaStageIcon(stage), null, Modifier.size(20.dp))
+                                    Text(ideaStageLabel(stage), style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        }
                         Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                            Column(Modifier.fillMaxWidth().clickable {
+                            Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(
+                                role = Role.Button, onClickLabel = "调整阶段与问题"
+                            ) {
                                 if (drafts.context == null) drafts.context = IdeaContextDraft(
                                     content?.get("stage")?.jsonPrimitive?.contentOrNull ?: "seed",
                                     content?.get("nextQuestion")?.jsonPrimitive?.contentOrNull.orEmpty(), IdeaContextBaseline.from(idea))
                                 drafts.open("context")
                             }.padding(16.dp).testTag("idea_context"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("正在探索的问题", style = MaterialTheme.typography.titleSmall)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    PareIcon(PareIcons.Finding, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Text("正在探索的问题", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                                    PareIcon(PareIcons.Edit, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                                 Text(content?.get("nextQuestion")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
                                     ?: "先留一个问题，给探索一个方向。", style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurface)
-                                Text("调整阶段与问题", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                             }
                         }
                         val entries = ideaTimeline(idea)
-                        WorkspaceSection("探索时间线", entries.size)
-                        if (entries.isEmpty()) Text("还没有探索记录。一点发现、一次决定，都可以留在这里。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        entries.take(visibleEntries).forEach { entry ->
-                            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Column(Modifier.width(8.dp).fillMaxHeight().padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
-                                    Spacer(Modifier.height(6.dp))
-                                    Box(Modifier.width(1.dp).weight(1f).background(MaterialTheme.colorScheme.outlineVariant))
-                                }
-                                Column(Modifier.weight(1f).padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(listOfNotNull(ideaEntryKindLabel(entry.kind), ideaDateLabel(entry.createdAt)).joinToString(" · "),
-                                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    SelectionContainer { Text(entry.text, style = MaterialTheme.typography.bodyLarge) }
+                        WorkspaceSection(PareIcons.Note, "探索时间线", entries.size)
+                        if (entries.isEmpty()) WorkspaceEmpty(PareIcons.Seed, "还没有探索记录。一点发现、一次决定，都可以留在这里。")
+                        if (entries.isNotEmpty()) Column {
+                            entries.take(visibleEntries).forEachIndexed { index, entry ->
+                                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Column(Modifier.width(32.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Surface(Modifier.size(32.dp), shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            contentColor = if (entry.kind == "note") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary) {
+                                            Box(contentAlignment = Alignment.Center) { PareIcon(ideaEntryIcon(entry.kind), null, Modifier.size(20.dp)) }
+                                        }
+                                        if (index < minOf(visibleEntries, entries.size) - 1) {
+                                            Spacer(Modifier.height(4.dp))
+                                            Box(Modifier.width(1.dp).weight(1f).background(MaterialTheme.colorScheme.outlineVariant))
+                                            Spacer(Modifier.height(4.dp))
+                                        }
+                                    }
+                                    Column(Modifier.weight(1f).padding(top = 4.dp,
+                                        bottom = if (index < minOf(visibleEntries, entries.size) - 1) 16.dp else 0.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(listOfNotNull(ideaEntryKindLabel(entry.kind), ideaDateLabel(entry.createdAt)).joinToString(" · "),
+                                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        SelectionContainer { Text(entry.text, style = MaterialTheme.typography.bodyLarge) }
+                                    }
                                 }
                             }
                         }
                         if (visibleEntries < entries.size) TextButton(onClick = { visibleEntries += 20 }, modifier = Modifier.heightIn(min = 48.dp)) { Text("查看更多记录（还有 ${entries.size - visibleEntries} 条）") }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Button(onClick = { if (drafts.entry == null) drafts.entry = IdeaEntryDraft(); drafts.open("entry") },
-                                enabled = canGrow, shape = MaterialTheme.shapes.medium, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("idea_add_entry")) {
+                                enabled = canGrow, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp).testTag("idea_add_entry")) {
+                                PareIcon(PareIcons.Add, null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
                                 Text(if (drafts.entry != null) "继续记录" else "记录探索")
                             }
+                            onAI?.let { TextButton(onClick = it, modifier = Modifier.heightIn(min = 48.dp).testTag("idea_ai")) {
+                                PareIcon(PareIcons.Sparkle, null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("和 AI 一起探索")
+                            } }
+                        }
+                        if (drafts.entry != null || drafts.action != null) Text("有未保存的草稿，可以继续填写。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (!canGrow) Text("想法已归档，探索记录与关联行动仍然保留。", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val linked = IdeaLinkedTasks.project(state, idea)
+                        WorkspaceSection(PareIcons.Link, "关联行动", linked.size)
+                        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             OutlinedButton(onClick = {
                                 if (drafts.action == null) {
                                     val id = uid()
                                     drafts.action = IdeaActionDraft(id = id, baseline = DayAllocationBaseline.from(state, id, now))
                                 }
                                 drafts.open("action")
-                            }, enabled = canGrow, shape = MaterialTheme.shapes.medium, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("idea_create_action")) {
+                            }, enabled = canGrow, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp).testTag("idea_create_action")) {
+                                PareIcon(PareIcons.Next, null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
                                 Text(if (drafts.action != null) "继续行动" else "拆出行动")
                             }
+                            onManage?.let { TextButton(onClick = it, modifier = Modifier.heightIn(min = 48.dp).testTag("idea_manage")) {
+                                Text("关联行动与回看")
+                            } }
                         }
-                        if (drafts.entry != null || drafts.action != null) Text("有未保存的草稿，可以继续填写。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (!canGrow) Text("想法已归档，探索记录与关联行动仍然保留。", style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            onAI?.let {TextButton(onClick=it,modifier=Modifier.heightIn(min=48.dp).testTag("idea_ai")){Text("和 AI 一起探索")}}
-                            onManage?.let {TextButton(onClick=it,modifier=Modifier.heightIn(min=48.dp).testTag("idea_manage")){Text("关联行动与回看")}}
-                        }
-                        val linked = IdeaLinkedTasks.project(state, idea)
-                        WorkspaceSection("关联行动", linked.size)
-                        if (linked.isEmpty()) Text("行动准备好时，再从这个想法中拆出第一步。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (linked.isEmpty()) WorkspaceEmpty(PareIcons.Link, "行动准备好时，再从这个想法中拆出第一步。")
                         linked.take(visibleActions).forEachIndexed { index, task ->
                             val entity = state.items["task:${task.id}"]?.takeUnless { it.deleted }
                             Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)
-                                .clickable(enabled = entity != null) { entity?.let(onOpenTask) }
+                                .clickable(enabled = entity != null, role = Role.Button) { entity?.let(onOpenTask) }
                                 .padding(vertical = 8.dp).testTag("linked_task_${task.id}"),
                                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Box(Modifier.size(8.dp).background(
-                                    if (task.completed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape))
+                                PareIcon(when {
+                                    task.missing -> PareIcons.Unlink
+                                    task.archived -> PareIcons.Archive
+                                    task.completed -> PareIcons.Check
+                                    else -> PareIcons.Note
+                                }, null, Modifier.size(20.dp),
+                                    tint = if (task.completed && !task.archived && !task.missing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(task.title, style = MaterialTheme.typography.bodyLarge)
                                     Text(when { task.missing -> "行动已删除或暂不可用"; task.archived -> "已归档"; task.completed -> "已完成"; else -> "待推进" },
                                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                                if (entity != null) PareIcon(PareIcons.Next, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             if (index < minOf(visibleActions, linked.size) - 1) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
@@ -256,7 +299,11 @@ internal fun IdeaWorkspaceDialog(
                             var backgroundExpanded by rememberSaveable(ideaId) { mutableStateOf(false) }
                             TextButton(onClick = { backgroundExpanded = !backgroundExpanded },
                                 modifier = Modifier.heightIn(min = 48.dp).testTag("idea_background_toggle")) {
+                                PareIcon(PareIcons.Note, null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
                                 Text(if (backgroundExpanded) "收起想法背景" else "查看想法背景")
+                                Spacer(Modifier.width(8.dp))
+                                PareIcon(if (backgroundExpanded) PareIcons.Up else PareIcons.Down, null, Modifier.size(20.dp))
                             }
                             if (backgroundExpanded) SelectionContainer {
                                 Text(notes, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("idea_background"))
@@ -287,12 +334,35 @@ internal fun IdeaWorkspaceDialog(
 }
 
 @Composable
-private fun WorkspaceSection(title: String, count: Int) {
+private fun WorkspaceSection(icon: Int, title: String, count: Int) {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        PareIcon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).semantics { heading() })
         Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+@Composable
+private fun WorkspaceEmpty(icon: Int, message: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+        PareIcon(icon, null, Modifier.padding(top = 2.dp).size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private fun ideaEntryIcon(kind: String): Int = when (kind) {
+    "finding" -> PareIcons.Finding
+    "decision" -> PareIcons.Decision
+    else -> PareIcons.Note
+}
+
+private fun ideaStageIcon(stage: String?): Int = when (stage) {
+    "exploring" -> PareIcons.Finding
+    "building" -> PareIcons.Next
+    "parked" -> PareIcons.Clock
+    "archived" -> PareIcons.Archive
+    else -> PareIcons.Seed
 }
 
 @Composable

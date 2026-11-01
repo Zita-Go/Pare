@@ -11,13 +11,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.tween
-import androidx.compose.material.icons.outlined.DateRange
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -59,12 +52,12 @@ data class TodayOverviewProjection(val scheduled:List<TodayOverviewEntry>,val un
 @Composable
 internal fun TodayDateHeader(day:TimelineDay,now:Instant,onSelectDate:(LocalDate)->Unit) {
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-        TextButton(onClick={onSelectDate(day.date.minusDays(1))},modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).testTag("timeline_previous_day").semantics {contentDescription="前一天"}) {Text("‹",style=MaterialTheme.typography.headlineSmall)}
+        TextButton(onClick={onSelectDate(day.date.minusDays(1))},modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).testTag("timeline_previous_day").semantics {contentDescription="前一天"}) {PareIcon(PareIcons.Previous,null,Modifier.size(20.dp))}
         Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally) {
             Text(day.date.format(DateTimeFormatter.ofPattern("M月d日 EEEE",Locale.SIMPLIFIED_CHINESE)),style=MaterialTheme.typography.titleMedium)
             Text(day.zone.id,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        TextButton(onClick={onSelectDate(day.date.plusDays(1))},modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).testTag("timeline_next_day").semantics {contentDescription="后一天"}) {Text("›",style=MaterialTheme.typography.headlineSmall)}
+        TextButton(onClick={onSelectDate(day.date.plusDays(1))},modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).testTag("timeline_next_day").semantics {contentDescription="后一天"}) {PareIcon(PareIcons.Next,null,Modifier.size(20.dp))}
         if(day.date!=now.atZone(day.zone).toLocalDate())TextButton(onClick={onSelectDate(now.atZone(day.zone).toLocalDate())},modifier=Modifier.heightIn(min=48.dp).testTag("timeline_today")) {Text("今天")}
     }
 }
@@ -94,7 +87,7 @@ fun TodayOverview(state:SyncState,selectedDate:LocalDate,now:Instant,onSelectDat
             }
             if(remaining==0)item {
                 EmptyNote(if(projection.completed.isEmpty()) "这一天还没有任务" else "这一天的任务已完成",
-                    if(projection.completed.isEmpty()) "点下方添加任务；想安排具体时刻时，切到时间轴。" else "已完成的内容保留在下方，可以随时回看。")
+                    if(projection.completed.isEmpty()) "点下方添加任务；想安排具体时刻时，切到时间轴。" else "已完成的内容保留在下方，可以随时回看。",icon=if(projection.completed.isEmpty())PareIcons.Today else PareIcons.CheckCircle)
             }
             if(projection.completed.isNotEmpty()) {
                 item {TextButton(onClick={completedExpanded=!completedExpanded},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("today_completed_toggle")) {Text("已完成 ${projection.completed.size} 件 · ${if(completedExpanded) "收起" else "展开"}")}}
@@ -133,32 +126,34 @@ fun TodayOverview(state:SyncState,selectedDate:LocalDate,now:Instant,onSelectDat
                 .semantics {contentDescription=(if(completed)"标为未完成：" else "完成：")+task.title()},contentAlignment=Alignment.Center) {
                 Box(Modifier.size(23.dp).then(if(completed)Modifier.background(MaterialTheme.colorScheme.primary,CircleShape)
                     else Modifier.border(1.5.dp,MaterialTheme.colorScheme.outline,CircleShape)),contentAlignment=Alignment.Center) {
-                    if(completed)Icon(Icons.Default.Check,null,Modifier.size(16.dp),tint=MaterialTheme.colorScheme.onPrimary)
+                    if(completed)PareIcon(PareIcons.Check,null,Modifier.size(16.dp),tint=MaterialTheme.colorScheme.onPrimary)
                 }
             }
             Column(Modifier.weight(1f).heightIn(min=64.dp).clickable {onOpen(task)}.padding(vertical=10.dp).testTag("overview_open_${task.id}"),verticalArrangement=Arrangement.Center) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    if(win) {Icon(Icons.Default.Star,"今日重点",Modifier.size(16.dp),tint=MaterialTheme.colorScheme.secondary);Spacer(Modifier.width(4.dp))}
+                    if(win) {PareIcon(PareIcons.Star,"今日重点",Modifier.size(16.dp),tint=MaterialTheme.colorScheme.secondary);Spacer(Modifier.width(4.dp))}
                     Text(task.title(),style=MaterialTheme.typography.bodyLarge,maxLines=2,overflow=TextOverflow.Ellipsis,
                         textDecoration=if(completed)TextDecoration.LineThrough else null,
                         color=if(completed)MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                }
+                if(win)task.content()?.timelineString("nextAction")?.takeIf {it.isNotBlank()}?.let {next ->
+                    Text("下一步：$next",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurface,
+                        maxLines=2,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(top=3.dp,bottom=3.dp).testTag("overview_next_action_${task.id}"))
                 }
                 val times=entry.blocks.map {timeLabel(it)}
                 Text(listOfNotNull(executionLabel,if(times.isEmpty())"未定时间" else times.joinToString("；")).joinToString(" · "),
                     style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if(!completed)Box {
-                IconButton(onClick={when(entry.blocks.size){0->onSchedule(task,day);1->onEditSchedule(entry.blocks.single());else->chooseOccurrence=true}},modifier=Modifier.size(48.dp).testTag("overview_schedule_${task.id}")) {Icon(Icons.Outlined.DateRange,if(entry.blocks.isEmpty())"安排时间" else "调整时间",modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)}
+                IconButton(onClick={when(entry.blocks.size){0->onSchedule(task,day);1->onEditSchedule(entry.blocks.single());else->chooseOccurrence=true}},modifier=Modifier.size(48.dp).testTag("overview_schedule_${task.id}")) {PareIcon(PareIcons.Calendar,if(entry.blocks.isEmpty())"安排时间" else "调整时间",modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)}
                 DropdownMenu(expanded=chooseOccurrence,onDismissRequest={chooseOccurrence=false}) {
                     entry.blocks.forEach {block->DropdownMenuItem(text={Text(timeLabel(block))},onClick={chooseOccurrence=false;onEditSchedule(block)})}
                 }
             }
             if(!completed)IconButton(onClick={onExecution(task)},modifier=Modifier.size(48.dp).testTag("overview_execution_${task.id}")) {
                 val active=executionLabel in setOf("本机专注中","等待结果中")
-                if(active)Row(Modifier.size(24.dp).padding(horizontal=6.dp,vertical=4.dp).semantics {contentDescription="暂停"},horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                    repeat(2) {Box(Modifier.weight(1f).fillMaxHeight().background(MaterialTheme.colorScheme.primary))}
-                } else Icon(if(executionLabel==null || paused)Icons.Default.PlayArrow else Icons.Default.MoreVert,
-                    if(paused)"继续" else executionLabel ?: "开始专注",modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.primary)
+                PareIcon(if(active)PareIcons.Pause else if(executionLabel==null || paused)PareIcons.Play else PareIcons.More,
+                    if(active)"暂停" else if(paused)"继续" else executionLabel ?: "开始专注",modifier=Modifier.size(if(win)24.dp else 20.dp),tint=MaterialTheme.colorScheme.primary)
             }
         }
         if(!last)HorizontalDivider(Modifier.padding(start=48.dp,end=12.dp),color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=.55f))

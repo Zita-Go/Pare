@@ -4,8 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -153,7 +151,7 @@ private fun LibraryRow(item: Entity, enabled: Boolean, onOpen: () -> Unit, onDel
             LibrarySearch.deadline(item)?.let { due -> Text("截止 ${due.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("M月d日 HH:mm"))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         Box {
-            IconButton(onClick = { menu = true }, enabled = enabled, modifier = Modifier.size(48.dp).testTag("library_menu_${item.id}")) { Icon(Icons.Default.MoreVert, "更多操作：${LibrarySearch.title(item)}") }
+            IconButton(onClick = { menu = true }, enabled = enabled, modifier = Modifier.size(48.dp).testTag("library_menu_${item.id}")) { PareIcon(PareIcons.More, "更多操作：${LibrarySearch.title(item)}") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("打开") }, onClick = { menu = false; onOpen() })
                 if (item.kind == "task") {

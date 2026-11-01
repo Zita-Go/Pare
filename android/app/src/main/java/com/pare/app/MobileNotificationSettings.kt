@@ -8,9 +8,6 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -96,7 +93,7 @@ internal fun MobileNotificationControls(
                 contentPadding = PaddingValues(horizontal = 4.dp)) {
                 Text("提醒设置")
                 Spacer(Modifier.width(4.dp))
-                Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, Modifier.size(18.dp))
+                PareIcon(if (expanded) PareIcons.Up else PareIcons.Down, null, Modifier.size(18.dp))
             }
         }
         if (expanded) {

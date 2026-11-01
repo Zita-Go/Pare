@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,7 +37,7 @@ internal fun PareHeader(tab: Int, status: String, busy: Boolean, signedIn: Boole
             if(day!=null) {
                 Row(verticalAlignment=Alignment.CenterVertically) {
                     Text(day.date.format(DateTimeFormatter.ofPattern("M月d日 EEEE",Locale.SIMPLIFIED_CHINESE)),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.weight(1f,fill=false))
-                    Icon(Icons.Default.ArrowDropDown,null,Modifier.size(14.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+                    PareIcon(PareIcons.Down,null,Modifier.size(14.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if(day.zone.rules!=ZoneId.systemDefault().rules)Text(day.zone.id,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -50,7 +48,7 @@ internal fun PareHeader(tab: Int, status: String, busy: Boolean, signedIn: Boole
         onReview?.let {TextButton(onClick=it,colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.onSurfaceVariant),modifier=Modifier.heightIn(min=48.dp).testTag("review_open")) {Text("回看")}}
         Box {
             IconButton(onClick = onAccount, modifier = Modifier.size(48.dp).testTag("more_workspace")) {
-                Icon(Icons.Default.MoreVert, "更多功能与设置：$status", Modifier.size(22.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+                PareIcon(PareIcons.More, "更多功能与设置：$status", Modifier.size(22.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (busy) CircularProgressIndicator(Modifier.align(Alignment.TopEnd).padding(6.dp).size(8.dp), strokeWidth = 1.5.dp)
             else if (signedIn) Box(Modifier.align(Alignment.TopEnd).padding(8.dp).size(5.dp)
@@ -66,7 +64,7 @@ internal fun PareNavigation(tab: Int, onTab: (Int) -> Unit) {
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
         listOf("今天", "整理", "想法").forEachIndexed { index, label ->
             NavigationBarItem(selected = tab == index, onClick = { onTab(index) },
-                icon = { Icon(listOf(Icons.Default.DateRange, Icons.Default.List, Icons.Default.Create)[index], null, Modifier.size(22.dp)) },
+                icon = { PareIcon((if(tab==index)listOf(PareIcons.TodaySelected,PareIcons.QuadrantsSelected,PareIcons.IdeaSelected) else listOf(PareIcons.Today,PareIcons.Quadrants,PareIcons.Idea))[index], null, Modifier.size(24.dp)) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.primary,
                     selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -92,9 +90,12 @@ internal fun SectionLabel(title: String, count: Int, color: Color = MaterialThem
 }
 
 @Composable
-internal fun EmptyNote(title: String, detail: String, action: (@Composable () -> Unit)? = null) {
+internal fun EmptyNote(title: String, detail: String, icon: Int = PareIcons.Note, action: (@Composable () -> Unit)? = null) {
     Surface(Modifier.fillMaxWidth().padding(vertical=12.dp),shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.surface) {
     Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(shape=MaterialTheme.shapes.medium,color=MaterialTheme.colorScheme.primaryContainer) {
+            Box(Modifier.size(40.dp),contentAlignment=Alignment.Center) {PareIcon(icon,null,Modifier.size(24.dp),tint=MaterialTheme.colorScheme.onPrimaryContainer)}
+        }
         Text(title, style = MaterialTheme.typography.titleMedium)
         Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         action?.invoke()
@@ -107,7 +108,7 @@ internal fun InboxCard(item: Entity, onEdit: () -> Unit, onOrganize: () -> Unit)
     Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).background(MaterialTheme.colorScheme.surface).clickable(onClick = onEdit).testTag("inbox_${item.id}"),
         verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(48.dp),contentAlignment=Alignment.Center) {
-            Icon(Icons.Default.Create,null,Modifier.size(19.dp),tint=MaterialTheme.colorScheme.primary)
+            PareIcon(PareIcons.Note,null,Modifier.size(19.dp),tint=MaterialTheme.colorScheme.primary)
         }
         Text(item.title(), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f)
             .clickable(onClick = onEdit).padding(vertical = 12.dp).testTag("edit_${item.id}"))
@@ -174,13 +175,13 @@ internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComple
                 val completionColor=if(focused) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
                 Box(Modifier.size(23.dp).then(if(completed)Modifier.background(completionColor,CircleShape)
                     else Modifier.border(1.5.dp,if(focused)completionColor else MaterialTheme.colorScheme.outline,CircleShape)),contentAlignment=Alignment.Center) {
-                    if(completed)Icon(Icons.Default.Check,null,Modifier.size(16.dp),tint=if(focused)MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary)
+                    if(completed)PareIcon(PareIcons.Check,null,Modifier.size(16.dp),tint=if(focused)MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary)
                 }
             }
             Column(Modifier.weight(1f).heightIn(min = 48.dp).clickable(onClick = onEdit)
                 .padding(vertical = 10.dp).testTag("edit_${item.id}"), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (focused) { Icon(Icons.Default.Star, "今日重点", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary); Spacer(Modifier.width(4.dp)) }
+                    if (focused) { PareIcon(PareIcons.Star, "今日重点", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary); Spacer(Modifier.width(4.dp)) }
                     Text(item.title(), style = MaterialTheme.typography.bodyLarge, fontSize = 16.sp, lineHeight = 24.sp,
                         color = if (completed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                         textDecoration = if (completed) TextDecoration.LineThrough else null)
@@ -190,7 +191,7 @@ internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComple
             }
             Box {
                 IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp).testTag("more_${item.id}")) {
-                    Icon(Icons.Default.MoreVert, "更多操作：${item.title()}", Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+                    PareIcon(PareIcons.More, "更多操作：${item.title()}", Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if(onSchedule!=null && !completed) DropdownMenuItem(text={Text("安排时间")},onClick={menu=false;onSchedule()},

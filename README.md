@@ -49,7 +49,7 @@ Pare 是一个常驻 macOS 菜单栏的个人规划工具。念头出现时先�
 
 ### Android 与跨端同步（开发预览）
 
-当前开发分支提供 Android 0.10.0（Android 8.0+）和 Mac 2.14.0 配套开发版。手机可以接住想法、安排时间、开始一小步，再把行动连接到长期目标；任务、想法和计划可选择自动同步到 Mac。当前安装包用于开发验收。
+当前开发分支提供 Android 0.11.0（Android 8.0+）和 Mac 2.14.0 配套开发版。手机可以接住想法、安排时间、开始一小步，再把行动连接到长期目标；任务、想法和计划可选择自动同步到 Mac。当前安装包用于开发验收。
 
 两端使用同一个 **Pare 同步账号**：Mac 打开「设置 → 同步」，Android 打开右上角「更多 → 账号与同步」。首次登录先查看合并预览，确认后再上传；离线修改保留在本机，重连后继续同步。有冲突时先比较两个版本，再决定保留哪一个。
 
@@ -69,9 +69,9 @@ Android 0.9.1 将专注时长改为同一行的 5、15、30、60 分钟，保留
 
 Android 0.9.2 让「今天」默认显示紧凑清单，需要排时间时再切到时间轴；保存提示自动消失，保留撤销和关闭。[查看效果与说明](docs/releases/android-v0.9.2.md)。
 
-Android 0.10.0 统一了标题、字体、圆角、选择颜色与返回/保存反馈；今日页更紧凑，想法更便于阅读，AI建议先呈现下一步，跨页面也能暂停专注。[查看新版界面与验收](docs/releases/android-v0.10.0.md)。
+Android 0.11.0 统一了导航和常用操作的圆润图标，今日重点直接显示已填写的下一步；想法页更清楚地区分探索记录与关联行动，AI建议突出动作、投入和停止标准，参考范围与原始记录仍可展开。[查看新版界面与验收](docs/releases/android-v0.11.0.md)。
 
-此前更新：[自动同步](docs/releases/android-v0.2.0.md) · [视觉调整](docs/releases/android-v0.3.0.md) · [列表与快速记录](docs/releases/android-v0.4.0.md) · [想法到行动](docs/releases/android-v0.5.0.md)。产品方向遵循[Pare自己的产品原则](docs/product-principles.md)。
+此前更新：[自动同步](docs/releases/android-v0.2.0.md) · [视觉调整](docs/releases/android-v0.3.0.md) · [列表与快速记录](docs/releases/android-v0.4.0.md) · [想法到行动](docs/releases/android-v0.5.0.md) · [统一界面与跨页面暂停](docs/releases/android-v0.10.0.md)。产品方向遵循[Pare自己的产品原则](docs/product-principles.md)。
 
 ## 念头来了，先放下来
 

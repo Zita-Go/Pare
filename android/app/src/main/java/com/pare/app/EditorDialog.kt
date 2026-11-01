@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.RectangleShape
@@ -17,9 +16,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -98,7 +94,7 @@ import androidx.compose.ui.window.DialogProperties
                             onClick = { expanded = !expanded }, enabled = !saving,
                             contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("editor_details")
                         ) {
-                            Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(20.dp))
+                            PareIcon(if (expanded) PareIcons.Up else PareIcons.Down, null, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(if (expanded) "收起更多信息" else "更多信息")
                         }
@@ -202,13 +198,13 @@ import androidx.compose.ui.window.DialogProperties
             Spacer(Modifier.width(8.dp))
             Text(quadrantLabels.getOrElse(draft.quadrant) { quadrantLabels[1] }, modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            Icon(Icons.Default.KeyboardArrowDown, "选择优先级", modifier = Modifier.size(20.dp))
+            PareIcon(PareIcons.Down, "选择优先级", modifier = Modifier.size(20.dp))
         }
         DropdownMenu(expanded = priorityMenu, onDismissRequest = { priorityMenu = false }) {
             quadrantLabels.forEachIndexed { index, label ->
                 DropdownMenuItem(text = { Text(label) },
                     leadingIcon = { Box(Modifier.size(8.dp).background(pareQuadrantColor(index), CircleShape)) },
-                    trailingIcon = { if (index == draft.quadrant) Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = { if (index == draft.quadrant) PareIcon(PareIcons.Check, null, modifier = Modifier.size(18.dp)) },
                     onClick = { onDraftChange(draft.copy(quadrant = index)); priorityMenu = false },
                     modifier = Modifier.heightIn(min = 48.dp).testTag("priority_$index"))
             }

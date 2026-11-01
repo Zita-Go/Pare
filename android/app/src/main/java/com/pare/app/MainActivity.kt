@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
@@ -281,7 +279,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             ExtendedFloatingActionButton(onClick = capture, shape=MaterialTheme.shapes.large,
                 containerColor=MaterialTheme.colorScheme.primary,contentColor=MaterialTheme.colorScheme.onPrimary,
                 elevation=FloatingActionButtonDefaults.elevation(defaultElevation=2.dp,pressedElevation=4.dp), modifier = Modifier.heightIn(min = 56.dp).testTag("add_item"),
-                icon = { Icon(Icons.Default.Add, null) }, text = { Text(listOf("添加任务", "随手记", "记录想法")[tab]) })
+                icon = { PareIcon(PareIcons.Add, null) }, text = { Text(listOf("添加任务", "随手记", "记录想法")[tab]) })
         }
     ) { padding ->
         if(tab==0)Column(Modifier.fillMaxSize().padding(padding)) {
@@ -359,7 +357,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                             }
                             TextButton(onClick={libraryOpen=true},modifier=Modifier.heightIn(min=48.dp).testTag("library_open")){Text("查找 / 归档")}
                             TextButton(onClick = { openEditor(kind = "task") }, modifier = Modifier.heightIn(min = 48.dp).testTag("new_task")) {
-                                Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
+                                PareIcon(PareIcons.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
                                 Text("新建任务", style = MaterialTheme.typography.labelMedium)
                             }
                         }
@@ -381,7 +379,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                 2 -> {
                     val ideas = all.filter { it.kind == "idea" }
 
-                    if (ideas.isEmpty()) item { EmptyNote("还没有想法", "记录一个想法，之后可以继续补充。") }
+                    if (ideas.isEmpty()) item { EmptyNote("还没有想法", "记录一个想法，之后可以继续补充。",icon=PareIcons.Seed) }
                     item {Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick={initialGoalId=null;goalsOpen=true},modifier=Modifier.heightIn(min=48.dp).testTag("goals_open")){Text("长期目标")}
                         TextButton(onClick={libraryOpen=true},modifier=Modifier.heightIn(min=48.dp)){Text("查找想法")}

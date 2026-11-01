@@ -4,10 +4,6 @@ import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -133,7 +129,7 @@ class MobileHintPreferences(context:Context) {
                                     colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.onSurface)) {
                                     Text(hint.title,style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
                                     Spacer(Modifier.width(8.dp))
-                                    Icon(Icons.Default.KeyboardArrowRight,null,modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    PareIcon(PareIcons.Next,null,modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Text(hint.reason,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 if(hint.kind=="task") TextButton(onClick={onAI(hint.id)},modifier=Modifier.heightIn(min=48.dp),contentPadding=PaddingValues(0.dp)) {Text("让 AI 帮我找下一步")}
@@ -145,7 +141,7 @@ class MobileHintPreferences(context:Context) {
                         TextButton(onClick={showCompleted=!showCompleted},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),contentPadding=PaddingValues(0.dp),
                             colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.onSurface)) {
                             Text(if(showCompleted) "收起完成记录" else "查看完成记录",modifier=Modifier.weight(1f))
-                            Icon(if(showCompleted) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,null,modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+                            PareIcon(if(showCompleted) PareIcons.Up else PareIcons.Down,null,modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     if(showCompleted) items(review.completedTasks,key={"completed:${it.id}"}) {

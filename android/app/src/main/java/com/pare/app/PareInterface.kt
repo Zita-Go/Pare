@@ -1,8 +1,6 @@
 package com.pare.app
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -21,7 +19,7 @@ internal fun ParePageHeader(title:String,onBack:()->Unit,modifier:Modifier=Modif
     backLabel:String="返回",enabled:Boolean=true,backModifier:Modifier=Modifier,actions:@Composable RowScope.()->Unit={}) {
     Row(modifier.fillMaxWidth().heightIn(min=56.dp).padding(start=4.dp,end=8.dp),verticalAlignment=Alignment.CenterVertically) {
         IconButton(onClick=onBack,enabled=enabled,modifier=Modifier.size(48.dp).then(backModifier)) {
-            Icon(Icons.Default.ArrowBack,backLabel,Modifier.size(22.dp))
+            PareIcon(PareIcons.Back,backLabel,Modifier.size(22.dp))
         }
         Text(title,style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f).padding(vertical=8.dp))
         LocalPareRunningAction.current?.let {running ->

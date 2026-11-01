@@ -229,9 +229,11 @@ class UserWorkspaceFlowTest {
             visible("timeline_schedule_dialog")
             node("timeline_schedule_choose_date").performScrollTo().performClick()
             compose.waitForIdle()
-            // Material exposes its day as part of a longer accessible date string.
-            // Match the same public semantics as the independently verified date-picker flow.
-            compose.onNode(hasText(targetDate.dayOfMonth.toString(), substring = true) and hasClickAction(), useUnmergedTree = true).performClick()
+            // A digit such as "2" also appears in 2026 and many other day labels.
+            // Match the complete localized date; substring allows Material's optional Today prefix.
+            val dateLabel=targetDate.format(DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL)
+                .withLocale(context.resources.configuration.locales[0]))
+            compose.onNode(hasText(dateLabel, substring = true) and hasClickAction(), useUnmergedTree = true).performClick()
             compose.onNodeWithText("选择日期").performClick()
             node("timeline_schedule_date").assertTextContains(targetDate.format(DateTimeFormatter.ofPattern("yyyy年M月d日")), substring = true)
             node("timeline_schedule_save").performClick(); gone("timeline_schedule_dialog")

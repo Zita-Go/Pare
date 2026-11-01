@@ -141,6 +141,15 @@ class MobileAIFlowInstrumentedTest {
         compose.onNodeWithTag("ai_context_preview").performScrollTo().assertTextContains("只探索纸上布局，不购买材料",substring=true)
         assertEquals(0,calls.get())
         val reviewed=model.draft(taskId).input!!.preview
+        val authorizedOptions=model.draft(taskId).options
+        // Disclosure controls must only change visibility, never regenerate the reviewed input.
+        compose.onNodeWithTag("ai_scope_toggle").performScrollTo().performClick()
+        compose.onNodeWithTag("ai_context_options").assertDoesNotExist()
+        compose.onNodeWithTag("ai_scope_toggle").performScrollTo().performClick()
+        compose.onNodeWithTag("ai_context_options").assertExists()
+        assertEquals(authorizedOptions,model.draft(taskId).options)
+        assertEquals(reviewed,model.draft(taskId).input!!.preview)
+        assertEquals(0,calls.get())
         compose.onNodeWithTag("ai_generate").performClick()
         visible("ai_proposal")
         compose.waitUntil(10_000) {!model.draft(taskId).busy && privateStore.load().history.size==1}
@@ -149,6 +158,7 @@ class MobileAIFlowInstrumentedTest {
         assertEquals(reviewed,sent)
         compose.onNodeWithTag("ai_context_options").assertDoesNotExist()
         compose.onNodeWithTag("ai_context_preview").assertDoesNotExist()
+        compose.onNodeWithTag("ai_task_context").assertIsDisplayed().assertTextContains("当前任务 · 虚构示例：画出花园的一条边",substring=true)
         compose.onNodeWithTag("ai_proposal").assertIsDisplayed().assertTextEquals("在纸上画一条短边")
         compose.onNodeWithTag("ai_stop").assertIsDisplayed().assertTextContains("画出第一条线就可以停",substring=true)
         compose.onNodeWithTag("ai_reason").assertDoesNotExist()
@@ -156,11 +166,22 @@ class MobileAIFlowInstrumentedTest {
         compose.onNodeWithTag("ai_reason").performScrollTo().assertTextContains("纸上探索范围",substring=true)
         compose.onNodeWithTag("ai_reason_toggle").performScrollTo().performClick()
         compose.onNodeWithTag("ai_reason").assertDoesNotExist()
+        for(tag in listOf("ai_scope_toggle","ai_settings_toggle","ai_history_toggle")) {
+            compose.onNodeWithTag(tag).performScrollTo().performClick()
+            compose.onNodeWithTag(tag).performScrollTo().performClick()
+        }
+        assertEquals(authorizedOptions,model.draft(taskId).options)
+        assertEquals(reviewed,model.draft(taskId).input!!.preview)
+        assertEquals(1,calls.get())
         assertEquals("先找一张纸",repository.read().items.getValue("task:$taskId").content()!!.getValue("nextAction").jsonPrimitive.content)
         assertEquals(before,repository.read())
+        compose.onNodeWithTag("ai_task_context").performScrollTo().assertIsDisplayed().assertTextContains("虚构示例：画出花园的一条边",substring=true)
+        compose.onNodeWithTag("ai_proposal").assertIsDisplayed()
         screenshotOrPrivacyNote("17-ai-reviewed-suggestion")
         compose.onNodeWithTag("ai_adopt").performClick()
         visible("ai_undo")
+        compose.onNodeWithTag("ai_status").performScrollTo().assertTextEquals("已设为最小下一步，可撤销本次采纳")
+        compose.onNodeWithTag("ai_task_context").performScrollTo().assertIsDisplayed().assertTextContains("虚构示例：画出花园的一条边",substring=true)
         val adopted=repository.read().items.getValue("task:$taskId").content()!!
         assertEquals("在纸上画一条短边",adopted.getValue("nextAction").jsonPrimitive.content)
         assertEquals("画出第一条线就可以停",adopted.getValue("definitionOfDone").jsonPrimitive.content)

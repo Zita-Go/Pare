@@ -36,8 +36,8 @@ import java.time.LocalDate
         }
         @Composable fun dates() {
             if(day.date!=now.atZone(day.zone).toLocalDate())TextButton(onClick={onSelectDate(now.atZone(day.zone).toLocalDate())},modifier=Modifier.heightIn(min=48.dp).testTag("timeline_today"),contentPadding=PaddingValues(horizontal=4.dp)) {Text("今天")}
-            TextButton(onClick={onSelectDate(day.date.minusDays(1))},modifier=Modifier.size(48.dp).testTag("timeline_previous_day").semantics {contentDescription="前一天"},contentPadding=PaddingValues(0.dp)) {Text("‹",style=MaterialTheme.typography.titleLarge)}
-            TextButton(onClick={onSelectDate(day.date.plusDays(1))},modifier=Modifier.size(48.dp).testTag("timeline_next_day").semantics {contentDescription="后一天"},contentPadding=PaddingValues(0.dp)) {Text("›",style=MaterialTheme.typography.titleLarge)}
+            TextButton(onClick={onSelectDate(day.date.minusDays(1))},modifier=Modifier.size(48.dp).testTag("timeline_previous_day").semantics {contentDescription="前一天"},contentPadding=PaddingValues(0.dp)) {PareIcon(PareIcons.Previous,null,Modifier.size(20.dp))}
+            TextButton(onClick={onSelectDate(day.date.plusDays(1))},modifier=Modifier.size(48.dp).testTag("timeline_next_day").semantics {contentDescription="后一天"},contentPadding=PaddingValues(0.dp)) {PareIcon(PareIcons.Next,null,Modifier.size(20.dp))}
         }
         if(stacked)Column {
             modes(Modifier.fillMaxWidth())

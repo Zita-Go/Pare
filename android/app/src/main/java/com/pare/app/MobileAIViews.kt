@@ -5,15 +5,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -23,6 +22,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable fun MobileAIDialog(
     state:SyncState,
     taskId:String,
@@ -54,18 +54,20 @@ import androidx.lifecycle.viewmodel.compose.viewModel
                 ParePageHeader(title="找一个可开始的下一步",onBack=onDismiss)
                 HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
                 Column(Modifier.weight(1f).verticalScroll(scroll).padding(16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-                    Text(state.items["task:$taskId"]?.title() ?: "任务不可用",style=MaterialTheme.typography.titleMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    AITargetContext("当前任务",draft.input?.taskContent.planningText("text") ?: state.items["task:$taskId"]?.title() ?: "任务不可用",
+                        PareIcons.Note,Modifier.testTag("ai_task_context"))
                     draft.proposal?.let {p ->
                         var fullReason by rememberSaveable(p.requestId) {mutableStateOf(false)}
                         Surface(color=MaterialTheme.colorScheme.surface,shape=MaterialTheme.shapes.medium,modifier=Modifier.fillMaxWidth().testTag("ai_proposal_card")) {
-                            Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                                Text("建议 · 先投入 ${p.minutes} 分钟",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary)
-                                SelectionContainer { Text(p.nextAction,style=MaterialTheme.typography.titleMedium,modifier=Modifier.testTag("ai_proposal")) }
-                                HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
-                                SelectionContainer { Text("做到这里就可以停：${p.stopCriterion}",style=MaterialTheme.typography.bodyLarge,modifier=Modifier.testTag("ai_stop")) }
-                                TextButton(onClick={fullReason=!fullReason},modifier=Modifier.heightIn(min=48.dp).testTag("ai_reason_toggle")) {
-                                    Text(if(fullReason) "收起依据" else "查看建议依据")
+                            Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                                FlowRow(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    AIProposalIdentity()
+                                    AITimeLabel("先投入 ${p.minutes} 分钟",Modifier.testTag("ai_minutes"))
                                 }
+                                SelectionContainer { Text(p.nextAction,style=MaterialTheme.typography.titleLarge,modifier=Modifier.testTag("ai_proposal")) }
+                                AIStopCriterion(p.stopCriterion,Modifier.testTag("ai_stop"))
+                                AISectionRow(title="建议依据",expanded=fullReason,onClick={fullReason=!fullReason},
+                                    modifier=Modifier.testTag("ai_reason_toggle"),icon=PareIcons.Note)
                                 if(fullReason) SelectionContainer {
                                     Text("参考依据：${p.reason}",style=MaterialTheme.typography.bodyLarge,
                                         color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.testTag("ai_reason"))
@@ -75,7 +77,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
                         }
                         Text("采纳仅更新下一步和停止标准，保留今日投入和总预估。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     } ?: Text("先预览本次参考内容，再手动生成一个可开始的建议。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    if(draft.status.isNotBlank()) Text(draft.status,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.testTag("ai_status"))
+                    // The proposal and explicit adoption button already communicate this transient state.
+                    // Saving, undo, and error messages remain visible even while a proposal is present.
+                    if(draft.status.isNotBlank() && !(draft.proposal!=null && draft.status=="建议已生成，确认后才更新下一步"))
+                        Text(draft.status,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.testTag("ai_status"))
                     if(draft.undo!=null) {
                         Text("这里只保留最近一次采纳的撤销入口。继续下一轮后，上一次采纳会保留，无法再从这里撤销。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         Button(onClick={model.beginNextRound(state,taskId)},enabled=!draft.busy,shape=MaterialTheme.shapes.medium,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("ai_next_round")) {
@@ -84,10 +89,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
                     }
                     val scopeSummary=listOfNotNull("当前任务",if(draft.options.ideas) "关联想法" else null,if(draft.options.goals) "目标" else null,
                         if(draft.options.preferences) "偏好" else null,if(draft.options.history) "历史" else null).joinToString("、")
-                    MobileAISection {
-                        MobileAISectionRow(
-                            title="参考范围 · $scopeSummary",expanded=showScope,
-                            onClick={showScope=!showScope},modifier=Modifier.testTag("ai_scope_toggle")
+                    AISupportPanel {
+                        AISectionRow(
+                            title="参考范围",expanded=showScope,icon=PareIcons.Link,
+                            onClick={showScope=!showScope},modifier=Modifier.testTag("ai_scope_toggle"),
+                            supporting={Text(scopeSummary,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                         )
                         val editable=!draft.busy && draft.proposal==null && draft.undo==null
                         if(showScope) Column(Modifier.testTag("ai_context_options"),verticalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -102,8 +108,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
                         }
                         draft.input?.let {input ->
                             Text(if(model.endpoint.isBlank() || model.modelName.isBlank()) "请先设置本机服务与模型" else "使用本机已配置的服务与模型",style=MaterialTheme.typography.bodySmall)
-                            MobileAISectionRow(
-                                title=if(showRaw) "收起完整发送内容" else "查看完整发送内容",
+                            AISectionRow(
+                                title="完整发送内容",
                                 expanded=showRaw,onClick={showRaw=!showRaw},modifier=Modifier.testTag("ai_full_context_toggle")
                             )
                             if(showRaw) {
@@ -115,10 +121,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
                                 if(showInstructions) Text(MobileAIClient.instructions,style=MaterialTheme.typography.bodySmall)
                             }
                         }
-                    }
-                    MobileAISection {
-                        MobileAISectionRow(
-                            title=if(settings) "收起本机服务设置" else "本机服务设置",
+                        HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
+                        AISectionRow(
+                            title="本机服务设置",icon=PareIcons.More,
                             expanded=settings,onClick={settings=!settings},modifier=Modifier.testTag("ai_settings_toggle"),
                             supporting={
                                 if(model.settingsStatus.isNotBlank()) Text(model.settingsStatus,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.testTag("ai_settings_status"))
@@ -133,17 +138,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
                             OutlinedButton(onClick=model::saveSettings,enabled=model.ready && !model.saving && !draft.busy,shape=MaterialTheme.shapes.medium,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("ai_settings_save")) {Text("保存本机设置")}
                             TextButton(onClick={confirmClear=true},enabled=!draft.busy && !model.saving,colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error),shape=MaterialTheme.shapes.medium,modifier=Modifier.heightIn(min=48.dp)) {Text("清除本机 AI 设置与记录")}
                         }
-                    }
-                    MobileAISection {
-                        MobileAISectionRow(
-                            title=if(history) "收起本机请求记录" else "本机请求记录（${model.history.count {it.taskId==taskId}}）",
+                        HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
+                        AISectionRow(
+                            title="本机请求记录（${model.history.count {it.taskId==taskId}}）",icon=PareIcons.Clock,
                             expanded=history,onClick={history=!history},modifier=Modifier.testTag("ai_history_toggle")
                         )
                         if(history) {
                             Text("记录仅保存在这台手机，最多 12 条并限制总大小。打开或删除记录不会调用 AI。",style=MaterialTheme.typography.bodySmall)
                             model.history.filter {it.taskId==taskId}.asReversed().forEach {trace ->
                                 var expanded by rememberSaveable(trace.id) {mutableStateOf(false)}
-                                TextButton(onClick={expanded=!expanded},shape=MaterialTheme.shapes.medium,modifier=Modifier.heightIn(min=48.dp).testTag("ai_trace_${trace.id}")) {Text("${trace.at} · ${if(trace.success) "收到建议" else "请求未完成"}")}
+                                AISectionRow(title="${trace.at} · ${if(trace.success) "收到建议" else "请求未完成"}",expanded=expanded,
+                                    onClick={expanded=!expanded},modifier=Modifier.testTag("ai_trace_${trace.id}"))
                                 if(expanded) {
                                     SelectionContainer {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                         Text("发送内容",style=MaterialTheme.typography.labelLarge);Text(trace.input,style=MaterialTheme.typography.bodySmall)
@@ -180,26 +185,65 @@ import androidx.lifecycle.viewmodel.compose.viewModel
     }
 }
 
-@Composable private fun MobileAISection(content:@Composable ColumnScope.()->Unit) {
-    Surface(color=MaterialTheme.colorScheme.surface,shape=MaterialTheme.shapes.medium) {
+@Composable internal fun AISupportPanel(content:@Composable ColumnScope.()->Unit) {
+    Surface(color=MaterialTheme.colorScheme.surfaceContainerLow,shape=MaterialTheme.shapes.medium) {
         Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=4.dp),verticalArrangement=Arrangement.spacedBy(8.dp),content=content)
     }
 }
 
-@Composable private fun MobileAISectionRow(
+@Composable internal fun AISectionRow(
     title:String,expanded:Boolean,onClick:()->Unit,modifier:Modifier=Modifier,
+    icon:Int?=null,
     supporting:(@Composable ()->Unit)?=null
 ) {
     TextButton(
         onClick=onClick,shape=MaterialTheme.shapes.medium,
         colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.onSurface),
         contentPadding=PaddingValues(vertical=10.dp),modifier=modifier.fillMaxWidth().heightIn(min=48.dp)
+            .semantics {stateDescription=if(expanded) "已展开" else "已收起"}
     ) {
+        if(icon!=null) {
+            PareIcon(icon,null,Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(12.dp))
+        }
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-            Text(title,style=MaterialTheme.typography.titleSmall)
+            Text(title,style=MaterialTheme.typography.labelLarge)
             supporting?.invoke()
         }
         Spacer(Modifier.width(8.dp))
-        Icon(if(expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,null,modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+        PareIcon(if(expanded) PareIcons.Up else PareIcons.Down,null,modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable internal fun AIProposalIdentity() {
+    Row(Modifier.heightIn(min=28.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+        PareIcon(PareIcons.Sparkle,null,Modifier.size(20.dp),tint=MaterialTheme.colorScheme.primary)
+        Text("AI 建议",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary)
+    }
+}
+
+@Composable internal fun AITargetContext(label:String,value:String,icon:Int,modifier:Modifier=Modifier) {
+    Row(modifier.fillMaxWidth().semantics(mergeDescendants=true) {},verticalAlignment=Alignment.Top,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        PareIcon(icon,null,Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("$label · $value",Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable internal fun AITimeLabel(text:String,modifier:Modifier=Modifier) {
+    Row(modifier.heightIn(min=28.dp).semantics(mergeDescendants=true) {},verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+        PareIcon(PareIcons.Clock,null,Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable internal fun AIStopCriterion(text:String,modifier:Modifier=Modifier) {
+    Surface(color=MaterialTheme.colorScheme.surfaceContainerLow,shape=MaterialTheme.shapes.small) {
+        Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                PareIcon(PareIcons.Check,null,Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("做到这里就可以停",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SelectionContainer {Text(text,modifier=modifier,style=MaterialTheme.typography.bodyLarge)}
+        }
     }
 }

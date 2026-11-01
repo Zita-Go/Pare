@@ -103,6 +103,9 @@ class UnifiedInterfaceTest {
                 val firstTop = (first.top - viewport.top) / scale
                 assertTrue("First task starts at ${firstTop}dp; compact header target is ≤180dp", firstTop <= 180f)
                 val navigationTop = compose.onNodeWithTag("tab_today").fetchSemanticsNode().boundsInRoot.top
+                compose.onNodeWithTag("overview_next_action_${fixture.ids.first()}",useUnmergedTree=true).assertIsDisplayed()
+                    .assertTextContains("先打开示例笔记",substring=true)
+                fixture.ids.drop(1).forEach {id->compose.onNodeWithTag("overview_next_action_$id",useUnmergedTree=true).assertDoesNotExist()}
                 fixture.ids.forEach { id ->
                     val row = compose.onNodeWithTag("overview_task_$id").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
                     compose.onNodeWithTag("overview_complete_$id").assertIsDisplayed()
@@ -113,6 +116,14 @@ class UnifiedInterfaceTest {
             put("visible_task_count", fixture.ids.size)
         }
         File(unifiedOutput(), "unified-today-metrics.json").writeText(metrics.toString())
+        compose.runOnIdle {
+            fixture.runtime.engine.edit {state ->
+                val item=state.items.getValue("task:${fixture.ids.first()}")
+                val payload=JsonObject(item.payload!! + ("content" to JsonObject(item.content()!!.toMutableMap().apply {remove("nextAction")})))
+                state.copy(items=state.items+(item.key to item.copy(payload=payload)))
+            }
+        }
+        compose.waitUntil(5_000) {compose.onAllNodesWithTag("overview_next_action_${fixture.ids.first()}",useUnmergedTree=true).fetchSemanticsNodes().isEmpty()}
         fixture.assertOffline()
     }
 

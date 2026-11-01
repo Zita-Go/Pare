@@ -5,9 +5,6 @@ import android.app.TimePickerDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -92,12 +89,12 @@ class TaskReminderModel:ViewModel() {
                                     Text("重复",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurface,modifier=Modifier.weight(1f))
                                     Text(repeatOptions.firstOrNull {it.first==model.recurrence}?.second ?: "其他重复规则",style=MaterialTheme.typography.bodyMedium)
                                     Spacer(Modifier.width(8.dp))
-                                    Icon(Icons.Default.KeyboardArrowDown,null,Modifier.size(20.dp))
+                                    PareIcon(PareIcons.Down,null,Modifier.size(20.dp))
                                 }
                                 DropdownMenu(expanded=repeatMenu,onDismissRequest={repeatMenu=false}) {
                                     repeatOptions.forEach {(value,label) ->
                                         DropdownMenuItem(text={Text(label)},onClick={model.recurrence=value;repeatMenu=false},enabled=available && !model.saving,
-                                            trailingIcon={if(model.recurrence==value) Icon(Icons.Default.Check,null,Modifier.size(18.dp))},
+                                            trailingIcon={if(model.recurrence==value) PareIcon(PareIcons.Check,null,Modifier.size(18.dp))},
                                             modifier=Modifier.heightIn(min=48.dp).testTag("reminder_repeat_${value ?: "none"}").semantics {selected=model.recurrence==value})
                                     }
                                 }

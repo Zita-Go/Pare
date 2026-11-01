@@ -7,11 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -85,7 +80,7 @@ import androidx.compose.ui.window.DialogProperties
                                 Text(session.email, style = MaterialTheme.typography.titleMedium)
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(if (state.enabled) Icons.Default.CheckCircle else Icons.Default.Refresh, null,
+                                    PareIcon(if (state.enabled) PareIcons.CheckCircle else PareIcons.Refresh, null,
                                         modifier = Modifier.size(20.dp), tint = if (state.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(if (state.enabled) "自动同步已开启" else "自动同步未开启", style = MaterialTheme.typography.titleSmall)
                                 }
@@ -110,7 +105,7 @@ import androidx.compose.ui.window.DialogProperties
                                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync_details")
                                 ) {
                                     Text(if (details) "收起同步详情" else "同步详情与操作", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                                    Icon(if (details) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    PareIcon(if (details) PareIcons.Up else PareIcons.Down, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 if (details) {
                                     Text("本机待上传 ${state.items.values.count { it.dirty }} 项 · 待决定版本 ${state.items.values.count { it.conflict != null }} 项", style = MaterialTheme.typography.bodySmall)
