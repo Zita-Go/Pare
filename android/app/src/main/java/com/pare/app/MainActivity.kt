@@ -40,6 +40,7 @@ class MainActivity : ComponentActivity() {
         setContent { PareTheme { PareScreen(model) } }
     }
     private fun receiveReminder(value:Intent?) {
+        model.receiveHomeWidget(value)
         if(value?.hasExtra(MobileNotificationRuntime.TASK_ID_EXTRA)==true) {
             model.openNotificationTask(value.getStringExtra(MobileNotificationRuntime.TASK_ID_EXTRA))
             value.removeExtra(MobileNotificationRuntime.TASK_ID_EXTRA)
@@ -64,6 +65,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     val deviceError by vm.deviceError.collectAsState()
     val reminderError by vm.reminderError.collectAsState()
     val notificationTask by vm.notificationTask.collectAsState()
+    val widgetRequest by vm.widgetRequest.collectAsState()
     var executionTaskId by rememberSaveable {mutableStateOf("")}
     var reminderTaskId by rememberSaveable {mutableStateOf("")}
     var aiTaskId by rememberSaveable {mutableStateOf("")}
@@ -110,6 +112,9 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     var pendingCapturePlanId by rememberSaveable {mutableStateOf<String?>(null)}
     var revealUnscheduled by rememberSaveable {mutableIntStateOf(0)}
     var organizeMoving by remember { mutableStateOf(false) }
+    var choosingTaskPlanId by rememberSaveable {mutableStateOf<String?>(null)}
+    val choosingTaskSave:OrganizeSaveModel=viewModel(key="choose-existing-task")
+    LaunchedEffect(choosingTaskSave.saved) {if(choosingTaskSave.saved){choosingTaskPlanId=null;choosingTaskSave.reset()}}
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var workspaceId by rememberSaveable { mutableStateOf("") }
     var allocationTaskId by rememberSaveable { mutableStateOf("") }
@@ -183,6 +188,19 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             }
         }
     }
+    fun addExistingTask(task:Entity,planId:String,fromPicker:Boolean=false) {
+        if(fromPicker && !choosingTaskSave.begin())return
+        vm.editWorkspace({DayTaskSelection.add(it,task.id,planId,Instant.now())}) {result->
+            if(fromPicker)choosingTaskSave.finish(result)
+            localScope.launch {
+                snackbars.currentSnackbarData?.dismiss()
+                val message=if(result.isSuccess) "已加入 ${planId.substringBefore('@')}" else result.exceptionOrNull()?.message ?: "没有保存，请重试"
+                if(snackbars.showSnackbar(message,actionLabel=if(result.isSuccess && !fromPicker) "查看" else null,withDismissAction=true,duration=SnackbarDuration.Short)==SnackbarResult.ActionPerformed){
+                    tab=0;calendarDate=planId.substringBefore('@');timelineMode=false
+                }
+            }
+        }
+    }
     fun openPlanning(kind:String="day",subject:String="") {
         planningKind=kind;planningSubject=subject;planningPlanId=TimelineDay.from(state,selectedDate).planId;planningOpen=true
     }
@@ -232,6 +250,25 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             val target=state.items["task:$notificationTask"]?.takeUnless {it.deleted}
             if(target!=null)openEditor(target) else vm.deviceError.value="这项提醒对应的任务已不可用。"
             vm.consumeNotificationTask()
+        }
+    }
+    LaunchedEffect(widgetRequest,initialized,executionReady,deviceError) {
+        val request=widgetRequest
+        if(request!=null && initialized && (executionReady || request.action in setOf(HomeWidgetAction.TODAY,HomeWidgetAction.CAPTURE) || deviceError!=null)) {
+            vm.widgetRequest.value=null
+            if(!executionReady && request.action !in setOf(HomeWidgetAction.TODAY,HomeWidgetAction.CAPTURE)) {
+                vm.deviceError.value="专注资料暂不可用，请先查看错误提示；任务内容保留。"
+                return@LaunchedEffect
+            }
+            when(request.action) {
+                HomeWidgetAction.TODAY -> {tab=0;calendarDate=null;timelineMode=false}
+                HomeWidgetAction.CAPTURE -> openEditor(kind="inbox")
+                HomeWidgetAction.START_FOCUS,HomeWidgetAction.REVIEW_FOCUS -> executionTaskId=request.taskId.orEmpty()
+                HomeWidgetAction.PAUSE_FOCUS,HomeWidgetAction.RESUME_FOCUS -> vm.runWidgetCommand(request) {result->
+                    if(result.getOrNull()!=true)executionTaskId=request.taskId.orEmpty()
+                    if(result.isFailure)vm.deviceError.value=result.exceptionOrNull()?.message ?: "专注操作未完成"
+                }
+            }
         }
     }
     val localReview by produceState<MobileReviewSummary?>(null,state,planningNow) {
@@ -297,6 +334,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             }
             todayViewStates.SaveableStateProvider(if(timelineMode) "timeline" else "list") {
             if(!timelineMode) TodayOverview(state,selectedDate,planningNow,
+                onChooseTask={choosingTaskSave.reset();choosingTaskPlanId=TimelineDay.from(state,selectedDate).planId},
                 onSelectDate={date->timelineReveal=null;calendarDate=if(date==LocalDate.parse(vm.planningDate(state,planningNow)))null else date.toString()},
                 onOpenTask={openEditor(it)},onComplete=vm::complete,
                 onScheduleTask={task,day->openSchedule(task,day)},
@@ -324,15 +362,21 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
             }
         } else OrganizeDragLayout(state,enabled=tab==1 && !organizeMoving,modifier=Modifier.fillMaxSize().padding(padding),onMove={drop->
             organizeMoving=true
-            vm.editWorkspace({before->OrganizeActions.move(before,drop.taskId,drop.quadrant,drop.beforeId,drop.baseline,Instant.now())}) {result->
+            var receipt:OrganizeUndo?=null
+            vm.editWorkspace({before->OrganizeActions.move(before,drop.taskId,drop.quadrant,drop.beforeId,drop.baseline,Instant.now()).also {receipt=OrganizeUndo.capture(before,it)}}) {result->
                 organizeMoving=false
                 localScope.launch {
                     snackbars.currentSnackbarData?.dismiss()
-                    snackbars.showSnackbar(if(result.isSuccess) "优先级和顺序已保存" else result.exceptionOrNull()?.message ?: "调整未保存，请重试",withDismissAction=true,duration=SnackbarDuration.Short)
+                    val message=when {result.isFailure->result.exceptionOrNull()?.message ?: "调整未保存，请重试"
+                        receipt==null->"位置未改变"
+                        drop.baseline.sourceQuadrant==drop.quadrant->"任务顺序已调整"
+                        else->"已移至${quadrantLabels[drop.quadrant]}"}
+                    if(snackbars.showSnackbar(message,actionLabel=if(result.isSuccess && receipt!=null)"撤销" else null,withDismissAction=true,duration=SnackbarDuration.Short)==SnackbarResult.ActionPerformed)
+                        receipt?.let {undo->vm.editWorkspace(undo::apply) {back->localScope.launch {snackbars.showSnackbar(if(back.isSuccess)"已撤销移动" else back.exceptionOrNull()?.message ?: "无法撤销",withDismissAction=true,duration=SnackbarDuration.Short)}}}
                 }
             }
         }) { drag -> LazyColumn(Modifier.fillMaxSize().testTag("main_list"),state=drag.listState,
-            contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 88.dp)) {
+            contentPadding = PaddingValues(start = 12.dp, top = 0.dp, end = 12.dp, bottom = 88.dp)) {
             if (draft.entityId.isNotEmpty() && !editorOpen) item {
                 OutlinedButton(onClick = { editorOpen = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("resume_draft")) { Text("继续编辑草稿") }
             }
@@ -373,12 +417,14 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                         }
                     }
                     items(inbox, key = { it.key }) { item -> InboxCard(item, { openEditor(item) }, { organizeSave.reset(); organizeId = item.id }) }
-                    item { Text(if(organizeMoving) "正在保存调整…" else "长按任务可调整象限和顺序",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=8.dp)) }
-                    quadrantLabels.forEachIndexed { q, _ ->
+                    (0..3).sortedBy {OrganizeActions.tasks(state,it).isEmpty()}.forEach { q ->
                         val group = OrganizeActions.tasks(state,q)
                         item(key="quadrant:$q") { drag.Header(q,group.size) }
                         itemsIndexed(group, key = { _,item -> item.key }) { index,item ->
-                            drag.Task(item) { EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered,
+                            drag.Task(item) { EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, {
+                                val planId=ContentActions.planId(state,planningNow)
+                                if(DayTaskSelection.contains(state,item.id,planId)){tab=0;calendarDate=null;timelineMode=false}else addExistingTask(item,planId)
+                            }, { vm.setWin(item) }, inToday = DayTaskSelection.contains(state,item.id,ContentActions.planId(state,planningNow)),showTodayAction=true,
                                 planLabel = if (item.id in ordered) todayPlanLabel(state,item.id,planningNow) else null,
                                 onPlan = { allocationTaskId = item.id }, onSupport = { supportTaskId = item.id },
                                 onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }),
@@ -434,7 +480,9 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
         "preferences"->preferencesOpen=true
         "devices"->{devicesOpen=true;vm.refreshPresence()}
         "account"->account=true
+        "widget"->if(!HomeWidgetProvider.requestPin(context))localScope.launch {snackbars.showSnackbar("请长按手机桌面，在小组件中选择 Pare",withDismissAction=true,duration=SnackbarDuration.Short)}
     }},onDismiss={moreOpen=false})
+    choosingTaskPlanId?.let {planId->ChooseTaskForDayDialog(state,planId,onChoose={addExistingTask(it,planId,true)},saving=choosingTaskSave.saving,error=choosingTaskSave.error,onDismiss={if(!choosingTaskSave.saving)choosingTaskPlanId=null})}
     if(libraryOpen)LibraryDialog(state,vm::editWorkspace,onDismiss={libraryOpen=false},onOpenTask={openEditor(it)},onOpenIdea={workspaceId=it.id},
         onOpenEntity={if(it.kind=="goal"){initialGoalId=it.id;goalsOpen=true}else openEditor(it)})
     if(goalsOpen)GoalsWorkspace(state,vm::editWorkspace,onDismiss={goalsOpen=false;initialGoalId=null},onOpenTask={openEditor(it)},initialGoalId=initialGoalId,onPlanGoal={openPlanning("goal",it)})

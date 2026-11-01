@@ -1,0 +1,469 @@
+{
+  "date": "2026-11-01",
+  "version": "0.13.0",
+  "unit_tests": 369,
+  "lint": {
+    "errors": 0,
+    "warnings": 43,
+    "hints": 1
+  },
+  "device_cases": {
+    "passed": 73,
+    "failed": 0,
+    "skipped": 0
+  },
+  "cases": [
+    {
+      "class": "com.pare.app.ActionBridgeFlowTest",
+      "test": "actualDragSnackbarUndoRestoresQuadrantAndPersistsAfterRecreation",
+      "result": "passed",
+      "run": "final_delivery"
+    },
+    {
+      "class": "com.pare.app.ActionBridgeFlowTest",
+      "test": "directTodayButtonUsesCurrentDayPreservesPlanAndNoticeExpires",
+      "result": "passed",
+      "run": "final_delivery"
+    },
+    {
+      "class": "com.pare.app.AndroidCapabilitiesFlowTest",
+      "test": "tenMinuteReminderRegistersAlarmAndPrivateNotificationOpensItsTask",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.AndroidCapabilitiesFlowTest",
+      "test": "focusSurvivesPauseRotationAndCoexistsWithMultipleExternalRuns",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.ChooseTaskForDayFlowTest",
+      "test": "overviewShowsSavedEffortSeparatelyFromCalendarDurationAndCompletedTasks",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.ChooseTaskForDayFlowTest",
+      "test": "emptyDayChoosesExistingTaskAndPersistsWithoutInventingEffortOrSchedule",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.CompactNavigationTest",
+      "test": "navigationUsesLessHeightAndGrowsForLargeLabelsWithoutLosingTouchTargets",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.EditorAccessibilityTest",
+      "test": "largeFontSaveFailureLeavesDraftAndActionsVisible",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.FocusPresetLayoutTest",
+      "test": "standardDialogHasFourEqualChoicesAndStartsSelectedSixtyMinutes",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.FocusPresetLayoutTest",
+      "test": "narrowDialogWithLargeTextKeepsOneRowAndAllowsCustomDuration",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.GoalsPreferencesFlowTest",
+      "test": "preferencesValidateMinutesAndManageIdeaScopedConfirmedPreference",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.GoalsPreferencesFlowTest",
+      "test": "goalFailureRetainsDraftThenSaveLinksAndDeletePreservesActions",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.HomeWidgetFlowTest",
+      "test": "widgetStartOpensDurationPickerAndOnlyConfirmationStartsSelectedDuration",
+      "result": "passed",
+      "run": "final_delivery"
+    },
+    {
+      "class": "com.pare.app.HomeWidgetFlowTest",
+      "test": "pauseResumeAffectExactRunAndStaleClicksOnlyOpenControls",
+      "result": "passed",
+      "run": "final_delivery"
+    },
+    {
+      "class": "com.pare.app.HomeWidgetFlowTest",
+      "test": "coldCaptureCreatesInboxAndRepeatedCapturePreservesUnsavedDraft",
+      "result": "passed",
+      "run": "final_delivery"
+    },
+    {
+      "class": "com.pare.app.HomeWidgetRenderingTest",
+      "test": "realRemoteViewsFitLightDarkAndLargeText",
+      "result": "passed",
+      "run": "final_delivery"
+    },
+    {
+      "class": "com.pare.app.IconPolishTest",
+      "test": "bundledGlyphsRemainVisibleAndNavigationFillChangesShapeInBothThemes",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.IconPolishTest",
+      "test": "navigationKeepsLabelsRolesAndSeparateTouchTargetsAcrossSelectionAndThemes",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.IdeaWorkspacePolishTest",
+      "test": "largeTextKeepsHistoryDraftsAndLinkedActionsAccessible",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.ManagementPresentationTest",
+      "test": "repeatedGoalSavesExpireWithoutMovingContentAndFailureRetainsDraft",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.ManagementPresentationTest",
+      "test": "metadataBackOffersDiscardAndKeepsDraftUntilExplicitChoice",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.MobileAIFlowInstrumentedTest",
+      "test": "continuingAfterAdoptionPreservesFirstRoundAndUndoOnlyRevertsTheLatestAdoption",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.MobileAIFlowInstrumentedTest",
+      "test": "previewGenerateAdoptUndoAndDeletePrivateTrace",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.MobileAIPrivacyInstrumentedTest",
+      "test": "credentialsAndRawTraceSurviveEncryptedReloadAndCanBeDeleted",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.NotificationDisclosureTest",
+      "test": "approximateDeliveryAndFailuresStayVisibleWithSettingsCollapsed",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.NotificationDisclosureTest",
+      "test": "disabledNotificationsKeepEnableVisibleAndSettingsFoldedUntilRequested",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.OrganizeDragTest",
+      "test": "rejectedSaveKeepsOriginalPlacementAndAllowsRetry",
+      "result": "passed",
+      "run": "final_relevant"
+    },
+    {
+      "class": "com.pare.app.OrganizeDragTest",
+      "test": "hoveringBeforeAndAfterRowsPreviewsStableIdsAndOnlyReleaseChangesOrder",
+      "result": "passed",
+      "run": "final_relevant"
+    },
+    {
+      "class": "com.pare.app.OrganizeDragTest",
+      "test": "edgeAutoScrollKeepsDragAliveWhenOriginalRowLeavesComposition",
+      "result": "passed",
+      "run": "final_relevant"
+    },
+    {
+      "class": "com.pare.app.OrganizeDragTest",
+      "test": "cancelledLongPressDoesNotSaveOrActivateTaskAndEmptyQuadrantAcceptsRepeatedMoves",
+      "result": "passed",
+      "run": "final_relevant"
+    },
+    {
+      "class": "com.pare.app.OrganizeDragTest",
+      "test": "stationaryLongPressAndReleaseOutsideBoardDoNotSave",
+      "result": "passed",
+      "run": "final_relevant"
+    },
+    {
+      "class": "com.pare.app.PareDistinctiveFlowTest",
+      "test": "ideaBecomesActionAndSmallStepWithoutLosingItsHistory",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.PareMobileFlowTest",
+      "test": "captureOrganizeTodayCompleteAndIdeaRemainLocal",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.PlanningAIFlowInstrumentedTest",
+      "test": "reviewedDayPlanningRequiresOneManualCallAndKeepsUnselectedAppointmentThroughUndo",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.PriorityVisibilityTest",
+      "test": "existingTaskShowsPriorityBeforeOtherFieldsAndSubmitsSelection",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.PriorityVisibilityTest",
+      "test": "newTaskShowsPriorityWithoutOpeningDetailsAndSubmitsSelection",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.PriorityVisibilityTest",
+      "test": "largeFontNewTaskKeepsPriorityAndSaveReachableWithoutDetails",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.PriorityVisibilityTest",
+      "test": "expandingDetailsKeepsOnePriorityControlAndItsSelection",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.PriorityVisibilityTest",
+      "test": "inboxAndIdeaCaptureKeepTheirExistingFieldsWithoutTaskPriority",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.ReviewImplementationFlowInstrumentedTest",
+      "test": "timePlanSaveFailureRetainsDraftAndRetrySavesOnlyImplementationFields",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.ReviewImplementationFlowInstrumentedTest",
+      "test": "reviewStartsCollapsedAndCopiesOnlyAfterExplicitTap",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TaskDensityTest",
+      "test": "sixTasksFitStandardViewportInBothThemes",
+      "result": "passed",
+      "run": "final_relevant"
+    },
+    {
+      "class": "com.pare.app.TaskStartFlowTest",
+      "test": "secondaryToolsRemainAvailableWithoutChangingTheDraft",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TaskStartFlowTest",
+      "test": "changedDraftExposesSaveThenStartAndSaveThenSupportWithoutOpeningTools",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TaskStartFlowTest",
+      "test": "largeFontKeepsSmallestStepBeforeStartAndSupportAdjacent",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TaskStartPersistenceTest",
+      "test": "changedNextStepIsSavedBeforeFocusChooserAndDoesNotStartAutomatically",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TaskStartPersistenceTest",
+      "test": "unchangedDraftOpensSupportWithoutRewritingTask",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineCrossDayDragInstrumentedTest",
+      "test": "datePickerMovesToArbitraryDateAndOccupiedTargetKeepsDraft",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineCrossDayDragInstrumentedTest",
+      "test": "longPressDragToNextDatePreviewsUntilReleaseAndSupportsUndoThenMovingAgain",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineDraftDismissTest",
+      "test": "failedSaveSystemBackKeepsDraftAndFailureUntilExplicitDiscard",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineDraftDismissTest",
+      "test": "modifiedSystemBackCanContinueThenExplicitlyDiscardFromHeader",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineDraftDismissTest",
+      "test": "unmodifiedBackClosesDirectly",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineFlowTest",
+      "test": "unscheduledTasksReorderAndDropOntoAxisOnlyWhenReleased",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineFlowTest",
+      "test": "partiallyClippedUnscheduledRowDropsAtTheActualPointerTime",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineFlowTest",
+      "test": "movingAndResizingPreviewBeforeReleaseAndUndoPreservesTaskEstimate",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineFlowTest",
+      "test": "dailyWinLoadAndReminderPermissionEntryRemainReachable",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineFlowTest",
+      "test": "titleOnlyCaptureOnFutureDateStaysInThatDaysExpandedUnscheduledList",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TimelineFlowTest",
+      "test": "emptyHourCreatesScheduledTaskAndTaskMenuContainsThreeActions",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TodayOverviewFlowTest",
+      "test": "savedNoticeExpiresWithoutInteractionAndUndoAndCloseRemainUsable",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.TodayOverviewFlowTest",
+      "test": "defaultListShowsMorningAndEveningTogetherAndPreservesTimelineScrollAndDate",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.UnifiedInterfaceNavigationTest",
+      "test": "runningHeaderPausesAndResumesAboveIdeaDraftWithoutReplacingItsRun",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.UnifiedInterfaceNavigationTest",
+      "test": "compactDateHeaderOpensPickerAndCancelPreservesSelectedDateAndMode",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.UnifiedInterfaceTest",
+      "test": "narrowNonTodayToolbarKeepsDateTargetsAndModeLabelsReachableAtBothFontScales",
+      "result": "passed",
+      "run": "final_relevant"
+    },
+    {
+      "class": "com.pare.app.UnifiedInterfaceTest",
+      "test": "todayShowsSixTasksWithinCompactHeaderInBothThemes",
+      "result": "passed",
+      "run": "final_relevant"
+    },
+    {
+      "class": "com.pare.app.UserWorkspaceFlowTest",
+      "test": "scheduleFormCrossDayUndoReturnsToSourceAndRevealsTheSameTaskForAnotherMove",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.UserWorkspaceFlowTest",
+      "test": "preferencesSupportScopedSaveRetainedDraftAndExplicitForget",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.UserWorkspaceFlowTest",
+      "test": "librarySearchArchiveAndDurableTrashAreReachableFromMore",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.UserWorkspaceFlowTest",
+      "test": "bothTaskCaptureEntriesSaveVisiblePriorityAndDragPersistsAfterRecreation",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.UserWorkspaceFlowTest",
+      "test": "deviceSharingStartsOffAndStaysOffAcrossRotationWithoutAccountOrHttp",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.UserWorkspaceFlowTest",
+      "test": "goalLibraryLinkOpensTheSelectedGoalAndSavesAnExistingTaskAssociation",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.VisualClarityTest",
+      "test": "planningAndSupportKeepPinnedActionsVisibleWithLargeText",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.VisualClarityTest",
+      "test": "accountAndReviewKeepPrimaryActionsReachable",
+      "result": "passed",
+      "run": "initial_full"
+    },
+    {
+      "class": "com.pare.app.MobileAlarmDeliveryTest",
+      "test": "realAlarmPostsPrivateNotificationAndOpensItsTask",
+      "result": "passed",
+      "run": "final_delivery"
+    }
+  ],
+  "force_stop_recovery": {
+    "seed": "passed",
+    "live_pid_before_stop": 5761,
+    "pid_after_stop": null,
+    "verify": "passed",
+    "assertions": [
+      "different process identity",
+      "same persisted task/day plan/outbox",
+      "same focus run identity",
+      "one finished history entry"
+    ]
+  },
+  "physical_device": "deferred_by_user",
+  "cloud_account_test": "not_performed"
+}

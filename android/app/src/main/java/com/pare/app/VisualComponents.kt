@@ -36,6 +36,7 @@ internal fun PareHeader(tab: Int, status: String, busy: Boolean, signedIn: Boole
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).heightIn(min=48.dp).then(if(day!=null && onChooseDate!=null)Modifier.clickable(onClick=onChooseDate).testTag("today_choose_date") else Modifier),verticalArrangement=Arrangement.Center) {
             Text(listOf("今天", "整理", "想法")[tab],style=MaterialTheme.typography.headlineSmall)
+            if(tab==1)Text("长按任务调整位置",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)
             if(day!=null) {
                 Row(verticalAlignment=Alignment.CenterVertically) {
                     Text(day.date.format(DateTimeFormatter.ofPattern("M月d日 EEEE",Locale.SIMPLIFIED_CHINESE)),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.weight(1f,fill=false))
@@ -177,7 +178,7 @@ internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComple
     onToday: () -> Unit, onWin: (() -> Unit)? = null, inToday: Boolean = true,
     planLabel: String? = null, onPlan: (() -> Unit)? = null, onSupport: (() -> Unit)? = null, onOrigin: (() -> Unit)? = null,
     onExecution:(()->Unit)?=null,onAI:(()->Unit)?=null,onReminder:(()->Unit)?=null,executionLabel:String?=null,
-    executionPaused:Boolean=false,onExecutionToggle:(()->Unit)?=null,firstInGroup:Boolean=false,lastInGroup:Boolean=false,onSchedule:(()->Unit)?=null) {
+    executionPaused:Boolean=false,onExecutionToggle:(()->Unit)?=null,firstInGroup:Boolean=false,lastInGroup:Boolean=false,onSchedule:(()->Unit)?=null,showTodayAction:Boolean=false) {
     val completed = item.completed()
     val content = item.content()
     var menu by remember { mutableStateOf(false) }
@@ -213,6 +214,12 @@ internal fun EntityCard(item: Entity, win: Boolean, onEdit: () -> Unit, onComple
                 }
                 if (support.isNotBlank()) Text(support, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = if (focused) 2 else 1, overflow = TextOverflow.Ellipsis)
+            }
+            if(showTodayAction && !completed) TextButton(onClick=onToday,modifier=Modifier.width(48.dp).heightIn(min=48.dp).testTag("quick_today_${item.id}")
+                .semantics {contentDescription=if(inToday)"已加入今天，查看今天" else "加入今天"},contentPadding=PaddingValues(horizontal=2.dp)) {
+                PareIcon(if(inToday)PareIcons.Check else PareIcons.Add,null,Modifier.size(12.dp))
+                Spacer(Modifier.width(2.dp))
+                Text("今天",style=MaterialTheme.typography.labelMedium)
             }
             Box {
                 IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp).testTag("more_${item.id}")) {

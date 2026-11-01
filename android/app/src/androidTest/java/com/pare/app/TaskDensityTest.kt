@@ -23,19 +23,23 @@ import org.junit.Rule
 import org.junit.Test
 import java.io.File
 import java.time.Instant
+import kotlinx.coroutines.runBlocking
 
 /** Fixed logical viewport verifies task-library density, independently of the emulator resolution. */
 class TaskDensityTest {
     @get:Rule val compose = createComposeRule()
     private val models = ViewModelStore()
-    @After fun releaseModel() { models.clear() }
+    private var runtime:SyncRuntime?=null
+    @After fun releaseModel() { models.clear();runtime?.let {r->r.engine.edit {SyncState(device=it.device)};r.execution.reconcile()} }
 
     @Test fun sixTasksFitStandardViewportInBothThemes() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         check(context.packageName == "com.pare.app.qa")
         val ids = (1..6).map { "00000000-0000-4000-8000-${it.toString().padStart(12, '0')}" }
-        PareRepository(context).use { repo -> repo.update {
-            var state = SyncState()
+        val running=SyncRuntime.get(context);runtime=running
+        runBlocking {running.engine.initialize();running.engine.pause()}
+        running.engine.edit { existing ->
+            var state = SyncState(device=existing.device)
             ids.forEachIndexed { index, id ->
                 state = StateMachine.edit(state, "task", id, ContentActions.save(null,"task","第${index + 1}件：完成一个具体步骤","",1,id,Instant.now(),estimatedMinutes=15,nextAction="先写出这一小步"))
             }
@@ -45,7 +49,8 @@ class TaskDensityTest {
                 put("ordered_task_ids",JsonArray(ids.map { JsonPrimitive(it) }));put("task_plans",JsonArray(emptyList()))
             }) }
             StateMachine.edit(state,"day_plan",key,plan)
-        } }
+        }
+        val firstId=OrganizeActions.tasks(running.engine.state.value,1).first().id
         val model = ViewModelProvider(models, ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application))[PareViewModel::class.java]
         val dark = mutableStateOf(false)
         compose.setContent {
@@ -58,11 +63,14 @@ class TaskDensityTest {
         }
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("tab_organize").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("tab_organize").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("task_${ids[0]}").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("task_${firstId}").fetchSemanticsNodes().isNotEmpty() }
         val screen = compose.onNodeWithTag("density_screen").fetchSemanticsNode().boundsInRoot
         val scale = screen.width/360f
-        val first = compose.onNodeWithTag("task_${ids[0]}").fetchSemanticsNode().boundsInRoot
+        val first = compose.onNodeWithTag("task_${firstId}").fetchSemanticsNode().boundsInRoot
         assertTrue("First task starts too low: ${(first.top-screen.top)/scale}dp", (first.top-screen.top)/scale <= 240f)
+        saveScreenshot("density-before-assertion.png")
+        val diagnostic=File(requireNotNull(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")),"density-before-assertion.txt")
+        diagnostic.writeText(ids.joinToString("\n") {id->val n=compose.onAllNodesWithTag("task_$id").fetchSemanticsNodes().firstOrNull();"$id: ${n?.boundsInRoot}"})
         ids.forEach { id ->
             compose.onNodeWithTag("complete_$id").assertIsDisplayed()
             val row = compose.onNodeWithTag("task_$id").fetchSemanticsNode().boundsInRoot

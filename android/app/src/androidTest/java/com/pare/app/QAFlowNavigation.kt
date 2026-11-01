@@ -22,7 +22,7 @@ internal fun ComposeTestRule.openTaskAction(taskId: String, action: String) {
     } else {
         onNodeWithTag("edit_$taskId").performClick()
         waitUntil(10_000) { onAllNodesWithTag("task_tools_toggle").fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithTag("task_tools_toggle").performScrollTo().performClick()
+        if (action != "support") onNodeWithTag("task_tools_toggle").performScrollTo().performClick()
         waitUntil(10_000) { onAllNodesWithTag("${action}_$taskId").fetchSemanticsNodes().isNotEmpty() }
         onNodeWithTag("${action}_$taskId").performScrollTo().performClick()
     }

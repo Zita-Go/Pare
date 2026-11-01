@@ -77,3 +77,17 @@
 ## 0.12.0 优先级与拖动整理
 
 两个任务创建入口及已有任务详情直接显示优先级；整理支持任务跨象限移动、象限内排序、空象限落放和边缘滚动，松手后进行过期/冲突校验并保存。随手记仍通过原归类入口处理。手动象限顺序当前只在Android显示，不混用今日顺序、不宣称Mac已使用同一排列。导航内容缩为约64dp，保留大字体和系统安全区。339项单元测试及22条不同相关界面用例分批通过，[截图与完整边界](releases/android-v0.12.0.md)。
+
+## 0.13.0 从四象限到开始推进
+
+以下为 Android 0.13.0（versionCode 15）增量，保留前述历史验收记录；本轮未修改 Mac 代码。
+
+| 用户流程 | 0.13 实现范围 | 保留的边界与依据 |
+|---|---|---|
+| 选择今日行动 | 整理任务行提供「＋ 今天」；已选显示「✓ 今天」并打开当天清单。今日空状态可按四象限选择已有任务，查看其他日期时写入所选日。 | 保留原顺序、投入、提醒与时间块；选择不自动计时或生成日程，陈旧、冲突和不可用内容须先处理。[DayTaskSelection](../android/app/src/main/java/com/pare/app/DayTaskSelection.kt)、[MainActivity](../android/app/src/main/java/com/pare/app/MainActivity.kt)。 |
+| 今日投入 | 任务行及汇总区分该日保存的个人投入、检查分钟与「未设投入」。 | 不用时间块长度、总估时或外部等待时长补齐缺失值；清单与时间轴继续共用日期及旧版/跨午夜日程判断。[TodayOverview](../android/app/src/main/java/com/pare/app/TodayOverview.kt)。 |
+| 从任务详情开始 | 已有任务直接显示最小下一步、开始专注／查看进度和拆小一点；AI、提醒与维护工具按需展开。 | 有修改时先保存，失败保留草稿；开始入口仍需选择并确认时长，打开页面或保存内容不自动启动。[EditorDialog](../android/app/src/main/java/com/pare/app/EditorDialog.kt)、[TaskDetailActions](../android/app/src/main/java/com/pare/app/TaskDetailActions.kt)。 |
+| 整理与移动反馈 | 有任务的象限优先显示，空象限随后紧凑排列；拖动有跟随手指的任务预览和成功后的短时撤销入口。 | 四象限及空落点保留；松手才保存，撤销检查位置及状态，不覆盖后来的调整，也不回退备注和历史。[OrganizeDragLayout](../android/app/src/main/java/com/pare/app/OrganizeDragLayout.kt)、[OrganizeUndo](../android/app/src/main/java/com/pare/app/OrganizeUndo.kt)。 |
+| 桌面今日组件 | 主屏幕组件显示今日重点或可见行动、最小下一步、本机运行状态；通过「更多 → 添加桌面小组件」请求启动器确认，也可从桌面组件列表添加。 | 快速收集打开收件箱；开始打开时长选择；暂停／继续打开 App 后核对对应运行身份再执行，陈旧请求打开控制页。只读本机资料，支持变更及日期/到点刷新，系统可能延迟后台更新；不提供锁屏组件或跨设备计时控制。[HomeWidgetProvider](../android/app/src/main/java/com/pare/app/HomeWidgetProvider.kt)、[HomeWidgetProjection](../android/app/src/main/java/com/pare/app/HomeWidgetProjection.kt)、[HomeWidgetActions](../android/app/src/main/java/com/pare/app/HomeWidgetActions.kt)。 |
+
+本轮使用独立 QA 包和虚构资料。369 项单元测试、开发构建与 Lint 已通过，73 条不同设备用例及实际进程强停恢复取得通过结果；设备用例来自首次全套与定向复验的合并覆盖，不是最终单次全套。真实 AlarmManager 提醒、通知私密元数据与点击路径已有模拟器观察，未观察熄屏/锁屏状态；实体手机验收留待后续。没有新增真实账号云端同步、真实模型或 Mac 验收，AI 原始请求展示和模型配置保持现有范围。[用法、截图与完整验收边界](releases/android-v0.13.0.md)。

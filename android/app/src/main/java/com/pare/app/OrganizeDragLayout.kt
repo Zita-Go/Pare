@@ -27,7 +27,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 
 internal data class OrganizeDrop(val taskId:String,val quadrant:Int,val beforeId:String?,val baseline:OrganizeMoveBaseline)
 private data class OrganizeDrag(val task:Entity,val baseline:OrganizeMoveBaseline,val point:Offset,val origin:Offset=point,val moved:Boolean=false)
@@ -103,14 +108,17 @@ private data class OrganizeTarget(val quadrant:Int,val beforeId:String?)
     @Composable internal fun Header(q:Int,count:Int) {
         DisposableEffect(q){onDispose {headers.remove(q)}}
         Box(Modifier.fillMaxWidth().onGloballyPositioned {headers[q]=it.boundsInRoot()}.testTag("organize_quadrant_$q")) {
-            SectionLabel(quadrantLabels[q],count,pareQuadrantColor(q))
+            Row(Modifier.fillMaxWidth().heightIn(min=36.dp).padding(top=if(count>0)4.dp else 0.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                PareIcon(PareIcons.Quadrants,null,Modifier.size(16.dp),tint=pareQuadrantColor(q))
+                Text(quadrantLabels[q],Modifier.weight(1f),style=MaterialTheme.typography.titleSmall,color=pareQuadrantColor(q))
+                Text(if(count==0)"暂无任务" else "$count",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
     @Composable internal fun End(q:Int,empty:Boolean) {
         DisposableEffect(q){onDispose {ends.remove(q)}}
-        Box(Modifier.fillMaxWidth().height(if(empty)48.dp else 8.dp)
+        Box(Modifier.fillMaxWidth().height(if(empty)0.dp else 8.dp)
             .onGloballyPositioned {ends[q]=it.boundsInRoot()}.testTag("organize_end_$q"),contentAlignment=Alignment.CenterStart) {
-            if(empty)Text("暂无任务",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(start=12.dp))
             if(insertionAtEnd(q))HorizontalDivider(Modifier.align(Alignment.TopCenter),thickness=3.dp,color=MaterialTheme.colorScheme.primary)
         }
     }
@@ -136,7 +144,7 @@ private data class OrganizeTarget(val quadrant:Int,val beforeId:String?)
             }
         }
     }
-    Box(modifier.onGloballyPositioned {controller.containerOrigin=it.boundsInRoot().topLeft}.then(if(!enabled)Modifier else Modifier.pointerInput(controller) {
+    BoxWithConstraints(modifier.onGloballyPositioned {controller.containerOrigin=it.boundsInRoot().topLeft}.then(if(!enabled)Modifier else Modifier.pointerInput(controller) {
         awaitEachGesture {
             val down=awaitFirstDown(requireUnconsumed=false)
             if(!controller.canBegin(controller.containerOrigin+down.position))return@awaitEachGesture
@@ -164,7 +172,8 @@ private data class OrganizeTarget(val quadrant:Int,val beforeId:String?)
                 Text("拖到象限，松手移动",style=MaterialTheme.typography.labelLarge,modifier=Modifier.padding(horizontal=8.dp))
                 for(pair in listOf(0..1,2..3))Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     for(q in pair)Surface(Modifier.weight(1f).heightIn(min=48.dp)
-                        .onGloballyPositioned {controller.targets[q]=it.boundsInRoot()}.testTag("organize_drop_$q"),
+                        .onGloballyPositioned {controller.targets[q]=it.boundsInRoot()}.testTag("organize_drop_$q")
+                        .semantics {stateDescription=if(controller.highlighted(q))"松手放入此象限" else "可拖入"},
                         shape=MaterialTheme.shapes.small,border=BorderStroke(if(controller.highlighted(q))2.dp else 1.dp,if(controller.highlighted(q))MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
                         color=if(controller.highlighted(q))MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface) {
                         Box(Modifier.padding(8.dp),contentAlignment=Alignment.Center) {Text(quadrantLabels[q],style=MaterialTheme.typography.labelMedium)}
@@ -173,6 +182,22 @@ private data class OrganizeTarget(val quadrant:Int,val beforeId:String?)
             }
         }
         Box(Modifier.weight(1f).onGloballyPositioned {controller.viewport=it.boundsInRoot()}) {content(controller)}
+        }
+        controller.pointer?.let {point->
+            val width=(maxWidth-16.dp).coerceAtMost(260.dp)
+            val density=LocalDensity.current
+            val widthPx=with(density){width.toPx()};val heightPx=with(density){64.dp.toPx()}
+            val maxX=with(density){maxWidth.toPx()}-widthPx
+            val maxY=(with(density){maxHeight.toPx()}-heightPx).coerceAtLeast(0f)
+            val local=point-controller.containerOrigin
+            Surface(Modifier.offset {IntOffset((local.x-widthPx/2).coerceIn(0f,maxX.coerceAtLeast(0f)).roundToInt(),(local.y-heightPx-24).coerceIn(0f,maxY).roundToInt())}
+                .width(width).testTag("organize_drag_preview"),shape=MaterialTheme.shapes.medium,
+                color=MaterialTheme.colorScheme.primaryContainer,shadowElevation=8.dp,border=BorderStroke(1.dp,MaterialTheme.colorScheme.primary)) {
+                Row(Modifier.clearAndSetSemantics {}.padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    PareIcon(PareIcons.Note,null,Modifier.size(20.dp))
+                    Text(controller.draggedTitle,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
+                }
+            }
         }
         controller.error?.let {message->Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth(),color=MaterialTheme.colorScheme.errorContainer) {
             Row(Modifier.padding(8.dp),verticalAlignment=Alignment.CenterVertically) {

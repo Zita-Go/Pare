@@ -33,6 +33,14 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
     fun setPresenceSharing(enabled:Boolean)=runtime.setPresenceSharing(enabled)
     fun refreshPresence()=runtime.refreshPresenceManually()
     fun peerFocusLabels():String?=runtime.presence.freshPeerFocus().takeIf {it.isNotEmpty()}?.joinToString("、") {it.label}.orEmpty().ifBlank {null}
+    val widgetRequest=MutableStateFlow<HomeWidgetRequest?>(null)
+    fun receiveHomeWidget(intent:android.content.Intent?) {HomeWidgetActions.consume(intent,getApplication<Application>().packageName)?.let {widgetRequest.value=it}}
+    fun runWidgetCommand(request:HomeWidgetRequest,onResult:(Result<Boolean>)->Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result=runCatching {runtime.executeWidget(request)}
+            withContext(Dispatchers.Main.immediate) {onResult(result)}
+        }
+    }
     val notificationTask=MutableStateFlow<String?>(null)
     fun openNotificationTask(id:String?) {notificationTask.value=id?.takeIf {runCatching {java.util.UUID.fromString(it)}.isSuccess}}
     fun consumeNotificationTask() {notificationTask.value=null}

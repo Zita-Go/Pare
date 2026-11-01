@@ -30,6 +30,30 @@ import java.util.Locale
 import kotlinx.serialization.json.*
 
 data class TodayOverviewEntry(val task:Entity,val blocks:List<TimelineBlock>)
+
+data class TodayTaskEffort(val kind: String? = null, val minutes: Int? = null) {
+    val label: String get() = if (minutes == null) "未设投入" else "${if (kind == "check") "检查" else "个人投入"} $minutes 分钟"
+}
+
+/** Effort belongs to a dated allocation. Calendar lengths, task estimates and waiting are different facts. */
+object TodayEffort {
+    fun forTask(state: SyncState, day: TimelineDay, taskId: String): TodayTaskEffort {
+        val plan = state.items["day_plan:${day.planId}"]
+            ?.takeUnless { it.deleted || it.conflict != null || it.conflictGroup.isNotEmpty() }?.content()
+        val allocation = (plan?.get("task_plans") as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+            .firstOrNull { it.timelineString("task_id") == taskId }?.get("allocation") as? JsonObject
+        val kind = allocation?.timelineString("kind")?.takeIf { it in setOf("personal", "check") }
+        val minutes = allocation?.timelineInt("planned_minutes")?.takeIf { it in 1..1440 }
+        return if (kind != null && minutes != null) TodayTaskEffort(kind, minutes) else TodayTaskEffort()
+    }
+
+    fun summary(state: SyncState, day: TimelineDay, projection: TodayOverviewProjection): TodayLoad {
+        val efforts = (projection.scheduled + projection.unscheduled).distinctBy { it.task.id }.map { forTask(state, day, it.task.id) }
+        return TodayLoad(efforts.filter { it.kind == "personal" }.sumOf { it.minutes?.toLong() ?: 0L },
+            efforts.filter { it.kind == "check" }.sumOf { it.minutes?.toLong() ?: 0L }, efforts.count { it.minutes == null })
+    }
+}
+
 data class TodayOverviewProjection(val scheduled:List<TodayOverviewEntry>,val unscheduled:List<TodayOverviewEntry>,val completed:List<TodayOverviewEntry>) {
     companion object {
         fun project(state:SyncState,day:TimelineDay):TodayOverviewProjection {
@@ -63,36 +87,52 @@ internal fun TodayDateHeader(day:TimelineDay,now:Instant,onSelectDate:(LocalDate
 }
 
 /** An agenda uses the exact same dated occurrences as the timeline, without empty hour space. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TodayOverview(state:SyncState,selectedDate:LocalDate,now:Instant,onSelectDate:(LocalDate)->Unit,
     onOpenTask:(Entity)->Unit,onComplete:(Entity)->Unit,onScheduleTask:(Entity,TimelineDay)->Unit,
     onEditSchedule:(TimelineBlock)->Unit,onExecution:(Entity)->Unit,executionLabel:(String)->String?,executionPaused:(String)->Boolean,
-    modifier:Modifier=Modifier,showDateHeader:Boolean=true) {
+    modifier:Modifier=Modifier,showDateHeader:Boolean=true,onChooseTask:(()->Unit)?=null) {
     val day=remember(state,selectedDate) {TimelineDay.from(state,selectedDate)}
     val projection=remember(state,day) {TodayOverviewProjection.project(state,day)}
+    val effort=remember(state,day,projection) {TodayEffort.summary(state,day,projection)}
     val win=state.items["day_plan:${day.planId}"]?.takeUnless {it.deleted}?.content()?.timelineString("daily_win_task_id")
     var completedExpanded by rememberSaveable(day.planId) {mutableStateOf(false)}
     val remaining=projection.scheduled.size+projection.unscheduled.size
     Column(modifier.fillMaxSize().testTag("today_overview")) {
         if(showDateHeader) TodayDateHeader(day,now,onSelectDate)
+        FlowRow(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=2.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) {
         Text("待办 $remaining 件 · 已完成 ${projection.completed.size} 件",style=MaterialTheme.typography.bodySmall,
-            color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(horizontal=16.dp,vertical=2.dp).testTag("today_overview_summary"))
+            color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.testTag("today_overview_summary"))
+        if(remaining>0)Text(buildList {
+                if(effort.personalMinutes>0)add("自己做${effort.personalMinutes}分")
+                if(effort.checkMinutes>0)add("检查${effort.checkMinutes}分")
+                if(effort.unknownCount>0)add("${effort.unknownCount}件未设投入")
+            }.joinToString(" · "),
+            style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier=Modifier.testTag("today_effort_summary").semantics {
+                contentDescription="待办任务：个人投入 ${effort.personalMinutes} 分钟，检查 ${effort.checkMinutes} 分钟，${effort.unknownCount} 件未设投入"
+            })
+        }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("today_overview_list"),contentPadding=PaddingValues(start=12.dp,end=12.dp,bottom=96.dp)) {
             itemsIndexed(projection.scheduled,key={_,entry->"scheduled:${entry.task.id}"}) {index,entry ->
-                OverviewRow(entry,day,entry.task.id==win,onOpenTask,onComplete,onScheduleTask,onEditSchedule,onExecution,executionLabel(entry.task.id),executionPaused(entry.task.id),index==0,index==projection.scheduled.lastIndex,Modifier.animateItem(fadeInSpec=tween(120),placementSpec=tween(180),fadeOutSpec=tween(120)))
+                OverviewRow(entry,day,entry.task.id==win,onOpenTask,onComplete,onScheduleTask,onEditSchedule,onExecution,executionLabel(entry.task.id),executionPaused(entry.task.id),TodayEffort.forTask(state,day,entry.task.id),index==0,index==projection.scheduled.lastIndex,Modifier.animateItem(fadeInSpec=tween(120),placementSpec=tween(180),fadeOutSpec=tween(120)))
             }
             if(projection.unscheduled.isNotEmpty() && projection.scheduled.isNotEmpty())item {OverviewSection("未定时间",projection.unscheduled.size)}
             itemsIndexed(projection.unscheduled,key={_,entry->"unscheduled:${entry.task.id}"}) {index,entry ->
-                OverviewRow(entry,day,entry.task.id==win,onOpenTask,onComplete,onScheduleTask,onEditSchedule,onExecution,executionLabel(entry.task.id),executionPaused(entry.task.id),index==0,index==projection.unscheduled.lastIndex,Modifier.animateItem(fadeInSpec=tween(120),placementSpec=tween(180),fadeOutSpec=tween(120)))
+                OverviewRow(entry,day,entry.task.id==win,onOpenTask,onComplete,onScheduleTask,onEditSchedule,onExecution,executionLabel(entry.task.id),executionPaused(entry.task.id),TodayEffort.forTask(state,day,entry.task.id),index==0,index==projection.unscheduled.lastIndex,Modifier.animateItem(fadeInSpec=tween(120),placementSpec=tween(180),fadeOutSpec=tween(120)))
             }
             if(remaining==0)item {
                 EmptyNote(if(projection.completed.isEmpty()) "这一天还没有任务" else "这一天的任务已完成",
-                    if(projection.completed.isEmpty()) "点下方添加任务；想安排具体时刻时，切到时间轴。" else "已完成的内容保留在下方，可以随时回看。",icon=if(projection.completed.isEmpty())PareIcons.Today else PareIcons.CheckCircle)
+                    if(projection.completed.isEmpty()) "从四象限选出这一天要推进的一件事，也可以点下方新建任务。" else "已完成的内容保留在下方，可以随时回看。",icon=if(projection.completed.isEmpty())PareIcons.Today else PareIcons.CheckCircle)
+                if(onChooseTask!=null)Box(Modifier.fillMaxWidth().padding(start=16.dp,end=16.dp,bottom=16.dp),contentAlignment=Alignment.Center) {
+                    FilledTonalButton(onClick=onChooseTask,modifier=Modifier.heightIn(min=48.dp).testTag("today_choose_existing")) {Text("从四象限选一件")}
+                }
             }
             if(projection.completed.isNotEmpty()) {
                 item {TextButton(onClick={completedExpanded=!completedExpanded},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("today_completed_toggle")) {Text("已完成 ${projection.completed.size} 件 · ${if(completedExpanded) "收起" else "展开"}")}}
                 if(completedExpanded)items(projection.completed,key={"completed:${it.task.id}"}) {entry ->
-                    OverviewRow(entry,day,false,onOpenTask,onComplete,onScheduleTask,onEditSchedule,onExecution,null,false)
+                    OverviewRow(entry,day,false,onOpenTask,onComplete,onScheduleTask,onEditSchedule,onExecution,null,false,TodayEffort.forTask(state,day,entry.task.id))
                 }
             }
         }
@@ -106,7 +146,7 @@ fun TodayOverview(state:SyncState,selectedDate:LocalDate,now:Instant,onSelectDat
 
 @Composable private fun OverviewRow(entry:TodayOverviewEntry,day:TimelineDay,win:Boolean,
     onOpen:(Entity)->Unit,onComplete:(Entity)->Unit,onSchedule:(Entity,TimelineDay)->Unit,
-    onEditSchedule:(TimelineBlock)->Unit,onExecution:(Entity)->Unit,executionLabel:String?,paused:Boolean,first:Boolean=true,last:Boolean=true,modifier:Modifier=Modifier) {
+    onEditSchedule:(TimelineBlock)->Unit,onExecution:(Entity)->Unit,executionLabel:String?,paused:Boolean,effort:TodayTaskEffort,first:Boolean=true,last:Boolean=true,modifier:Modifier=Modifier) {
     val task=entry.task
     val completed=task.completed()
     val clock=remember {DateTimeFormatter.ofPattern("HH:mm")}
@@ -141,8 +181,19 @@ fun TodayOverview(state:SyncState,selectedDate:LocalDate,now:Instant,onSelectDat
                         maxLines=2,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(top=3.dp,bottom=3.dp).testTag("overview_next_action_${task.id}"))
                 }
                 val times=entry.blocks.map {timeLabel(it)}
-                Text(listOfNotNull(executionLabel,if(times.isEmpty())"未定时间" else times.joinToString("；")).joinToString(" · "),
-                    style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(times.isEmpty()) {
+                    val compactEffort=if(effort.minutes==null)"未设投入" else "${if(effort.kind=="check")"检查" else "自己做"}${effort.minutes}分钟"
+                    Text(listOfNotNull(executionLabel,"$compactEffort · 未定时间").joinToString(" · "),
+                        style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier=Modifier.testTag("overview_effort_${task.id}").semantics {
+                            contentDescription=listOfNotNull(executionLabel,effort.label,"未定时间").joinToString("，")
+                        })
+                } else {
+                    Text(listOfNotNull(executionLabel,times.joinToString("；")).joinToString(" · "),
+                        style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(effort.label,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier=Modifier.testTag("overview_effort_${task.id}"))
+                }
             }
             if(!completed)Box {
                 IconButton(onClick={when(entry.blocks.size){0->onSchedule(task,day);1->onEditSchedule(entry.blocks.single());else->chooseOccurrence=true}},modifier=Modifier.size(48.dp).testTag("overview_schedule_${task.id}")) {PareIcon(PareIcons.Calendar,if(entry.blocks.isEmpty())"安排时间" else "调整时间",modifier=Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)}

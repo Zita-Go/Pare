@@ -21,6 +21,7 @@ class SyncRuntime private constructor(context:Context) {
     }
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val repo=PareRepository(context)
+    private val widgetContext=context.applicationContext
     val engine=SyncEngine(repo,SessionVault(context),HttpSyncRemote(),SyncScheduler(WorkManager.getInstance(context)))
     val execution=ExecutionController(engine,ExecutionFilePersistence(context),AndroidExecutionClock(context))
     val executionReady=MutableStateFlow(false)
@@ -50,9 +51,10 @@ class SyncRuntime private constructor(context:Context) {
             catch(_:Exception) {localError.value="本机推进状态未能读取，原记录已保留；请勿清除应用数据。"}
             launch {engine.state.collect {refreshLocal();presenceSharingEnabled.value=sharingAllowed();presence.refreshFreshness()}}
             launch {engine.session.collect {presence.refreshFreshness()}}
-            launch {execution.state.drop(1).collect {refreshReminders();refreshPresence()}}
+            launch {execution.state.drop(1).collect {refreshReminders();refreshPresence();HomeWidgetUpdates.refresh(widgetContext)}}
             requestSync()
         }
+        HomeWidgetUpdates.refresh(widgetContext)
     }}
     private fun refreshReminders() {
         try {reminders.refresh(engine.state.value);reminderError.value=reminders.lastError()}
@@ -63,6 +65,7 @@ class SyncRuntime private constructor(context:Context) {
         catch(_:Exception) {localError.value="本机推进状态未能读取，原记录已保留；请勿清除应用数据。"}
         if(executionReady.value) try {execution.reconcile()} catch(_:Exception) {localError.value="推进记录未能更新，原记录已保留，请稍后重试。"}
         refreshReminders()
+        HomeWidgetUpdates.refresh(widgetContext)
     }
     fun refreshDeviceState() {scope.launch {if(engine.initialized.value)refreshLocal()}}
     fun refreshPresence() {scope.launch {if(executionReady.value)presence.poll(execution.state.value)}}
@@ -98,6 +101,14 @@ class SyncRuntime private constructor(context:Context) {
     fun execute(command:ExecutionCommand) {
         check(executionReady.value) {"本机推进状态尚未准备好，请稍后再试"}
         execution.execute(command);localError.value=null;refreshReminders();requestSync()
+    }
+    /** A stale launcher click cannot pause/resume a replacement run of the same task. */
+    fun executeWidget(request:HomeWidgetRequest):Boolean=synchronized(execution) {
+        check(executionReady.value) {"本机推进状态尚未准备好，请稍后再试"}
+        execution.reconcile()
+        val command=request.matchingCommand(execution.state.value) ?: return@synchronized false
+        execute(command)
+        true
     }
     fun persistControl(action:suspend ()->Unit) {
         scope.launch {

@@ -6,6 +6,18 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@drawable/pare_icon" android:label="Pare" android:supportsRtl="true" android:usesCleartextTraffic="false" android:theme="@style/Theme.Pare">
+        <receiver android:name=".HomeWidgetProvider" android:exported="false" android:label="@string/home_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/home_widget_info" />
+        </receiver>
         <receiver android:name=".ReminderAlarmReceiver" android:exported="false" />
         <receiver android:name=".ReminderRestoreReceiver" android:exported="false">
             <intent-filter>

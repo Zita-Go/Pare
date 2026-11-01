@@ -48,7 +48,7 @@ import androidx.compose.ui.window.DialogProperties
 ) {
     var confirmClose by rememberSaveable(draft.entityId) { mutableStateOf(false) }
     var compareLatest by rememberSaveable(draft.entityId) { mutableStateOf(false) }
-    var expanded by rememberSaveable(draft.entityId) { mutableStateOf(!draft.isNew) }
+    var expanded by rememberSaveable(draft.entityId) { mutableStateOf(!draft.isNew && draft.kind != "task") }
     var focusedOnce by rememberSaveable(draft.entityId) { mutableStateOf(false) }
     val titleFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -85,13 +85,16 @@ import androidx.compose.ui.window.DialogProperties
                         )
                         if (draft.kind == "task") EditorPriority(draft, saving, onDraftChange)
                         if(draft.isNew && plannedDayLabel!=null)Text(plannedDayLabel,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        if(!draft.isNew && draft.kind=="task")taskActions?.invoke()
+                        if(!draft.isNew && draft.kind=="task") {
+                            EditorNextAction(draft, saving, onDraftChange)
+                            taskActions?.invoke()
+                        }
                         if(!draft.isNew && draft.kind=="inbox")inboxActions?.invoke()
                         if (draft.isNew && draft.kind == "task" && !expanded) TextButton(
                             onClick = { expanded = true }, enabled = !saving,
                             contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("editor_estimate_entry")
                         ) { Text("预计时长 · ${draft.estimate.takeIf { it.isNotBlank() }?.let { "$it 分钟" } ?: "未填写"}") }
-                        if (draft.isNew && draft.kind != "inbox") TextButton(
+                        if (draft.kind != "inbox" && (draft.isNew || draft.kind == "task")) TextButton(
                             onClick = { expanded = !expanded }, enabled = !saving,
                             contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.heightIn(min = 48.dp).testTag("editor_details")
                         ) {
@@ -99,13 +102,9 @@ import androidx.compose.ui.window.DialogProperties
                             Spacer(Modifier.width(6.dp))
                             Text(if (expanded) "收起更多信息" else "更多信息")
                         }
-                        if ((!draft.isNew || expanded) && draft.kind != "inbox") {
+                        if (expanded && draft.kind != "inbox") {
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            if (draft.kind == "task") {
-                                Text("从这里开始", style = MaterialTheme.typography.titleSmall)
-                                PareFormField(draft.nextAction, { onDraftChange(draft.copy(nextAction = it)) }, label = "下一步（可选）",
-                                    enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor_next_action"))
-                            }
+                            if (draft.isNew && draft.kind == "task") EditorNextAction(draft, saving, onDraftChange)
                             PareFormField(draft.note, { onDraftChange(draft.copy(note = it)) }, label = "备注（可选）", minLines = if (draft.isNew) 2 else 3,
                                 enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor_note"))
                             if (draft.kind == "task") {
@@ -170,6 +169,11 @@ import androidx.compose.ui.window.DialogProperties
         },
         confirmButton = { TextButton(onClick = { confirmClose = false; onDismiss() }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp).testTag("draft_keep_close")) { Text("保留草稿并关闭") } },
         dismissButton = { TextButton(onClick = { confirmClose = false }, shape = MaterialTheme.shapes.medium, modifier = Modifier.heightIn(min = 48.dp).testTag("draft_continue")) { Text("继续编辑") } })
+}
+
+@Composable private fun EditorNextAction(draft: EditorDraft, saving: Boolean, onDraftChange: (EditorDraft) -> Unit) {
+    PareFormField(draft.nextAction, { onDraftChange(draft.copy(nextAction = it)) }, label = "最小下一步（可选）",
+        enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor_next_action"))
 }
 
 @Composable private fun LatestVersionField(label: String, value: String) {
