@@ -5,6 +5,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,21 +61,44 @@ internal fun PareHeader(tab: Int, status: String, busy: Boolean, signedIn: Boole
 
 @Composable
 internal fun PareNavigation(tab: Int, onTab: (Int) -> Unit) {
-    Column {
-    HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.7f))
-    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-        listOf("今天", "整理", "想法").forEachIndexed { index, label ->
-            NavigationBarItem(selected = tab == index, onClick = { onTab(index) },
-                icon = { PareIcon((if(tab==index)listOf(PareIcons.TodaySelected,PareIcons.QuadrantsSelected,PareIcons.IdeaSelected) else listOf(PareIcons.Today,PareIcons.Quadrants,PareIcons.Idea))[index], null, Modifier.size(24.dp)) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant),
-                label = { Text(label) }, modifier = Modifier.testTag(listOf("tab_today", "tab_organize", "tab_ideas")[index]))
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+        Column {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
+            Row(
+                Modifier.fillMaxWidth()
+                    .windowInsetsPadding(NavigationBarDefaults.windowInsets)
+                    .height(IntrinsicSize.Min)
+                    .selectableGroup()
+            ) {
+                listOf("今天", "整理", "想法").forEachIndexed { index, label ->
+                    val selected = tab == index
+                    val tag = listOf("tab_today", "tab_organize", "tab_ideas")[index]
+                    val color = if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    val icon = (if (selected)
+                        listOf(PareIcons.TodaySelected, PareIcons.QuadrantsSelected, PareIcons.IdeaSelected)
+                    else listOf(PareIcons.Today, PareIcons.Quadrants, PareIcons.Idea))[index]
+                    // The content sets the height at large font scales; 64dp is only a minimum.
+                    Column(
+                        Modifier.weight(1f).fillMaxHeight().heightIn(min = 64.dp)
+                            .selectable(selected = selected, role = Role.Tab, onClick = { onTab(index) })
+                            .testTag(tag).padding(vertical = 5.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
+                    ) {
+                        Box(
+                            Modifier.size(width = 64.dp, height = 32.dp)
+                                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            PareIcon(icon, null, Modifier.size(24.dp).testTag("${tag}_icon"), tint = color)
+                        }
+                        Text(label, style = MaterialTheme.typography.labelMedium, color = color)
+                    }
+                }
+            }
         }
-    }
     }
 }
 

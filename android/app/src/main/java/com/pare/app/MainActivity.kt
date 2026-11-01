@@ -109,6 +109,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     var capturePlanId by rememberSaveable {mutableStateOf<String?>(null)}
     var pendingCapturePlanId by rememberSaveable {mutableStateOf<String?>(null)}
     var revealUnscheduled by rememberSaveable {mutableIntStateOf(0)}
+    var organizeMoving by remember { mutableStateOf(false) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var workspaceId by rememberSaveable { mutableStateOf("") }
     var allocationTaskId by rememberSaveable { mutableStateOf("") }
@@ -321,7 +322,16 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                     }
                 },revealAt=timelineReveal?.let(Instant::parse),showDateHeader=false)
             }
-        } else         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("main_list"),
+        } else OrganizeDragLayout(state,enabled=tab==1 && !organizeMoving,modifier=Modifier.fillMaxSize().padding(padding),onMove={drop->
+            organizeMoving=true
+            vm.editWorkspace({before->OrganizeActions.move(before,drop.taskId,drop.quadrant,drop.beforeId,drop.baseline,Instant.now())}) {result->
+                organizeMoving=false
+                localScope.launch {
+                    snackbars.currentSnackbarData?.dismiss()
+                    snackbars.showSnackbar(if(result.isSuccess) "优先级和顺序已保存" else result.exceptionOrNull()?.message ?: "调整未保存，请重试",withDismissAction=true,duration=SnackbarDuration.Short)
+                }
+            }
+        }) { drag -> LazyColumn(Modifier.fillMaxSize().testTag("main_list"),state=drag.listState,
             contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 88.dp)) {
             if (draft.entityId.isNotEmpty() && !editorOpen) item {
                 OutlinedButton(onClick = { editorOpen = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("resume_draft")) { Text("继续编辑草稿") }
@@ -363,17 +373,19 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                         }
                     }
                     items(inbox, key = { it.key }) { item -> InboxCard(item, { openEditor(item) }, { organizeSave.reset(); organizeId = item.id }) }
-                    quadrantLabels.forEachIndexed { q, label ->
-                        val group = tasks.filter { (it.content()?.get("quadrant")?.jsonPrimitive?.intOrNull ?: 1) == q && !it.completed() }
-                        if (group.isNotEmpty()) item { SectionLabel(label, group.size, pareQuadrantColor(q)) }
+                    item { Text(if(organizeMoving) "正在保存调整…" else "长按任务可调整象限和顺序",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=8.dp)) }
+                    quadrantLabels.forEachIndexed { q, _ ->
+                        val group = OrganizeActions.tasks(state,q)
+                        item(key="quadrant:$q") { drag.Header(q,group.size) }
                         itemsIndexed(group, key = { _,item -> item.key }) { index,item ->
-                            EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered,
+                            drag.Task(item) { EntityCard(item, win == item.id, { openEditor(item) }, { vm.complete(item) }, { vm.toggleToday(item) }, { vm.setWin(item) }, inToday = item.id in ordered,
                                 planLabel = if (item.id in ordered) todayPlanLabel(state,item.id,planningNow) else null,
                                 onPlan = { allocationTaskId = item.id }, onSupport = { supportTaskId = item.id },
                                 onOrigin = if (relatedIdeas(state,item.id).isEmpty()) null else ({ openOrigin(item.id) }),
                                 onExecution=if(executionReady) ({executionTaskId=item.id}) else null,onAI={aiTaskId=item.id},onReminder={reminderTaskId=item.id},
-                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)},firstInGroup=index==0,lastInGroup=index==group.lastIndex,onSchedule={openSchedule(item)})
+                                executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)},firstInGroup=index==0,lastInGroup=index==group.lastIndex,onSchedule={openSchedule(item)}) }
                         }
+                        item(key="quadrant_end:$q") {drag.End(q,group.isEmpty())}
                     }
                 }
                 2 -> {
@@ -403,7 +415,7 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
                                 executionLabel=executionLabel(item.id),executionPaused=execution.runFor(item.id)?.paused==true,onExecutionToggle={toggleExecution(item.id)},firstInGroup=index==0,lastInGroup=index==completedTasks.lastIndex,onSchedule={openSchedule(item)})
                 }
             }
-        }
+        } }
     }
     if(chooseDate) {
         val picker=rememberDatePickerState(initialSelectedDateMillis=selectedDate.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli())

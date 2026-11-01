@@ -83,6 +83,7 @@ import androidx.compose.ui.window.DialogProperties
                                 field()
                             } }
                         )
+                        if (draft.kind == "task") EditorPriority(draft, saving, onDraftChange)
                         if(draft.isNew && plannedDayLabel!=null)Text(plannedDayLabel,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         if(!draft.isNew && draft.kind=="task")taskActions?.invoke()
                         if(!draft.isNew && draft.kind=="inbox")inboxActions?.invoke()
@@ -112,7 +113,6 @@ import androidx.compose.ui.window.DialogProperties
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), enabled = !saving,
                                     isError = draft.estimate.isNotBlank() && draft.estimate.toIntOrNull()?.let { it > 0 } != true,
                                     modifier = Modifier.fillMaxWidth().testTag("editor_estimate"))
-                                EditorPriority(draft, saving, onDraftChange)
                             }
                         }
                     }

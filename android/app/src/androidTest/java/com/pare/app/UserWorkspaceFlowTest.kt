@@ -2,6 +2,7 @@ package com.pare.app
 
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
@@ -113,6 +114,97 @@ class UserWorkspaceFlowTest {
         File(folder, name).outputStream().use { output ->
             assertTrue(compose.onNodeWithTag(rootTag).captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, output))
         }
+    }
+
+    @Test fun bothTaskCaptureEntriesSaveVisiblePriorityAndDragPersistsAfterRecreation() {
+        fun nativeScreenshot(name: String) {
+            val directory = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir") ?: return
+            if(!compose.mainClock.autoAdvance)compose.mainClock.advanceTimeBy(48)
+            compose.waitForIdle()
+            val screenshot = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+            try {
+                File(File(directory).apply { mkdirs() }, name).outputStream().use {
+                    assertTrue(screenshot.compress(Bitmap.CompressFormat.PNG, 100, it))
+                }
+            } finally { screenshot.recycle() }
+        }
+        fun createTask(title: String, quadrant: Int, screenshotName: String): Entity {
+            visible("editor_text")
+            compose.onNodeWithTag("editor_text").assertIsFocused().performTextReplacement(title)
+            compose.onNodeWithTag("editor_note").assertDoesNotExist()
+            compose.onNodeWithTag("editor_next_action").assertDoesNotExist()
+            compose.onNodeWithTag("editor_priority").assertIsDisplayed().performClick()
+            compose.onNodeWithTag("priority_$quadrant").assertIsDisplayed().performClick()
+            compose.onNodeWithTag("editor_priority").assertIsDisplayed()
+            compose.onNodeWithTag("editor_note").assertDoesNotExist()
+            nativeScreenshot(screenshotName)
+            compose.onNodeWithTag("editor_save").assertIsDisplayed().performClick()
+            eventually { state -> state.items.values.any {
+                it.kind == "task" && it.title() == title && it.content()?.get("quadrant") == JsonPrimitive(quadrant)
+            } }
+            gone("editor_surface")
+            return read().items.values.single { it.kind == "task" && it.title() == title }
+        }
+
+        visible("add_item")
+        compose.onNodeWithTag("add_item").assertIsDisplayed().performClick()
+        val todayTask = createTask("虚构：今天记录第一种植物", 0, "organize-priority-today-native.png")
+        val todayPlan = read().items.values.single { it.kind == "day_plan" && !it.deleted }
+        assertTrue(todayPlan.content()!!.getValue("ordered_task_ids").jsonArray.any { it.jsonPrimitive.content == todayTask.id })
+
+        compose.onNodeWithTag("tab_organize").assertIsDisplayed().performClick()
+        visible("new_task")
+        compose.onNodeWithTag("new_task").assertIsDisplayed().performClick()
+        val laterTask = createTask("虚构：以后整理观察图片", 3, "organize-priority-new-task-native.png")
+        val afterBothCaptures = read()
+        assertEquals(0, afterBothCaptures.items.getValue(todayTask.key).content()!!.getValue("quadrant").jsonPrimitive.int)
+        assertEquals(3, afterBothCaptures.items.getValue(laterTask.key).content()!!.getValue("quadrant").jsonPrimitive.int)
+        assertEquals("Creating from Organize must not alter today's plan", todayPlan.payload, afterBothCaptures.items.getValue(todayPlan.key).payload)
+        assertFalse(afterBothCaptures.items.values.filter { it.kind == "day_plan" && !it.deleted }.any { plan ->
+            plan.content()?.get("ordered_task_ids")?.jsonArray?.any { it.jsonPrimitive.content == laterTask.id } == true
+        })
+        Espresso.closeSoftKeyboard()
+        gone("workspace_snackbar")
+        nativeScreenshot("organize-compact-navigation-native.png")
+
+        val sourceTag = "organize_drag_${todayTask.id}"
+        compose.onNodeWithTag("main_list").performScrollToNode(hasTestTag(sourceTag))
+        val origin = compose.onNodeWithTag(sourceTag, useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.center
+        val beforeDrag = read()
+        compose.mainClock.autoAdvance = false
+        var pointerDown = false
+        try {
+            compose.onRoot().performTouchInput { down(origin) }
+            pointerDown = true
+            compose.mainClock.advanceTimeBy(700)
+            compose.onRoot().performTouchInput { advanceEventTime(700); moveBy(Offset(0f, -1f)) }
+            compose.mainClock.advanceTimeByFrame()
+            val target = compose.onNodeWithTag("organize_drop_2", useUnmergedTree = true)
+                .assertIsDisplayed().fetchSemanticsNode().boundsInRoot.center
+            compose.onRoot().performTouchInput { moveTo(target) }
+            compose.mainClock.advanceTimeByFrame()
+            assertEquals("Hovering must not persist the move", beforeDrag.items.getValue(todayTask.key), read().items.getValue(todayTask.key))
+            nativeScreenshot("organize-drag-main-preview-native.png")
+            compose.onRoot().performTouchInput { up() }
+            pointerDown = false
+            compose.mainClock.advanceTimeByFrame()
+        } finally {
+            if (pointerDown) compose.onRoot().performTouchInput { cancel() }
+            compose.mainClock.autoAdvance = true
+        }
+        eventually { it.items.getValue(todayTask.key).content()?.get("quadrant") == JsonPrimitive(2) }
+        gone("organize_drop_targets")
+        assertEquals(todayPlan.payload, read().items.getValue(todayPlan.key).payload)
+
+        scenario.recreate()
+        visible("tab_organize")
+        compose.onNodeWithTag("tab_organize").performClick()
+        visible("main_list")
+        compose.onNodeWithTag("main_list").performScrollToNode(hasTestTag(sourceTag))
+        compose.onNodeWithTag(sourceTag, useUnmergedTree = true).assertIsDisplayed()
+        assertEquals(2, read().items.getValue(todayTask.key).content()!!.getValue("quadrant").jsonPrimitive.int)
+        assertEquals(3, read().items.getValue(laterTask.key).content()!!.getValue("quadrant").jsonPrimitive.int)
+        assertEquals(todayPlan.payload, read().items.getValue(todayPlan.key).payload)
     }
 
     @Test fun librarySearchArchiveAndDurableTrashAreReachableFromMore() {
