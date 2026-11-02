@@ -3,9 +3,9 @@
     android:id="@android:id/background" android:layout_width="156dp" android:layout_height="156dp"
     android:orientation="vertical" android:padding="6dp" android:background="@drawable/widget_background">
     <LinearLayout android:id="@+id/widget_body" android:layout_width="match_parent" android:layout_height="0dp"
-        android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical" android:contentDescription="打开 Pare 今日规划">
+        android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical" android:contentDescription="打开 Step 今日规划">
         <TextView android:id="@+id/widget_heading" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="Pare · 今日" android:textSize="11sp" android:textColor="@color/widget_primary" android:includeFontPadding="false" android:maxLines="1" android:ellipsize="end" />
+            android:text="Step · 今日" android:textSize="11sp" android:textColor="@color/widget_primary" android:includeFontPadding="false" android:maxLines="1" android:ellipsize="end" />
         <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp"
             android:text="从一件小事开始" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/widget_text" android:includeFontPadding="false" android:maxLines="1" android:ellipsize="end" />
         <TextView android:id="@+id/widget_next_step" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp"

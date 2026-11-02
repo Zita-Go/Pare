@@ -56,9 +56,9 @@ class HomeWidgetPinModel(private val saved:SavedStateHandle=SavedStateHandle()):
                 WidgetPinPhase.UNCONFIRMED->"尚未检测到新增组件。若系统窗口没有出现，可以重新请求或手动添加。"
                 WidgetPinPhase.UNSUPPORTED->"当前桌面不支持应用内添加，请手动添加。"
                 WidgetPinPhase.FAILED->"暂时无法请求桌面添加。可以重试，或按下方方法手动添加。"
-                WidgetPinPhase.ADDED->"已确认桌面新增了 Pare 小组件。"
+                WidgetPinPhase.ADDED->"已确认桌面新增了 Step 小组件。"
             },modifier=Modifier.testTag("widget_pin_status"))
-            if(model.phase!=WidgetPinPhase.ADDED)Text("手动添加：长按手机桌面的空白处 → 小组件 → Pare · 今日与专注。",style=MaterialTheme.typography.bodyMedium,modifier=Modifier.testTag("widget_pin_manual"))
+            if(model.phase!=WidgetPinPhase.ADDED)Text("手动添加：长按手机桌面的空白处 → 小组件 → Step · 今日与专注。",style=MaterialTheme.typography.bodyMedium,modifier=Modifier.testTag("widget_pin_manual"))
             if(model.phase in setOf(WidgetPinPhase.REQUESTED,WidgetPinPhase.UNCONFIRMED))TextButton(onClick={model.refresh(::ids)},modifier=Modifier.heightIn(min=48.dp).testTag("widget_pin_check")){Text("检查添加结果")}
         }
     },confirmButton={

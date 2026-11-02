@@ -12,10 +12,10 @@ data class HomeWidgetModel(
 
 /** Read-only projection of the same planning date/order as Today. No estimates or invented progress. */
 object HomeWidgetProjection {
-    fun unavailable(locked:Boolean=false)=HomeWidgetModel("Pare · 今日重点",
+    fun unavailable(locked:Boolean=false)=HomeWidgetModel("Step · 今日重点",
         if(locked)"解锁后查看今日重点" else "暂时无法读取今日重点",
-        if(locked)"解锁设备后再打开 Pare" else "请打开 Pare 重试，原记录已保留",
-        if(locked)"解锁后再打开 Pare" else "打开 Pare 重试，原记录已保留", "打开 Pare",HomeWidgetRequest(HomeWidgetAction.TODAY),statusImportant=true)
+        if(locked)"解锁设备后再打开 Step" else "请打开 Step 重试，原记录已保留",
+        if(locked)"解锁后再打开 Step" else "打开 Step 重试，原记录已保留", "打开 Step",HomeWidgetRequest(HomeWidgetAction.TODAY),statusImportant=true)
 
     private fun usable(entity:Entity?)=entity!=null && !entity.deleted && entity.content()!=null && !entity.completed() &&
         entity.payload?.get("lifecycle")?.jsonPrimitive?.contentOrNull!="archived"
@@ -41,7 +41,7 @@ object HomeWidgetProjection {
             if(selected==null)"本机内容 · 离线可用" else "从最小下一步开始",
             if(selected==null)"打开今日" else "开始专注",
             if(selected==null)HomeWidgetRequest(HomeWidgetAction.TODAY) else HomeWidgetRequest(HomeWidgetAction.START_FOCUS,selected.id))
-        if(executionUnavailable)return model.copy(heading="${date.monthValue}/${date.dayOfMonth} · 状态待检查",status="专注状态暂不可用，请打开 Pare 检查",actionLabel="打开 Pare",request=HomeWidgetRequest(HomeWidgetAction.TODAY),statusImportant=true)
+        if(executionUnavailable)return model.copy(heading="${date.monthValue}/${date.dayOfMonth} · 状态待检查",status="专注状态暂不可用，请打开 Step 检查",actionLabel="打开 Step",request=HomeWidgetRequest(HomeWidgetAction.TODAY),statusImportant=true)
         if(focus!=null) {
             val name=state.items.getValue("task:${focus.taskId}").title().take(80)
             val uncertain=!focus.paused && (focus.anchor?.bootId!=now.bootId || now.elapsedMillis<(focus.anchor?.elapsedMillis ?: Long.MAX_VALUE))

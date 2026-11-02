@@ -10,9 +10,9 @@ public final class InstanceFileLock {
         public var errorDescription: String? {
             switch self {
             case .alreadyRunning:
-                return "另一个 Pare 正在使用这份数据。"
+                return "另一个 Step（或旧版 Pare）正在使用这份数据。"
             case .unavailable(let path, let detail):
-                return "无法保护数据文件，Pare 未启动。\n\(path)\n\(detail)"
+                return "无法保护数据文件，Step 未启动。\n\(path)\n\(detail)"
             }
         }
     }

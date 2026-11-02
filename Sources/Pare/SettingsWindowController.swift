@@ -28,7 +28,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false)
-        window.title = "Pare 设置"
+        window.title = "Step 设置"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isOpaque = false
@@ -94,7 +94,7 @@ private struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            PageHeading(title: "Pare 设置", subtitle: "按你的习惯安排工具，不必一次设置完。")
+            PageHeading(title: "Step 设置", subtitle: "按你的习惯安排工具，不必一次设置完。")
             SegmentedTabs(values: SettingsCategory.allCases, selection: Binding(
                 get: { category },
                 set: { category = $0; shortcutController.cancelRecording() }
@@ -192,7 +192,7 @@ private struct SettingsView: View {
         sectionContent {
             Toggle(isOn: Binding(get: { loginItem.enabled }, set: { loginItem.setEnabled($0) })) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("登录时自动启动 Pare")
+                    Text("登录时自动启动 Step")
                         .font(Theme.font(15, weight: .medium)).foregroundColor(Theme.text)
                     Text(loginItem.statusText)
                         .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -535,8 +535,8 @@ private struct SettingsView: View {
 
     private func exportBackup() {
         let panel = NSSavePanel()
-        panel.title = "导出 Pare 备份"
-        panel.nameFieldStringValue = "Pare-backup.json"
+        panel.title = "导出 Step 备份"
+        panel.nameFieldStringValue = "Step-backup.json"
         panel.allowedContentTypes = [.json]
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -552,7 +552,7 @@ private struct SettingsView: View {
 
     private func importBackup() {
         let panel = NSOpenPanel()
-        panel.title = "选择 Pare 备份"
+        panel.title = "选择 Step 备份"
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }

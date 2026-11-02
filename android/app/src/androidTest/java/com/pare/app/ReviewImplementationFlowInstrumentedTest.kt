@@ -44,7 +44,7 @@ class ReviewImplementationFlowInstrumentedTest {
             compose.onNodeWithTag("review_copy").performScrollTo().performClick()
             compose.onNode(hasText("已复制",substring=true) and hasAnyAncestor(hasTestTag("review_copy_status")),useUnmergedTree=true).assertIsDisplayed()
             val copied=clipboard.primaryClip?.getItemAt(0)?.text.toString()
-            assertTrue(copied.contains("Pare 本地回顾"));assertFalse(copied.contains("虚构：回看小行动"));assertFalse(copied.contains("不要复制"))
+            assertTrue(copied.contains("Step 本地回顾"));assertFalse(copied.contains("虚构：回看小行动"));assertFalse(copied.contains("不要复制"))
         } finally {clipboard.setPrimaryClip(ClipData.newPlainText("fictional",""));scenario.close()}
     }
     @Test fun timePlanSaveFailureRetainsDraftAndRetrySavesOnlyImplementationFields() {

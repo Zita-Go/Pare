@@ -117,7 +117,7 @@ class HomeWidgetPinLauncherTest {
         // Do not call Compose/Espresso while a different package owns the modal window.
         val confirmation = awaitNativeConfirmation()
         assertEquals(launcherPackage, confirmation.packageName)
-        assertTrue(confirmation.identifiesPare)
+        assertTrue(confirmation.identifiesStep)
         assertTrue(confirmation.hasConfirmationControl)
         assertTrue("Default widget must request 2×2 launcher cells: ${confirmation.labels}",confirmation.labels.any {
             it.replace(" ","").contains("2×2") || it.contains("2 by 2",ignoreCase=true)
@@ -157,7 +157,7 @@ class HomeWidgetPinLauncherTest {
     }
 
     private data class NativeConfirmation(val packageName: String, val labels: List<String>, val controls: List<String>, val contentBounds: Rect) {
-        val identifiesPare get() = labels.any { it.contains("Pare", ignoreCase = true) }
+        val identifiesStep get() = labels.any { it.contains("Step", ignoreCase = true) }
         val hasConfirmationControl get() = controls.any { label ->
             listOf("add", "pin", "confirm", "添加", "加入", "确定", "確認", "追加").any { label.contains(it, ignoreCase = true) }
         }
@@ -176,7 +176,7 @@ class HomeWidgetPinLauncherTest {
                             val bounds = Rect()
                             collectVisibleLabels(root, labels, controls, bounds)
                             val candidate = NativeConfirmation(launcherPackage, labels, controls, bounds)
-                            if (candidate.identifiesPare && candidate.hasConfirmationControl) result = candidate
+                            if (candidate.identifiesStep && candidate.hasConfirmationControl) result = candidate
                         }
                     } finally { root.recycle() }
                 }
@@ -231,7 +231,7 @@ class HomeWidgetPinLauncherTest {
                 }
             }finally{root?.recycle()}
         }
-        throw AssertionError("No visible Pare widget confirmation from default HOME $launcherPackage within 10 seconds; API support alone is not success")
+        throw AssertionError("No visible Step widget confirmation from default HOME $launcherPackage within 10 seconds; API support alone is not success")
     }
 
     private fun cancelNativeConfirmation() {

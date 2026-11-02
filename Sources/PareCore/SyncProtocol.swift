@@ -13,7 +13,7 @@ public enum SyncProtocolError: LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .batchTooLarge: return "待同步事务超过 100 条记录或 1 MiB，已暂停上传以保持多记录操作完整。本地数据已保留。"
-        case .unsupportedVersion: return "云端数据需要更新版本的 Pare；已停止同步并保留本地内容。"
+        case .unsupportedVersion: return "云端数据需要更新版本的 Step；已停止同步并保留本地内容。"
         default: return "同步数据未通过完整性检查；本地内容和拉取位置均已保留。"
         }
     }

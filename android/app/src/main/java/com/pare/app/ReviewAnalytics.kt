@@ -46,7 +46,7 @@ object ReviewAnalytics {
     fun export(state:SyncState,now:Instant):String {
         val recent=MobileReview.calculate(state,now);val trend=calculate(state,now)
         return buildString {
-            appendLine("Pare 本地回顾 · ${now.atZone(ZoneId.of(trend.zone)).toLocalDate()} · ${trend.zone}")
+            appendLine("Step 本地回顾 · ${now.atZone(ZoneId.of(trend.zone)).toLocalDate()} · ${trend.zone}")
             appendLine("最近7天：完成 ${recent.completedTasks.size} 件；自己专注 ${recent.focusMinutes} 分钟；等待结果 ${recent.externalMinutes} 分钟。")
             appendLine("最近8个自然周（本周截至当前，仅已有记录）：")
             trend.weeks.forEach {appendLine("${it.start}起${if(it.current) "（本周未结束）" else ""}：完成${it.completed}件，专注${it.focusMinutes}分钟，等待${it.waitingMinutes}分钟")}

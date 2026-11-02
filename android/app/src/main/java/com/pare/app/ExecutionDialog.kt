@@ -106,7 +106,7 @@ import java.time.format.DateTimeFormatter
                 Text(if(isExternal) "这里只记录你等待了多久，不会控制 AI 或他人的工作，也不会自动获取结果。等待时长单独统计。" else "到点会停下计时，任务是否完成由你决定。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 if(external) {
-                    Text("已经在别处交给 AI 或别人了？在这里记下等待时间，提醒自己回来检查。Pare 不会启动它们或自动获取进度。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("已经在别处交给 AI 或别人了？在这里记下等待时间，提醒自己回来检查。Step 不会启动它们或自动获取进度。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(value=checkMinutes,onValueChange={checkMinutes=it},label={Text("多少分钟后回来检查（可留空）")},singleLine=true,
                         keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),enabled=!busy,modifier=Modifier.fillMaxWidth())
                     Text("等待时长不计入自己的专注时间；检查通知取决于手机权限和提醒设置。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)

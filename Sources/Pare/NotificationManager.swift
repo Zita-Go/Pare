@@ -294,7 +294,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// Fire a notification a few seconds out so the user can confirm delivery.
     private enum SubmissionError: LocalizedError {
         case permissionDenied
-        var errorDescription: String? { "系统未允许通知，测试提醒没有发送。请在系统通知设置中允许 Pare。" }
+        var errorDescription: String? { "系统未允许通知，测试提醒没有发送。请在系统通知设置中允许 Step。" }
     }
 
     func sendTestReminder(completion: @escaping (Result<Void, Error>) -> Void) {
@@ -310,7 +310,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             guard let self else { return }
             let content = UNMutableNotificationContent()
             content.title = "测试提醒"
-            content.body = "如果你看到这条，说明 Pare 的提醒已经开启 ✓"
+            content.body = "如果你看到这条，说明 Step 的提醒已经开启 ✓"
             content.sound = .default
             content.categoryIdentifier = Self.dailyCategory
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 3, repeats: false)

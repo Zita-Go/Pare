@@ -58,7 +58,7 @@ class SyncRuntime private constructor(context:Context) {
     }}
     private fun refreshReminders() {
         try {reminders.refresh(engine.state.value);reminderError.value=reminders.lastError()}
-        catch(_:Exception) {reminderError.value="手机提醒未能安排，请重新打开 Pare 后重试；任务仍已保存。"}
+        catch(_:Exception) {reminderError.value="手机提醒未能安排，请重新打开 Step 后重试；任务仍已保存。"}
     }
     private fun refreshLocal() {
         if(!executionReady.value)try {execution.initialize();executionReady.value=true;localError.value=null}

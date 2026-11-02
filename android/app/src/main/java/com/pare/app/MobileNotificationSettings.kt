@@ -48,7 +48,7 @@ fun MobileNotificationSettings(modifier: Modifier = Modifier) {
     val allowed = remember(refresh) { runtime.notificationsAllowed() }
     val exact = remember(refresh) { runtime.exactAllowed() }
     fun openSettings(intent: Intent) {
-        runCatching { context.startActivity(intent) }.onFailure { message = "无法打开系统设置，请在系统中找到 Pare 的通知与闹钟权限。" }
+        runCatching { context.startActivity(intent) }.onFailure { message = "无法打开系统设置，请在系统中找到 Step 的通知与闹钟权限。" }
     }
     MobileNotificationControls(
         allowed = allowed, exact = exact, modifier = modifier,

@@ -1,4 +1,6 @@
-# Pare Android
+# Step Android（原 Pare）
+
+Current development build: **0.14.0 / code 19**. The approved C icon and Step display name replace the previous branding. Package, database, account and WorkManager identities remain unchanged so existing installations can upgrade in place. See [brand upgrade notes](../docs/releases/step-brand-c.md).
 
 Kotlin + Compose offline client, Android 8.0 (API 26) or newer. The 0.13.3 development build (versionCode 18) connects Organize to Today, clarifies daily effort, surfaces the next step in task details, and adds a home-screen widget; it is not a production-signed store release. The previously accepted 0.8.0 baseline covers capture, task details, completion, Today planning, idea exploration with linked actions, blocker support, device-local focus/external execution, Android reminders, contextual AI, local reflection, email/password login and automatic synchronization.
 

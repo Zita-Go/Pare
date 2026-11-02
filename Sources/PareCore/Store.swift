@@ -120,8 +120,8 @@ public final class Store: ObservableObject {
 
         public var errorDescription: String? {
             switch self {
-            case .invalidBackup: return "这个文件不是有效的 Pare 备份，数据没有改变。"
-            case .unsupportedVersion(let version): return "这个备份来自更新的数据格式（v\(version)），请先升级 Pare。"
+            case .invalidBackup: return "这个文件不是有效的 Step 备份，数据没有改变。"
+            case .unsupportedVersion(let version): return "这个备份来自更新的数据格式（v\(version)），请先升级 Step。"
             case .cannotWrite(let detail): return "无法写入数据：\(detail)"
             }
         }
@@ -149,7 +149,7 @@ public final class Store: ObservableObject {
         } catch DataTransferError.unsupportedVersion(let version) {
             unsupportedSchemaVersion = version
             persistenceLocked = true
-            persistenceIssue = "数据来自更新的 Pare（格式 v\(version)）。请升级 Pare；原文件和自动备份已保留，当前禁止写入。"
+            persistenceIssue = "数据来自更新的 Step（格式 v\(version)）。请升级 Step；原文件和自动备份已保留，当前禁止写入。"
             return
         } catch {
             do {
@@ -162,7 +162,7 @@ public final class Store: ObservableObject {
                 rewriteRecoveredData = true
             } catch {
                 persistenceLocked = true
-                persistenceIssue = "数据文件和自动备份都无法读取；Pare 暂未覆盖原文件。"
+                persistenceIssue = "数据文件和自动备份都无法读取；Step 暂未覆盖原文件。"
                 return
             }
         }

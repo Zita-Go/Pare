@@ -15,8 +15,8 @@ do {
 } catch InstanceFileLock.LockError.alreadyRunning(let processID) {
     if !SingleInstanceCoordinator.activateExistingInstance(dataFileURL: dataFileURL, processID: processID) {
         let alert = NSAlert()
-        alert.messageText = "Pare 已在运行"
-        alert.informativeText = "已请求打开现有 Pare。若窗口没有出现，请点击菜单栏中的 Pare 图标打开整理。当前副本将退出，以保护正在使用的数据。"
+        alert.messageText = "Step 已在运行"
+        alert.informativeText = "已请求打开现有 Step（或旧版 Pare）。若窗口没有出现，请点击菜单栏图标打开整理。当前副本将退出，以保护正在使用的数据。"
         alert.addButton(withTitle: "好")
         app.activate(ignoringOtherApps: true)
         alert.runModal()
@@ -24,7 +24,7 @@ do {
 } catch {
     let alert = NSAlert()
     alert.alertStyle = .critical
-    alert.messageText = "无法安全启动 Pare"
+    alert.messageText = "无法安全启动 Step"
     alert.informativeText = error.localizedDescription
     alert.addButton(withTitle: "退出")
     app.activate(ignoringOtherApps: true)

@@ -53,7 +53,7 @@ class IconPolishTest {
                 PareTheme(darkTheme = dark.value) {
                     Surface(Modifier.width(360.dp).testTag("icon_gallery")) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Pare 图标验收", style = MaterialTheme.typography.titleMedium)
+                            Text("Step 图标验收", style = MaterialTheme.typography.titleMedium)
                             Text(if (filled.value) "导航选中 · 同色形状对照" else "导航未选中 · 同色形状对照",
                                 style = MaterialTheme.typography.bodySmall)
                             glyphs.chunked(5).forEach { row ->

@@ -68,7 +68,7 @@ class MobileNotificationRuntime(
     fun exactAllowed(): Boolean = Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms()
     fun lastError(): String? = prefs.getString("error", null)
     internal fun recordReceiverFailure() = synchronized(lock) {
-        prefs.edit().putBoolean("needsRestore", true).putString("error", "手机提醒暂未送达，请重新打开 Pare 重试。").commit()
+        prefs.edit().putBoolean("needsRestore", true).putString("error", "手机提醒暂未送达，请重新打开 Step 重试。").commit()
     }
     fun readLedger(): ReminderLedger = synchronized(lock) {
         prefs.getString("ledger", null)?.let { wire.decodeFromString<ReminderLedger>(it) } ?: ReminderLedger()
@@ -104,7 +104,7 @@ class MobileNotificationRuntime(
         } else if (!notificationsAllowed()) alarms.cancel(rebuildIntent())
         save(ledger.copy(scheduled = installed, visible = visible, exact = exact, nextRebuildAt = if (notificationsAllowed()) nextDay else 0))
         prefs.edit().putBoolean("needsRestore", failed).putString("error", when {
-            failed -> "部分手机提醒未能安排，请重新打开 Pare 后重试。"
+            failed -> "部分手机提醒未能安排，请重新打开 Step 后重试。"
             deadlines.isFailure -> "本机推进记录暂时无法读取；普通任务提醒仍可使用，专注与检查提醒需稍后重试。"
             else -> null
         }).commit()
@@ -177,8 +177,8 @@ class MobileNotificationRuntime(
             .putExtra(TASK_ID_EXTRA, event.taskId).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val title = when (event.kind) { "focus" -> "这段专注到目标时间了"; "check" -> "回来看看等待的结果"; "schedule" -> "安排的行动快开始了"; "implementation" -> "如果到这个时刻，那么先行动"; else -> "该做这件事了" }
-        val publicVersion = Notification.Builder(app, CHANNEL).setSmallIcon(R.drawable.pare_notification).setContentTitle("Pare 提醒")
-            .setContentText("打开 Pare 查看安排").setVisibility(Notification.VISIBILITY_PUBLIC).build()
+        val publicVersion = Notification.Builder(app, CHANNEL).setSmallIcon(R.drawable.pare_notification).setContentTitle("Step 提醒")
+            .setContentText("打开 Step 查看安排").setVisibility(Notification.VISIBILITY_PUBLIC).build()
         return Notification.Builder(app, CHANNEL).setSmallIcon(R.drawable.pare_notification).setContentTitle(title).setContentText(text.take(240))
             .setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion).setContentIntent(open).setAutoCancel(true)
             .setOnlyAlertOnce(true).setCategory(Notification.CATEGORY_REMINDER)

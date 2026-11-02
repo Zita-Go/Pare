@@ -63,7 +63,7 @@ public struct AIHistoryContext: Codable, Equatable {
     public var actualMinutesForComparableTasks: Int
     public var userBackground: String?
     public var previousAnalyses: [PreviousAnalysis]
-    public var source: String = "Pare 本地记录汇总；时间统计仅含已停止计时的会话，不含未记录工作"
+    public var source: String = "Step 本地记录汇总；时间统计仅含已停止计时的会话，不含未记录工作"
 }
 
 extension Store {

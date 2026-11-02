@@ -109,7 +109,7 @@ class MobileHintPreferences(context:Context) {
                             copyMessage=null
                             val text=ReviewAnalytics.export(state,now)
                             copyStatus=try {
-                                (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Pare 本地回顾",text))
+                                (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Step 本地回顾",text))
                                 copyEvent++; copyMessage="已复制汇总；不含任务标题或 AI 原始记录"
                                 ""
                             } catch(_:Exception) {"复制失败，请重试"}

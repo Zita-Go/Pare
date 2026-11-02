@@ -77,7 +77,7 @@ final class UIContractTests: XCTestCase {
         let settings = try source("Sources/Pare/SettingsWindowController.swift")
         XCTAssertTrue(onboarding.contains("开启提醒"))
         XCTAssertTrue(onboarding.contains("⌥Space"))
-        XCTAssertTrue(settings.contains("登录时自动启动 Pare"))
+        XCTAssertTrue(settings.contains("登录时自动启动 Step"))
         XCTAssertTrue(settings.contains("导出备份"))
         XCTAssertTrue(settings.contains("恢复自动备份"))
         let popover = try source("Sources/Pare/PopoverController.swift")

@@ -183,8 +183,8 @@ class HomeWidgetRenderingTest {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val context=instrumentation.targetContext
         check(context.packageName=="com.pare.app.qa")
-        val base=HomeWidgetModel("11/1 · 状态待检查","虚构：整理桌面观察","下一步 · 写下一条虚构观察","专注状态暂不可用，请打开 Pare 检查",
-            "打开 Pare",HomeWidgetRequest(HomeWidgetAction.TODAY),statusImportant=true)
+        val base=HomeWidgetModel("11/1 · 状态待检查","虚构：整理桌面观察","下一步 · 写下一条虚构观察","专注状态暂不可用，请打开 Step 检查",
+            "打开 Step",HomeWidgetRequest(HomeWidgetAction.TODAY),statusImportant=true)
         val warnings=listOf(base,
             base.copy(heading="11/1 · 待处理冲突",status="这件事有同步冲突，请先查看"),
             base.copy(heading="11/1 · 专注记录待保存",status="专注记录待保存 · 虚构：整理桌面观察",actionLabel="查看专注",

@@ -285,7 +285,7 @@ class AndroidCapabilitiesFlowTest {
         assertTrue(at>=before.plusSeconds(590) && at<=Instant.now().plusSeconds(610))
 
         // The isolated QA device must allow notification delivery for this acceptance flow.
-        assertTrue("QA device does not currently allow the Pare notification channel",reminders.notificationsAllowed())
+        assertTrue("QA device does not currently allow the Step notification channel",reminders.notificationsAllowed())
         reminders.refresh(read())
         val event=reminders.readLedger().scheduled.values.single {it.taskId==taskId && it.kind=="task"}
         assertNull(reminders.lastError())
@@ -304,7 +304,34 @@ class AndroidCapabilitiesFlowTest {
         val iconBitmap=Bitmap.createBitmap(24,24,Bitmap.Config.ARGB_8888)
         context.getDrawable(R.drawable.pare_notification)!!.apply {setBounds(0,0,24,24);draw(android.graphics.Canvas(iconBitmap))}
         assertEquals("Notification mark must have a transparent background",0,android.graphics.Color.alpha(iconBitmap.getPixel(0,0)))
-        assertTrue("The Pare mark must have visible strokes",android.graphics.Color.alpha(iconBitmap.getPixel(6,10))>0)
+        val ink=(0 until 24).sumOf {y->(0 until 24).count {x->android.graphics.Color.alpha(iconBitmap.getPixel(x,y))>0}}
+        assertTrue("Step notification symbol must be visible without a solid tile: $ink pixels",ink in 40..280)
+        for((x,y) in listOf(0 to 0,23 to 0,0 to 23,23 to 23))assertEquals(0,android.graphics.Color.alpha(iconBitmap.getPixel(x,y)))
+        // Count 8-connected visible regions so even diagonal antialias contact cannot join the goal to the S.
+        val remaining=BooleanArray(24*24) {pixel->android.graphics.Color.alpha(iconBitmap.getPixel(pixel%24,pixel/24))/255f>0.25f}
+        val componentSizes=mutableListOf<Int>()
+        for(seed in remaining.indices) {
+            if(!remaining[seed])continue
+            val pending=java.util.ArrayDeque<Int>()
+            pending.add(seed);remaining[seed]=false
+            var size=0
+            while(pending.isNotEmpty()) {
+                val pixel=pending.removeFirst();size++
+                val x=pixel%24;val y=pixel/24
+                for(dy in -1..1)for(dx in -1..1) {
+                    val nx=x+dx;val ny=y+dy
+                    if((dx!=0 || dy!=0) && nx in 0 until 24 && ny in 0 until 24) {
+                        val neighbor=ny*24+nx
+                        if(remaining[neighbor]) {remaining[neighbor]=false;pending.add(neighbor)}
+                    }
+                }
+            }
+            componentSizes.add(size)
+        }
+        assertEquals("Native notification S and goal must remain separate at alpha > 0.25: $componentSizes",2,componentSizes.size)
+        InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")?.let {folder->
+            java.io.File(folder,"step-notification-icon-native.png").outputStream().use {iconBitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        }
         assertEquals(Notification.VISIBILITY_PRIVATE,posted.visibility)
         assertEquals(title,posted.extras.getString(Notification.EXTRA_TEXT))
         assertNotNull(posted.publicVersion)

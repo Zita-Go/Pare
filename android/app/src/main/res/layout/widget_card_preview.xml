@@ -3,7 +3,7 @@
     android:id="@android:id/background" android:layout_width="156dp" android:layout_height="156dp"
     android:orientation="vertical" android:padding="10dp" android:background="@drawable/widget_background">
     <LinearLayout android:id="@+id/widget_body" android:layout_width="match_parent" android:layout_height="0dp"
-        android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical" android:contentDescription="打开 Pare 今日规划">
+        android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical" android:contentDescription="打开 Step 今日规划">
         <TextView android:id="@+id/widget_heading" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="示例 · 今日重点" android:textSize="11sp" android:textColor="@color/widget_secondary" android:includeFontPadding="false" android:maxLines="1" android:ellipsize="end" />
         <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp"

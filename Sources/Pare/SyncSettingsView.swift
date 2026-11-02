@@ -160,7 +160,7 @@ struct SyncSettingsView: View {
 
     private var loginForm: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(createAccount ? "创建 Pare 同步账号" : "登录 Pare 同步账号")
+            Text(createAccount ? "创建 Step 同步账号" : "登录 Step 同步账号")
                 .font(Theme.font(14, weight: .medium)).foregroundColor(Theme.text)
             Text("使用两台设备上的同一账号。Supabase 控制台账号与这里的同步账号相互独立。")
                 .font(Theme.font(12)).foregroundColor(Theme.textDim)

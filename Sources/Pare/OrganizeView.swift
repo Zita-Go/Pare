@@ -228,7 +228,7 @@ struct OrganizeView: View {
         .keyboardShortcut(",", modifiers: .command)
         .help("打开设置（⌘,）")
         .accessibilityLabel("设置")
-        .accessibilityHint("打开 Pare 设置：通知、快捷键、AI 和数据备份")
+        .accessibilityHint("打开 Step 设置：通知、快捷键、AI 和数据备份")
     }
 
     @ViewBuilder private var workspaceContent: some View {

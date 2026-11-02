@@ -141,7 +141,7 @@ class HomeWidgetPlacementTest {
         compose.onNodeWithTag("more_widget").performScrollTo().assertIsDisplayed().performClick()
         compose.waitForIdle()
         // All following UI operations use the native accessibility surface of the launcher.
-        awaitCondition("No visible Pare confirmation with a real Add control") { launcherConfirmationPresent() }
+        awaitCondition("No visible Step confirmation with a real Add control") { launcherConfirmationPresent() }
         clickNativeAddExactlyOnce()
         awaitCondition("The real Add action did not bind a new QA widget") { manager.getAppWidgetIds(provider).toSet().minus(before).isNotEmpty() }
         val added = manager.getAppWidgetIds(provider).toSet().minus(before)
@@ -242,7 +242,7 @@ class HomeWidgetPlacementTest {
     }
 
     private fun launcherConfirmationPresent(): Boolean = withLauncherRoot { root ->
-        val identity = findNode(root) { it.isVisibleToUser && listOfNotNull(it.text, it.contentDescription).any { text -> text.contains("Pare", ignoreCase = true) } }
+        val identity = findNode(root) { it.isVisibleToUser && listOfNotNull(it.text, it.contentDescription).any { text -> text.contains("Step", ignoreCase = true) } }
         val add = findNode(root) { it.isVisibleToUser && it.isEnabled && isAddLabel(it) }
         try { if (identity != null && add != null) true else null } finally { identity?.recycle(); add?.recycle() }
     } == true

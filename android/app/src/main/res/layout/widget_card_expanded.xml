@@ -3,9 +3,9 @@
     android:id="@android:id/background" android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="vertical" android:padding="16dp" android:background="@drawable/widget_background">
     <LinearLayout android:id="@+id/widget_body" android:layout_width="match_parent" android:layout_height="0dp"
-        android:layout_weight="1" android:orientation="vertical" android:contentDescription="打开 Pare 今日规划">
+        android:layout_weight="1" android:orientation="vertical" android:contentDescription="打开 Step 今日规划">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pare" android:textSize="14sp" android:fontFamily="sans-serif-medium" android:textColor="@color/widget_primary" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Step" android:textSize="14sp" android:fontFamily="sans-serif-medium" android:textColor="@color/widget_primary" />
             <TextView android:id="@+id/widget_heading" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
                 android:gravity="end" android:text="今日重点" android:textSize="12sp" android:textColor="@color/widget_secondary" android:maxLines="1" android:ellipsize="end" />
         </LinearLayout>
