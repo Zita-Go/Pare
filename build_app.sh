@@ -10,8 +10,8 @@ APP_NAME="Step"
 # Keep executable and bundle identity stable for existing data and permissions.
 EXECUTABLE_NAME="Pare"
 BUNDLE_ID="com.zitago.Pare"
-VERSION="2.15.1"
-BUILD="43"
+VERSION="2.15.2"
+BUILD="44"
 ICON_MASTER="Resources/AppIcon.png"
 STATUS_ICON="Resources/StepStatusIcon.pdf"
 

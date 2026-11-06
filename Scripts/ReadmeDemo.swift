@@ -192,11 +192,7 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         main.addItem(demoItem)
         // Native edit menu enables ordinary copy/paste within the real views.
         let editItem = NSMenuItem()
-        let edit = NSMenu(title: "编辑")
-        edit.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        edit.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editItem.submenu = edit
+        editItem.submenu = AppMenus.makeEditMenu()
         main.addItem(editItem)
         NSApp.mainMenu = main
     }

@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var terminationAttempt: UUID?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.mainMenu = AppMenus.makeMainMenu()
         // Menu-bar-only apps don't create a Dock tile, but Notification Center
         // still needs a concrete application image. Load the bundled icon
         // explicitly in addition to the Info.plist declarations so the running
