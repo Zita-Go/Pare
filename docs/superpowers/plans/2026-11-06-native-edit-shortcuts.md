@@ -42,3 +42,5 @@
 - Native regression explicitly targets an isolated NSTextView/field editor or selector recorder; it validates menu behavior without stealing focus, not a full real-window responder-chain walkthrough.
 - Installed2.15.2/build44 in place with private old-bundle backup; existing2.15.1 process retained without quitting or activating it. The user must save any live draft and normally quit/reopen to load the new binary. No task/store/clipboard access in installation.
 - No remote publication. Android remains0.14.1.
+
+- Follow-up: user explicitly requested restart. Confirmed no active focus, used normal Quit, verified old process gone, opened installed2.15.2 and confirmed one new main process. Collection counts/ID digests unchanged. Actual organizer search field received fictional text, Command-A produced full Selected text, Backspace emptied it, and UI returned to the matrix. No task write/timer change; no private screenshot export. Restart requirement is now resolved. Capture panel itself was not separately exercised in this follow-up.
