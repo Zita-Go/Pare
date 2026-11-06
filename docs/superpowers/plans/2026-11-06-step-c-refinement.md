@@ -43,7 +43,7 @@
 
 - [x] Check current Mac timer/draft state, back up install, normal quit only if safe, replace/signature-check/relaunch once.
 - [x] Update emulator normal package in place after validation, retain data; no clear/uninstall of normal package.
-- [ ] Verify installed versions/resources and record actual completion/limitations.
+- [x] Verify installed versions/resources and record actual completion/limitations.
 
 ## Execution notes
 
@@ -57,5 +57,5 @@ This is an approved visual-resource refinement, with no behavior changes. No new
 - Independent read-only review: no blocking issue; no storage/identity/business changes.
 - Normal-quit Mac after fresh no-active-timer check, privately backed up old app, replaced Contents and verified signature/resources; installed 2.15.1/build43, one normal main process. Private collection counts/ID digests unchanged.
 - Android emulator normal package updated in place to0.14.1/code20; only com.pare.app remains.
-- Final desktop UI check pending: Mac locked after launch; user unlock question sent. Installed metadata and process checks are complete, but are not a substitute for final window verification.
+- Final desktop follow-up completed after user unlocked/opened organizer: actual installed Step organizer renders, Settings opens and closes back to organizer, notifications enabled and original ⌥Space configuration visible. Synthetic key input did not produce an observed capture panel; concurrent user task entry was then observed and further UI input stopped. Shortcut firing remains unverified; no regression is inferred from the automation result. No task/settings/timer mutation or private screenshot export.
 - Local archives/checksums generated. No push or public release.
