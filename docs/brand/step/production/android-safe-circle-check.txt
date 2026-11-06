@@ -1,0 +1,4 @@
+step_launcher_foreground: PASS; full path/control-point radius <= 32.168203dp; complete goal radius <= 32.848437dp; safe radius 33dp; minimum margin 0.151563dp
+Native vector radial gradient: center (90.7, 23.5), radius 7.76, stops [(0.0, '#FFF0BC'), (0.52, '#E8BF5F'), (1.0, '#C69131')]
+step_launcher_monochrome: PASS; full path/control-point radius <= 32.168203dp; complete goal radius <= 32.848437dp; safe radius 33dp; minimum margin 0.151563dp
+Adaptive XML API26/API33 layers: PASS. This is an XML geometry/compilation check, not a native launcher screenshot.
