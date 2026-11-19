@@ -28,9 +28,10 @@ data class EditorDraft(
     val nextAction: String = "",
     val estimate: String = "",
     val addToToday: Boolean = false,
-    val isNew: Boolean = true
+    val isNew: Boolean = true,
+    val lastCompletedStepId: String? = null
 ) {
-    fun editBaseline() = ContentEditBaseline(isNew, text, note, quadrant, nextAction, estimate.toIntOrNull())
+    fun editBaseline() = ContentEditBaseline(isNew, text, note, quadrant, nextAction, estimate.toIntOrNull(),lastCompletedStepId)
 
     fun validationError(): String? = when {
         text.isBlank() -> "先写下一点内容"
@@ -44,7 +45,8 @@ data class EditorDraft(
             quadrant = entity.content()?.get("quadrant")?.jsonPrimitive?.intOrNull ?: 1,
             nextAction = entity.content()?.get("nextAction")?.jsonPrimitive?.contentOrNull.orEmpty(),
             estimate = entity.content()?.get("estimatedMinutes")?.jsonPrimitive?.intOrNull?.toString().orEmpty(),
-            isNew = false
+            isNew = false,
+            lastCompletedStepId = ContentEditBaseline.from(entity).lastCompletedStepId
         )
     }
 }

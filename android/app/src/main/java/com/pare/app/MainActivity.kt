@@ -52,8 +52,8 @@ class MainActivity : ComponentActivity() {
 }
 
 private val DraftSaver = listSaver<EditorDraft, Any>(
-    save = { listOf(it.entityId, it.kind, it.text, it.note, it.quadrant, it.nextAction, it.estimate, it.addToToday, it.isNew) },
-    restore = { EditorDraft(it[0] as String, it[1] as String, it[2] as String, it[3] as String, it[4] as Int, it[5] as String, it[6] as String, it[7] as Boolean, it[8] as Boolean) }
+    save = { listOf(it.entityId, it.kind, it.text, it.note, it.quadrant, it.nextAction, it.estimate, it.addToToday, it.isNew,it.lastCompletedStepId.orEmpty()) },
+    restore = { EditorDraft(it[0] as String, it[1] as String, it[2] as String, it[3] as String, it[4] as Int, it[5] as String, it[6] as String, it[7] as Boolean, it[8] as Boolean,(it.getOrNull(9) as? String)?.ifBlank {null}) }
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -591,7 +591,8 @@ private val DraftSaver = listSaver<EditorDraft, Any>(
     },confirmButton={TextButton(onClick={executionChooser=false}){Text("关闭")}})
     if(executionTaskId.isNotBlank()) {
         val task=state.items["task:$executionTaskId"]?.takeUnless {it.deleted}
-        if(task!=null)ExecutionDialog(task,execution,vm::runCommand,onDismiss={executionTaskId=""},otherFocusLabel=vm.peerFocusLabels())
+        if(task!=null)ExecutionDialog(task,execution,vm::runCommand,onDismiss={executionTaskId=""},otherFocusLabel=vm.peerFocusLabels(),
+            nextStepContent={NextStepCard(state,task,vm::editMobileAI)})
         else AlertDialog(onDismissRequest={executionTaskId=""},title={Text("任务已不可用")},confirmButton={TextButton(onClick={executionTaskId=""}){Text("关闭")}})
     }
     }

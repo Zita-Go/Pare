@@ -11,7 +11,8 @@ data class ContentEditBaseline(
     val note: String = "",
     val quadrant: Int = 1,
     val nextAction: String = "",
-    val estimatedMinutes: Int? = null
+    val estimatedMinutes: Int? = null,
+    val lastCompletedStepId: String? = null
 ) {
     companion object {
         fun from(entity: Entity?): ContentEditBaseline {
@@ -22,7 +23,8 @@ data class ContentEditBaseline(
                 note = content?.get(if (entity?.kind == "idea") "notes" else "note")?.jsonPrimitive?.contentOrNull.orEmpty(),
                 quadrant = content?.get("quadrant")?.jsonPrimitive?.intOrNull ?: 1,
                 nextAction = content?.get("nextAction")?.jsonPrimitive?.contentOrNull.orEmpty(),
-                estimatedMinutes = content?.get("estimatedMinutes")?.jsonPrimitive?.intOrNull
+                estimatedMinutes = content?.get("estimatedMinutes")?.jsonPrimitive?.intOrNull,
+                lastCompletedStepId = (content?.get("completedSteps") as? JsonArray)?.lastOrNull()?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
             )
         }
     }
@@ -45,7 +47,7 @@ object ContentActions {
         val current = ContentEditBaseline.from(entity)
         if (current.text != expected.text ||
             (kind != "inbox" && current.note != expected.note) ||
-            (kind == "task" && (current.quadrant != expected.quadrant || current.nextAction != expected.nextAction || current.estimatedMinutes != expected.estimatedMinutes))) {
+            (kind == "task" && (current.quadrant != expected.quadrant || current.nextAction != expected.nextAction || current.estimatedMinutes != expected.estimatedMinutes || current.lastCompletedStepId != expected.lastCompletedStepId))) {
             throw StaleContentEditException(StaleEditReason.UPDATED)
         }
     }
@@ -67,7 +69,7 @@ object ContentActions {
         if(kind=="task") {
             require(estimatedMinutes == null || estimatedMinutes > 0) {"预计时长无效"}
             if(estimatedMinutes == null) content.remove("estimatedMinutes") else content["estimatedMinutes"]=JsonPrimitive(estimatedMinutes)
-            if(nextAction.isNullOrBlank()) content.remove("nextAction") else content["nextAction"]=JsonPrimitive(nextAction.trim())
+            if(nextAction.isNullOrBlank()) {content.remove("nextAction");content.remove("definitionOfDone")} else content["nextAction"]=JsonPrimitive(nextAction.trim())
             content["quadrant"]=JsonPrimitive(quadrant)
             content.putIfAbsent("completed",JsonPrimitive(false))
             content["lastProgressAt"]=JsonPrimitive(now.toString())

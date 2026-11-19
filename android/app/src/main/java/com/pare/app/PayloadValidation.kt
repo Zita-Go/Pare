@@ -34,6 +34,13 @@ object PayloadValidation {
                 strings(c,"note","nextAction","definitionOfDone")
                 dates(c,"completedAt","remindAt","lastProgressAt","dueAt")
                 ints(c,"estimatedMinutes","actualMinutes")
+                optional(c,"completedSteps") {value ->
+                    val ids=mutableSetOf<String>()
+                    arr(value).forEach {record ->
+                        val entry=obj(record);require(ids.add(uuid(entry["id"])));require(str(entry["text"]).isNotBlank())
+                        date(entry["completedAt"]);strings(entry,"definitionOfDone")
+                    }
+                }
                 optional(c,"recurrence"){choice(it,setOf("daily","weekly","monthly"))}
                 optional(c,"implementationPlan") {value ->val p=obj(value);choice(p["kind"],setOf("time","returnToComputer","openApplication"));str(p["action"]);ints(p,"hour","minute");strings(p,"applicationBundleID","applicationName")}
                 listOf("progressSessions","parallelRunSessions","blockerEntries").forEach {key ->optional(c,key) {array -> arr(array).forEach {value ->

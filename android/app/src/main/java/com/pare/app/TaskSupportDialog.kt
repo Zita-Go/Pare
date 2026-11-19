@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.time.Instant
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -28,6 +29,18 @@ fun TaskSupportDialog(taskId: String, vm: PareViewModel, onStart: ((String) -> U
         if(allocation!=null && expected!=null && model.begin(startAfterSave=start)) vm.saveSmallStep(
             taskId=taskId,nextAction=model.nextAction,definitionOfDone=model.definitionOfDone,
             expected=expected,allocation=allocation,blockerReason=model.reason,blockerEntryId=model.blockerEntryId,onResult=model::finish)
+    }
+    fun changeStep(undoId:String?=null) {
+        val expected=model.smallStepBaseline ?: return
+        val submitted=model.nextAction to model.definitionOfDone
+        val completionId=model.completionId
+        if(!model.begin())return
+        var updated:Entity?=null
+        vm.editMobileAI({current->
+            require(current.owner==state.owner && current.device==state.device) {"资料库已改变，请重新打开任务"}
+            (if(undoId==null)NextStepActions.complete(current,taskId,completionId,expected,Instant.now())
+            else NextStepActions.undo(current,taskId,undoId,Instant.now())).also {updated=it.items["task:$taskId"]}
+        }) {model.finishStepChange(it,updated,submitted)}
     }
     TodayWorkflowSurface("我卡住了", "support", model, available,
         canSave = model.nextAction.isNotBlank() && model.definitionOfDone.isNotBlank() && model.allocation() != null && model.smallStepBaseline != null,
@@ -60,6 +73,11 @@ fun TaskSupportDialog(taskId: String, vm: PareViewModel, onStart: ((String) -> U
                 modifier = Modifier.fillMaxWidth().testTag("support_next_action"))
             PareFormField(model.definitionOfDone, { model.definitionOfDone = it }, "做到哪里就停", enabled = enabled, minLines = 2,
                 modifier = Modifier.fillMaxWidth().testTag("support_done"))
+            if(task!=null) {
+                val changed=model.smallStepBaseline?.let {model.nextAction!=it.nextAction || model.definitionOfDone!=it.definitionOfDone}==true
+                NextStepControls(task,enabled,changed,onComplete={changeStep()},onUndo={changeStep(it)})
+                NextStepHistory(task)
+            }
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (model.kind == "check") "留几分钟检查结果" else "先给自己一点时间", style = MaterialTheme.typography.titleSmall)

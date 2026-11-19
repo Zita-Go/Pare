@@ -282,6 +282,7 @@ private struct TodayRow: View {
                     if let action = task.nextAction {
                         Text("下一步：\(action)").font(Theme.font(10)).foregroundColor(Theme.textDim).lineLimit(1)
                     }
+                    NextStepProgressButton(store: store, task: task)
                     if let due = task.dueAt { DueBadge(date: due) }
                     Spacer(minLength: 4)
                     FocusTimerButton(store: store, task: task, showsLabel: true,

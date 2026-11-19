@@ -24,8 +24,9 @@ private fun staleIf(condition:Boolean) {if(condition) throw StaleContentEditExce
 data class IdeaContextBaseline(val stage:String,val nextQuestion:String,val nextQuestionUpdatedAt:String?) {
     companion object {fun from(entity:Entity)=entity.content().let {IdeaContextBaseline(it?.string("stage") ?: "seed",it?.string("nextQuestion").orEmpty(),it?.string("nextQuestionUpdatedAt"))}}
 }
-data class SmallStepBaseline(val title:String,val nextAction:String,val definitionOfDone:String) {
-    companion object {fun from(entity:Entity)=SmallStepBaseline(entity.title(),entity.content()?.string("nextAction").orEmpty(),entity.content()?.string("definitionOfDone").orEmpty())}
+data class SmallStepBaseline(val title:String,val nextAction:String,val definitionOfDone:String,val lastCompletedStepId:String?=null) {
+    companion object {fun from(entity:Entity)=SmallStepBaseline(entity.title(),entity.content()?.string("nextAction").orEmpty(),entity.content()?.string("definitionOfDone").orEmpty(),
+        entity.content()?.array("completedSteps")?.lastOrNull()?.jsonObject?.string("id"))}
 }
 
 /** Only the current task's fields that this operation consumes; other plan entries can advance freely. */
@@ -145,7 +146,7 @@ object SmallStepActions {
         val entries=task.content()!!.array("blockerEntries")
         val previous=entries.firstOrNull {it.jsonObject.string("id")==blockerEntryId}?.jsonObject
         val current=SmallStepBaseline.from(task)
-        staleIf(current.title!=expected.title)
+        staleIf(current.title!=expected.title || current.lastCompletedStepId!=expected.lastCompletedStepId)
         val same=current.nextAction==nextAction.trim() && current.definitionOfDone==definitionOfDone.trim()
         if(previous!=null) {
             require(previous.string("reason")==blockerReason && same && matchesSubmittedAllocation(state,taskId,allocation,now)) {

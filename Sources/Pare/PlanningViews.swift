@@ -71,6 +71,8 @@ private struct TaskDetailView: View {
     @State private var applicationName: String
     @State private var showScheduling: Bool
     @State private var sourceIdea: ThoughtItem?
+    @State private var stepBaseline: NextStepDraftBaseline
+    @State private var stepError: String?
     @FocusState private var focusedField: String?
 
     init(store: Store, task: TaskItem, isPresented: Binding<Bool>, allowsIdeaNavigation: Bool = true) {
@@ -78,6 +80,7 @@ private struct TaskDetailView: View {
         self.task = task
         self._isPresented = isPresented
         self.allowsIdeaNavigation = allowsIdeaNavigation
+        _stepBaseline = State(initialValue: NextStepDraftBaseline(task))
         _title = State(initialValue: task.text)
         _nextAction = State(initialValue: task.nextAction ?? "")
         _definitionOfDone = State(initialValue: task.definitionOfDone ?? "")
@@ -134,6 +137,12 @@ private struct TaskDetailView: View {
                 field("任务", text: $title, prompt: "要完成什么？")
                 field("下一步", text: $nextAction, prompt: "最小、具体的下一步动作")
                 field("完成标准", text: $definitionOfDone, prompt: "做到什么程度就可以结束？")
+                NextStepCompletionControls(store: store, taskID: task.id, nextAction: $nextAction, definitionOfDone: $definitionOfDone, expectedCompletedStepID: stepBaseline.lastCompletedID) {
+                    if let current = store.tasks.first(where: { $0.id == task.id }) { stepBaseline = NextStepDraftBaseline(current) }
+                    stepError = nil; focusedField = "下一步"
+                }
+                if let stepError { Text(stepError).font(Theme.Typography.secondary).foregroundColor(Theme.qUrgent) }
+
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("思考与备注").font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
@@ -325,6 +334,9 @@ private struct TaskDetailView: View {
     }
 
     private func save() {
+        guard let current = store.tasks.first(where: { $0.id == task.id }), stepBaseline.matches(current) else {
+            stepError = "下一步已在其他位置更新，草稿已保留。请重新打开任务查看最新内容。"; return
+        }
         let comps = Calendar.current.dateComponents([.hour, .minute], from: cueTime)
         let plan: ImplementationPlan? = hasImplementationPlan
             ? ImplementationPlan(kind: implementationKind,
@@ -334,13 +346,15 @@ private struct TaskDetailView: View {
                                  applicationBundleID: implementationKind == .openApplication ? applicationBundleID : nil,
                                  applicationName: implementationKind == .openApplication ? applicationName : nil)
             : nil
-        store.updateTaskDetails(task.id, text: title, note: note, nextAction: nextAction,
+        guard store.updateTaskDetails(task.id, text: title, note: note, nextAction: nextAction,
                                 dueAt: hasDue ? dueAt : nil,
                                 remindAt: hasReminder ? remindAt : nil,
                                 recurrence: hasReminder ? recurrence : nil,
                                 definitionOfDone: definitionOfDone,
                                 implementationPlan: plan,
-                                isDailyWin: isDailyWin)
+                                isDailyWin: isDailyWin) else {
+            stepError = store.persistenceIssue ?? "未能保存任务，草稿已保留。"; return
+        }
         if quadrant != task.quadrant { store.changeQuadrant(task.id, to: quadrant) }
         if estimate != task.estimatedMinutes { store.setEstimate(task.id, minutes: estimate) }
         if isParallelTask {
@@ -1367,6 +1381,7 @@ private struct TodayPlannerRow: View {
             }
             if !task.completed { FocusTimerButton(store: store, task: task, showsLabel: true) }
             if !task.completed { ParallelRunButton(store: store, task: task, showsLabel: true) }
+            if !task.completed { NextStepProgressButton(store: store, task: task) }
             TaskDetailsButton(store: store, task: task)
         }
         .padding(.horizontal, 11).padding(.vertical, 9)
@@ -1392,10 +1407,13 @@ private struct MomentumRescueView: View {
     @State private var nextAction: String
     @State private var definitionOfDone: String
     @State private var showAI = false
+    @State private var stepBaseline: NextStepDraftBaseline
+    @State private var stepError: String?
     @FocusState private var focusedField: String?
 
     init(store: Store, task: TaskItem, preset: BlockerReason?, isPresented: Binding<Bool>) {
         self.store = store; self.task = task; self.preset = preset; self._isPresented = isPresented
+        _stepBaseline = State(initialValue: NextStepDraftBaseline(task))
         _reason = State(initialValue: preset)
         _nextAction = State(initialValue: task.nextAction ?? "")
         _definitionOfDone = State(initialValue: task.definitionOfDone ?? "")
@@ -1433,6 +1451,12 @@ private struct MomentumRescueView: View {
                          prompt: "一个 5–15 分钟内能直接做的动作")
             compactField("最低完成版本", text: $definitionOfDone,
                          prompt: "做到什么程度，今天就算有进展？")
+            NextStepCompletionControls(store: store, taskID: task.id, nextAction: $nextAction, definitionOfDone: $definitionOfDone, expectedCompletedStepID: stepBaseline.lastCompletedID) {
+                if let current = store.tasks.first(where: { $0.id == task.id }) { stepBaseline = NextStepDraftBaseline(current) }
+                stepError = nil; focusedField = "最小下一步"
+            }
+            if let stepError { Text(stepError).font(Theme.Typography.secondary).foregroundColor(Theme.qUrgent) }
+
 
             Button { showAI = true } label: {
                 Label("帮我想一个起点", systemImage: "sparkles")
@@ -1511,7 +1535,10 @@ private struct MomentumRescueView: View {
     }
 
     private func save(start: Bool) {
-        store.setMomentumDetails(task.id, nextAction: nextAction, definitionOfDone: definitionOfDone)
+        guard store.updateNextAction(task.id, nextAction: nextAction, definitionOfDone: definitionOfDone,
+            expectedNextAction: stepBaseline.action, expectedDefinitionOfDone: stepBaseline.criterion, expectedCompletedStepID: stepBaseline.lastCompletedID) else {
+            stepError = store.persistenceIssue ?? "下一步已在其他位置更新，草稿已保留。"; return
+        }
         if let reason { store.recordBlocker(task.id, reason: reason) }
         store.setDailyWin(task.id)
         if start { _ = store.startTimer(task.id, targetMinutes: 5) }

@@ -34,7 +34,8 @@ import java.time.format.DateTimeFormatter
     onCommand:(ExecutionCommand,(Result<Unit>)->Unit)->Unit,
     onDismiss:()->Unit,
     otherFocusLabel:String?=null,
-    modifier:Modifier=Modifier
+    modifier:Modifier=Modifier,
+    nextStepContent:(@Composable ()->Unit)?=null
 ) {
     var external by rememberSaveable(task.id) {mutableStateOf(false)}
     var minutes by rememberSaveable(task.id) {mutableStateOf("5")}
@@ -64,7 +65,7 @@ import java.time.format.DateTimeFormatter
         title={Text(if(run==null) {if(external) "等结果" else "自己做"} else if(isExternal) "等待结果" else "正在专注",style=MaterialTheme.typography.titleLarge)},
         text={Column(Modifier.heightIn(max=520.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             Text(task.title(),style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurface)
-            task.content()?.get("nextAction")?.let {element ->
+            if(nextStepContent!=null)nextStepContent() else task.content()?.get("nextAction")?.let {element ->
                 val action=(element as? kotlinx.serialization.json.JsonPrimitive)?.content
                 if(!action.isNullOrBlank()) Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
                     Text("最小下一步",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)

@@ -1,6 +1,6 @@
 # Step Android（原 Pare）
 
-Current development build: **0.14.1 / code 20**. The approved C icon now uses the fuller silhouette and subtle material refinement confirmed in review-09. Package, database, account and WorkManager identities remain unchanged so existing installations can upgrade in place. See [icon refinement notes](../docs/releases/step-icon-refinement.md).
+Current development build: **0.15.0 / code 21**. The approved C icon now uses the fuller silhouette and subtle material refinement confirmed in review-09. Package, database, account and WorkManager identities remain unchanged so existing installations can upgrade in place. See [icon refinement notes](../docs/releases/step-icon-refinement.md).
 
 Kotlin + Compose offline client, Android 8.0 (API 26) or newer. The 0.13.3 development build (versionCode 18) connects Organize to Today, clarifies daily effort, surfaces the next step in task details, and adds a home-screen widget; it is not a production-signed store release. The previously accepted 0.8.0 baseline covers capture, task details, completion, Today planning, idea exploration with linked actions, blocker support, device-local focus/external execution, Android reminders, contextual AI, local reflection, email/password login and automatic synchronization.
 
@@ -89,3 +89,5 @@ Final 0.13 acceptance: 369 unit tests; 73 distinct device cases passed across in
 0.13.2 requests2×2 cells with110dp legacy minima and responsive compact/tall/expanded layouts. Active-focus content and controls identify the same task. 373 units pass;6 distinct relevant device cases pass across targeted runs; unsupported-launcher branch skips on this supporting launcher. Native rendering covers66 size/theme/font combinations, and actual placement verifies host/control geometry against public launcher grid diagnostics. Existing widgets may require manual resize/re-add. See [actual images and limits](../docs/releases/android-v0.13.2.md).
 
 0.13.3 refines widget typography, balanced wrapping, insets and action hierarchy. Ordinary repeated hints are hidden; important recovery/due/conflict states remain explicit. Capture becomes a quiet note icon with a48dp target; primary painted area is inset within its unchanged48dp target. Distinct layout IDs force native host reinflation for existing widgets. 374 unit tests and9 relevant device cases pass; the unsupported-launcher device branch skips on this supporting launcher. Lint has0errors/100warnings/1hint. See [actual screenshots and verification scope](../docs/releases/android-v0.13.3.md).
+
+Next-step completion: mark an individual action done, retain its history, undo safely and write a successor without completing the parent task. See [workflow notes](../docs/releases/step-next-step-completion.md).

@@ -295,6 +295,22 @@ public struct ParallelRunSession: Identifiable, Codable, Hashable {
     }
 }
 
+/// A completed smallest next action, independent of the parent task's lifecycle.
+public struct CompletedStep: Identifiable, Codable, Hashable {
+    public var id: UUID
+    public var text: String
+    public var completedAt: Date
+    public var definitionOfDone: String?
+
+    public init(id: UUID = UUID(), text: String, completedAt: Date,
+                definitionOfDone: String? = nil) {
+        self.id = id
+        self.text = text
+        self.completedAt = completedAt
+        self.definitionOfDone = definitionOfDone
+    }
+}
+
 /// A task that lives in a quadrant, optionally flagged as part of "today".
 public struct TaskItem: Identifiable, Codable, Hashable {
     public var id: UUID
@@ -325,6 +341,8 @@ public struct TaskItem: Identifiable, Codable, Hashable {
     /// somewhere to hold thought, a concrete next action and a real deadline.
     public var note: String?
     public var nextAction: String?
+    /// Optional so pre-history task snapshots continue to decode unchanged.
+    public var completedSteps: [CompletedStep]?
     public var dueAt: Date?
     /// Recurrence applies to `remindAt`, never implicitly to `dueAt`.
     public var recurrence: RecurrenceRule?
@@ -374,7 +392,8 @@ public struct TaskItem: Identifiable, Codable, Hashable {
                 lastImplementationTriggeredAt: Date? = nil,
                 progressSessions: [ProgressSession]? = nil,
                 parallelRunSessions: [ParallelRunSession]? = nil,
-                blockerEntries: [BlockerEntry]? = nil) {
+                blockerEntries: [BlockerEntry]? = nil,
+                completedSteps: [CompletedStep]? = nil) {
         self.id = id
         self.text = text
         self.quadrant = quadrant
@@ -388,6 +407,7 @@ public struct TaskItem: Identifiable, Codable, Hashable {
         self.lastProgressAt = lastProgressAt
         self.note = note
         self.nextAction = nextAction
+        self.completedSteps = completedSteps
         self.dueAt = dueAt
         self.recurrence = recurrence
         self.todayOrder = todayOrder

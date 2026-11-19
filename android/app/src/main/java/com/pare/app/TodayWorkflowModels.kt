@@ -27,6 +27,7 @@ class TodayWorkflowModel : ViewModel() {
     internal var smallStepBaseline: SmallStepBaseline? = null
     internal var allocationId = uid()
     internal var blockerEntryId = uid()
+    internal var completionId = uid()
     var kind by mutableStateOf("personal")
     var minutes by mutableStateOf("5")
     var reason by mutableStateOf("unclear")
@@ -75,6 +76,16 @@ class TodayWorkflowModel : ViewModel() {
         saving = false
         saved = result.isSuccess
         error = result.exceptionOrNull()?.message ?: if (result.isFailure) "保存失败，草稿已保留，请重试。" else null
+    }
+    internal fun finishStepChange(result:Result<Unit>,task:Entity?,submitted:Pair<String,String>) {
+        if(result.isSuccess && task!=null) {
+            smallStepBaseline=SmallStepBaseline.from(task)
+            if(submitted==nextAction to definitionOfDone) {
+                nextAction=smallStepBaseline!!.nextAction;definitionOfDone=smallStepBaseline!!.definitionOfDone
+            }
+            completionId=uid()
+        }
+        saving=false;error=result.exceptionOrNull()?.message
     }
     fun requestReload() { if (!saving) reloadRequested = true }
     fun cancelReload() { reloadRequested = false }

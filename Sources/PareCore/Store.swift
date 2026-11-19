@@ -759,15 +759,18 @@ public final class Store: ObservableObject {
     }
 
     /// Save the fields edited in the task inspector as one atomic user action.
+    @discardableResult
     public func updateTaskDetails(_ id: UUID, text: String, note: String?, nextAction: String?,
                                   dueAt: Date?, remindAt: Date?, recurrence: RecurrenceRule?,
                                   definitionOfDone: String? = nil,
                                   implementationPlan: ImplementationPlan? = nil,
                                   isDailyWin: Bool? = nil,
-                                  now: Date = Date()) {
-        guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
+                                  now: Date = Date()) -> Bool {
+        guard !loading, !persistenceLocked,
+              let i = tasks.firstIndex(where: { $0.id == id }) else { return false }
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
+        guard !t.isEmpty else { return false }
+        let previousTasks = tasks, previouslyUnsaved = hasUnsavedChanges
         tasks[i].text = t
         tasks[i].note = Self.nonBlank(note)
         tasks[i].nextAction = Self.nonBlank(nextAction)
@@ -785,7 +788,12 @@ public final class Store: ObservableObject {
             tasks[i].isDailyWin = false
         }
         tasks[i].lastProgressAt = now
-        save()
+        guard save() else {
+            tasks = previousTasks
+            hasUnsavedChanges = previouslyUnsaved
+            return false
+        }
+        return true
     }
 
     public func setToday(_ id: UUID, _ value: Bool, now: Date = Date()) {
@@ -857,6 +865,80 @@ public final class Store: ObservableObject {
         tasks[index].definitionOfDone = Self.nonBlank(definitionOfDone)
         tasks[index].lastProgressAt = now
         save()
+    }
+
+    /// Complete only the action the user saw. A stale or repeated click cannot
+    /// complete a replacement action, and success means the history is durable.
+    /// The expected history ID distinguishes successive actions with identical
+    /// text; nil explicitly expects that no completed step exists.
+    @discardableResult
+    public func completeNextAction(_ id: UUID, expectedNextAction: String,
+                                   expectedDefinitionOfDone: String?,
+                                   expectedCompletedStepID: UUID? = nil,
+                                   now: Date = Date()) -> CompletedStep? {
+        guard let index = tasks.firstIndex(where: { $0.id == id && !$0.completed }),
+              tasks[index].completedSteps?.last?.id == expectedCompletedStepID,
+              let action = Self.nonBlank(tasks[index].nextAction),
+              action == Self.nonBlank(expectedNextAction),
+              Self.nonBlank(tasks[index].definitionOfDone) == Self.nonBlank(expectedDefinitionOfDone) else { return nil }
+        let step = CompletedStep(text: action, completedAt: now,
+                                 definitionOfDone: Self.nonBlank(tasks[index].definitionOfDone))
+        guard persistNextActionMutation(at: index, { task in
+            task.completedSteps = (task.completedSteps ?? []) + [step]
+            task.nextAction = nil
+            task.definitionOfDone = nil
+            task.lastProgressAt = now
+        }) else { return nil }
+        return step
+    }
+
+    /// Undo only the latest completion while its cleared fields remain empty.
+    /// Later edits and the parent task's completion must never be overwritten.
+    @discardableResult
+    public func undoCompletedNextAction(_ id: UUID, stepID: UUID,
+                                        now: Date = Date()) -> Bool {
+        guard let index = tasks.firstIndex(where: { $0.id == id && !$0.completed }),
+              let step = tasks[index].completedSteps?.last, step.id == stepID,
+              Self.nonBlank(tasks[index].nextAction) == nil,
+              Self.nonBlank(tasks[index].definitionOfDone) == nil else { return false }
+        return persistNextActionMutation(at: index) { task in
+            task.nextAction = step.text
+            task.definitionOfDone = step.definitionOfDone
+            task.completedSteps?.removeLast()
+            task.lastProgressAt = now
+        }
+    }
+
+    /// Save a small action editor without replacing newer task or step fields.
+    /// Clearing the action also clears its completion criterion.
+    /// The history ID is the editor's baseline, including nil for no history.
+    @discardableResult
+    public func updateNextAction(_ id: UUID, nextAction: String, definitionOfDone: String?,
+                                 expectedNextAction: String?, expectedDefinitionOfDone: String?,
+                                 expectedCompletedStepID: UUID? = nil,
+                                 now: Date = Date()) -> Bool {
+        guard let index = tasks.firstIndex(where: { $0.id == id && !$0.completed }),
+              tasks[index].completedSteps?.last?.id == expectedCompletedStepID,
+              Self.nonBlank(tasks[index].nextAction) == Self.nonBlank(expectedNextAction),
+              Self.nonBlank(tasks[index].definitionOfDone) == Self.nonBlank(expectedDefinitionOfDone) else { return false }
+        let action = Self.nonBlank(nextAction)
+        return persistNextActionMutation(at: index) { task in
+            task.nextAction = action
+            task.definitionOfDone = action == nil ? nil : Self.nonBlank(definitionOfDone)
+            task.lastProgressAt = now
+        }
+    }
+
+    private func persistNextActionMutation(at index: Int, _ mutation: (inout TaskItem) -> Void) -> Bool {
+        guard !loading, !persistenceLocked else { return false }
+        let previous = tasks[index], previouslyUnsaved = hasUnsavedChanges
+        mutation(&tasks[index])
+        guard save() else {
+            tasks[index] = previous
+            hasUnsavedChanges = previouslyUnsaved
+            return false
+        }
+        return true
     }
 
     public func recordBlocker(_ id: UUID, reason: BlockerReason, now: Date = Date()) {
