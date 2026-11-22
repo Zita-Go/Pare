@@ -24,6 +24,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            desktop/**/*.gradle.kts
+            android/gradle/wrapper/gradle-wrapper.properties
       - name: Prepare public client configuration
         run: python desktop/configure.py --required
       - name: Locate WiX packaging tools
@@ -34,7 +38,7 @@ jobs:
           elseif (!(Get-Command candle.exe -ErrorAction SilentlyContinue)) { choco install wixtoolset --version=3.14.1 --yes --no-progress }
       - name: Test and build native Windows installers
         shell: pwsh
-        run: .\android\gradlew.bat -p desktop --no-daemon :core:test :app:test :app:packageExe :app:packageMsi
+        run: .\android\gradlew.bat -p desktop --no-daemon :core:test :app:test :app:createDistributable :app:packageExe :app:packageMsi
       - name: Verify installed executable with isolated data
         shell: pwsh
         run: |

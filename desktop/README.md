@@ -18,7 +18,7 @@ Windows使用仓库已有wrapper：
 
 ```powershell
 python desktop/configure.py --required
-.\android\gradlew.bat -p desktop :core:test :app:test :app:packageExe :app:packageMsi
+.\android\gradlew.bat -p desktop :core:test :app:test :app:createDistributable :app:packageExe :app:packageMsi
 ```
 
 同步公开配置由`STEP_SYNC_URL`/`STEP_SYNC_PUBLIC_KEY`提供，或本机被Git忽略的`backend/supabase/project.local.json`。生成器仅接受HTTPS地址与publishable客户端键；不允许管理员密钥进入客户端。不要把实际模型配置、任务、凭据或AI原始记录放进仓库。
