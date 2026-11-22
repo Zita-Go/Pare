@@ -45,6 +45,11 @@ public static class StepAcceptanceNative {
         public bool Flush(int timeoutMillis) {return Task.WaitAll(new [] {outputTask,errorTask},timeoutMillis);}
     }
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct Point { public int X,Y; }
+    [StructLayout(LayoutKind.Sequential)] struct GuiThreadInfo {
+        public int Size; public uint Flags;
+        public IntPtr Active,Focus,Capture,MenuOwner,MoveSize,Caret; public Rect CaretRect;
+    }
     [StructLayout(LayoutKind.Sequential)] struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
     [StructLayout(LayoutKind.Sequential)] struct MouseInput { public int X,Y; public uint Data,Flags,Time; public UIntPtr Extra; }
     [StructLayout(LayoutKind.Sequential)] struct KeyInput { public ushort Key,Scan; public uint Flags,Time; public UIntPtr Extra; }
@@ -65,6 +70,10 @@ public static class StepAcceptanceNative {
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc callback, IntPtr parameter);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr window,out Rect rect);
+    [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr window,ref Point point);
+    [DllImport("user32.dll")] static extern bool IsChild(IntPtr parent,IntPtr child);
+    [DllImport("user32.dll",SetLastError=true)] static extern bool GetGUIThreadInfo(uint thread,ref GuiThreadInfo info);
     [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out Rect rect, int size);
     [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr window,uint flags);
     [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool GetMonitorInfo(IntPtr monitor,ref MonitorInfo info);
@@ -106,6 +115,47 @@ public static class StepAcceptanceNative {
         public bool GeometryAvailable, PhysicalPixels, UsedDwm, FitsWorkingArea;
         public int DwmHresult, OverflowLeft, OverflowTop, OverflowRight, OverflowBottom;
         public string BoundsSource, Error;
+    }
+    public sealed class InputSurfaceState {
+        public bool Foreground,NativeFocusWithinWindow;
+        public long FocusWindow; public string FocusClass,Error;
+        public int Width,Height,DistinctColors,SampledPixels,ChangedPixels;
+        internal int[] Pixels;
+    }
+    public static InputSurfaceState InputSurface(IntPtr window,InputSurfaceState previous) {
+        var state=new InputSurfaceState();IntPtr context=IntPtr.Zero;
+        try {
+            state.Foreground=GetForegroundWindow()==window;
+            uint pid;uint thread=GetWindowThreadProcessId(window,out pid);
+            var gui=new GuiThreadInfo();gui.Size=Marshal.SizeOf(gui);
+            if(!GetGUIThreadInfo(thread,ref gui)) {state.Error="GetGUIThreadInfo failed";return state;}
+            state.FocusWindow=gui.Focus.ToInt64();
+            state.NativeFocusWithinWindow=gui.Focus==window||IsChild(window,gui.Focus);
+            var name=new StringBuilder(128);GetClassName(gui.Focus,name,name.Capacity);state.FocusClass=name.ToString();
+            if(!state.Foreground)return state;
+            context=SetThreadDpiAwarenessContext(new IntPtr(-4));
+            if(context==IntPtr.Zero)context=SetThreadDpiAwarenessContext(new IntPtr(-3));
+            if(context==IntPtr.Zero){state.Error="Physical-pixel context unavailable";return state;}
+            Rect client;var origin=new Point();
+            if(!GetClientRect(window,out client)||!ClientToScreen(window,ref origin)){state.Error="Client geometry unavailable";return state;}
+            state.Width=client.Right-client.Left;state.Height=client.Bottom-client.Top;
+            if(state.Width<100||state.Height<100)return state;
+            state.Pixels=new int[48*32];var colors=new HashSet<int>();int index=0;
+            using(var bitmap=new Bitmap(state.Width,state.Height)) {
+                using(var graphics=Graphics.FromImage(bitmap))graphics.CopyFromScreen(origin.X,origin.Y,0,0,bitmap.Size);
+                for(int y=0;y<32;y++)for(int x=0;x<48;x++) {
+                    int color=bitmap.GetPixel((2*x+1)*state.Width/96,(2*y+1)*state.Height/64).ToArgb()&0x00f8f8f8;
+                    state.Pixels[index++]=color;colors.Add(color);
+                }
+            }
+            state.SampledPixels=state.Pixels.Length;state.DistinctColors=colors.Count;
+            state.ChangedPixels=state.SampledPixels;
+            if(previous!=null&&previous.Pixels!=null&&previous.Width==state.Width&&previous.Height==state.Height) {
+                state.ChangedPixels=0;for(int i=0;i<state.Pixels.Length;i++)if(state.Pixels[i]!=previous.Pixels[i])state.ChangedPixels++;
+            }
+        } catch(Exception error){state.Error=error.GetType().Name+": "+error.Message;}
+        finally{if(context!=IntPtr.Zero)SetThreadDpiAwarenessContext(context);}
+        return state;
     }
     public static WindowBounds Bounds(IntPtr window) {
         var result=new WindowBounds();IntPtr previous=IntPtr.Zero;

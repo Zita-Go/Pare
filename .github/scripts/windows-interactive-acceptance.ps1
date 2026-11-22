@@ -354,9 +354,35 @@ function Ensure-Capture {
     if ($visible.Count) {return $visible[0]}
     return (Open-Capture)
 }
+function Wait-CaptureSurface([long]$handle) {
+    # This is only a pre-input gate, not acceptance of editing. Require a foreground native
+    # focus target and three stable, nonblank client-paint samples (caret-sized changes are
+    # allowed). Exact ASCII copy/readback remains the actual editor-readiness assertion.
+    $timer=[Diagnostics.Stopwatch]::StartNew();$previous=$null;$stable=0;$samples=0;$state=$null
+    do {
+        $state=[StepAcceptanceNative]::InputSurface([IntPtr]$handle,$previous);$samples++
+        if ($state.Foreground -and $state.NativeFocusWithinWindow -and $state.SampledPixels -gt 0 -and $state.DistinctColors -ge 4 -and $state.ChangedPixels -le [Math]::Max(2,[int]($state.SampledPixels/100))) {$stable++} else {$stable=0}
+        if ($stable -ge 3) {return @{ready=$true;elapsedMillis=$timer.ElapsedMilliseconds;samples=$samples;stableSamples=$stable;nativeState=$state}}
+        $previous=$state
+        Start-Sleep -Milliseconds 150
+    } while ($timer.Elapsed.TotalSeconds -lt 4)
+    return @{ready=$false;elapsedMillis=$timer.ElapsedMilliseconds;samples=$samples;stableSamples=$stable;nativeState=$state}
+}
+function Save-CaptureReadinessFailure([long]$handle,[string]$name,$evidence) {
+    Write-JsonFile (Join-Path $OutputDirectory ($name+'-failure.json')) $evidence
+    try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$handle,(Join-Path $OutputDirectory ($name+'-failure.png')))}
+    catch {Result ($name+'_screenshot') 'unsupported' (Error-Detail $_)}
+}
 function Reset-CaptureEditor([long]$handle,[string]$checkName) {
     if (!$disposable) {throw 'Editor readiness uses only the fictional disposable profile.'}
     Require-ClipboardIdle
+    Focus-Step $handle
+    $surface=Wait-CaptureSurface $handle
+    if (!$surface.ready) {
+        Save-CaptureReadinessFailure $handle $checkName $surface
+        Result $checkName 'fail' 'Pre-input native focus/client-paint gate did not settle within four seconds; no typing or copy was sent.' $surface
+        throw 'Capture native focus or client paint was not ready; see the failure JSON/PNG.'
+    }
     $timer=[Diagnostics.Stopwatch]::StartNew();$proof=$null;$attempt=0
     do {
         $attempt++;Focus-Step $handle
@@ -371,7 +397,8 @@ function Reset-CaptureEditor([long]$handle,[string]$checkName) {
         [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
         [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x08))
     }
-    Result $checkName $(if($proof.exactReadback){'pass'}else{'fail'}) 'Confirmed real ASCII typing and Ctrl+A/C readback, then sent native Ctrl+A/Backspace to clear the fictional field. Retries depend on observed readiness, not a blind delay.' @{ready=$proof.exactReadback;attempts=$attempt;elapsedMillis=$timer.ElapsedMilliseconds;readback=$proof;clearKeysSent=$proof.exactReadback}
+    if (!$proof.exactReadback) {Save-CaptureReadinessFailure $handle $checkName @{surfaceBeforeInput=$surface;readback=$proof;nativeStateAfterFailure=[StepAcceptanceNative]::InputSurface([IntPtr]$handle,$null)}}
+    Result $checkName $(if($proof.exactReadback){'pass'}else{'fail'}) 'Confirmed real ASCII typing and Ctrl+A/C readback, then sent native Ctrl+A/Backspace to clear the fictional field. Retries depend on observed readiness, not a blind delay.' @{ready=$proof.exactReadback;attempts=$attempt;elapsedMillis=$timer.ElapsedMilliseconds;surfaceBeforeInput=$surface;readback=$proof;clearKeysSent=$proof.exactReadback}
     Require-ClipboardIdle
     return [bool]$proof.exactReadback
 }
