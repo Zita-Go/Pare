@@ -52,6 +52,12 @@ $utf8 = New-Object Text.UTF8Encoding($false)
 $checks = [ordered]@{}
 $probe = [ordered]@{}
 $processes = New-Object 'Collections.Generic.List[Diagnostics.Process]'
+$loggedProcesses = @{}
+$launchNumber = 0
+$helperNumber = 0
+$stepTrees = @{}
+$languageChanged = $false
+$originalLanguageList = $null
 $disposable = $env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted'
 $profileIdHash = [Security.Cryptography.SHA256]::Create()
 try { $profileId = ([BitConverter]::ToString($profileIdHash.ComputeHash($utf8.GetBytes($DataDirectory)))).Replace('-','').ToLowerInvariant().Substring(0,12) }
@@ -88,28 +94,139 @@ function Wait-Until([scriptblock]$condition,[int]$seconds=20) {
     do { if (& $condition) {return $true}; Start-Sleep -Milliseconds 200 } while ($timer.Elapsed.TotalSeconds -lt $seconds)
     return $false
 }
+function Get-ProcessExitCode($process) {
+    $process.Refresh()
+    if (!$process.HasExited) {throw 'Cannot read exit code before process exit.'}
+    if ($loggedProcesses.ContainsKey($process.Id)) {return $loggedProcesses[$process.Id].ReadExitCode()}
+    return $process.ExitCode
+}
+function Flush-ProcessLogs($process) {
+    if ($loggedProcesses.ContainsKey($process.Id) -and $process.HasExited) {
+        if (!$loggedProcesses[$process.Id].Flush(5000)) {throw 'Process exited but its output pipes did not close within five seconds.'}
+    }
+}
+function Update-FixtureTree($process) {
+    if (!$stepTrees.ContainsKey($process.Id)) {$stepTrees[$process.Id]=@{known=@{};names=@{};complete=$true;error=$null}}
+    $tree=$stepTrees[$process.Id];$tree.known[$process.Id]=$process
+    if (!$tree.names.ContainsKey($process.Id)) {try {$tree.names[$process.Id]=$process.ProcessName} catch {$tree.names[$process.Id]='unknown'}}
+    try {
+        $all=@(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,Name,CreationDate -OperationTimeoutSec 3)
+        for ($depth=0;$depth -lt 8;$depth++) {
+            $changed=$false
+            foreach ($item in $all) {
+                $childId=[int]$item.ProcessId;$parentId=[int]$item.ParentProcessId
+                if ($tree.known.ContainsKey($parentId) -and !$tree.known.ContainsKey($childId)) {
+                    $parent=$tree.known[$parentId]
+                    # A reused parent PID must not adopt an unrelated process.
+                    if ($item.CreationDate.ToUniversalTime() -lt $parent.StartTime.ToUniversalTime()) {continue}
+                    if ($parent.HasExited -and $item.CreationDate.ToUniversalTime() -gt $parent.ExitTime.ToUniversalTime()) {continue}
+                    $child=Get-Process -Id $childId -ErrorAction SilentlyContinue
+                    if ($null -ne $child) {
+                        [void]$child.Handle
+                        if ([Math]::Abs(($child.StartTime.ToUniversalTime()-$item.CreationDate.ToUniversalTime()).TotalSeconds) -lt 1) {
+                            $tree.known[$childId]=$child;$tree.names[$childId]=[IO.Path]::GetFileNameWithoutExtension($item.Name);$changed=$true
+                        }
+                    }
+                }
+            }
+            if (!$changed) {break}
+        }
+    } catch {$tree.complete=$false;$tree.error=Error-Detail $_}
+    return $tree
+}
+function Get-StepWindows($process) {
+    $tree=Update-FixtureTree $process
+    foreach ($member in @($tree.known.Values)) {if (!$member.HasExited) {[StepAcceptanceNative]::Windows($member.Id)}}
+}
+function Restore-TestLanguages {
+    if (!$languageChanged) {return}
+    try {
+        Set-WinUserLanguageList -LanguageList $originalLanguageList -Force -WarningAction SilentlyContinue
+        $after=@(Get-WinUserLanguageList | ForEach-Object {@{language=$_.LanguageTag;inputMethodTips=@($_.InputMethodTips)}})
+        $expected=@($originalLanguageList | ForEach-Object {@{language=$_.LanguageTag;inputMethodTips=@($_.InputMethodTips)}})
+        $same=($after | ConvertTo-Json -Depth 5 -Compress) -eq ($expected | ConvertTo-Json -Depth 5 -Compress)
+        Result 'input_languages_restored' $(if($same){'pass'}else{'fail'}) 'Restored the original current-user language list and input method tips.' @{profiles=$after}
+        if ($same) {$script:languageChanged=$false}
+    } catch {Result 'input_languages_restored' 'fail' (Error-Detail $_)}
+}
+function Write-ProcessDiagnostic($process,[string]$stage) {
+    $snapshot=[ordered]@{stage=$stage;launchProcessId=$process.Id;capturedUtc=[DateTimeOffset]::UtcNow.ToString('o');relatedProcesses=@()}
+    try {
+        $process.Refresh();$snapshot.exited=$process.HasExited
+        if ($process.HasExited) {$snapshot.exitCode=Get-ProcessExitCode $process;Flush-ProcessLogs $process}
+    } catch {$snapshot.processStateError=Error-Detail $_}
+    if ($loggedProcesses.ContainsKey($process.Id)) {
+        $logged=$loggedProcesses[$process.Id]
+        $snapshot.stdout=[IO.Path]::GetFileName($logged.StandardOutputPath)
+        $snapshot.stderr=[IO.Path]::GetFileName($logged.StandardErrorPath)
+    }
+    # Query identities/ancestry only. Never dump unrelated command lines or environment.
+    try {
+        $all=@(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,Name,SessionId -OperationTimeoutSec 3)
+        $ids=New-Object 'Collections.Generic.HashSet[int]';[void]$ids.Add($process.Id)
+        for ($depth=0;$depth -lt 8;$depth++) {
+            $changed=$false
+            foreach ($item in $all) {if ($ids.Contains([int]$item.ParentProcessId) -and $ids.Add([int]$item.ProcessId)) {$changed=$true}}
+            if (!$changed) {break}
+        }
+        foreach ($item in @($all | Where-Object {$ids.Contains([int]$_.ProcessId)} | Select-Object -First 16)) {
+            $snapshot.relatedProcesses+=@{processId=$item.ProcessId;parentId=$item.ParentProcessId;name=$item.Name;sessionId=$item.SessionId;windows=@([StepAcceptanceNative]::Windows([int]$item.ProcessId,$false))}
+        }
+        if (!@($snapshot.relatedProcesses | Where-Object {$_.processId -eq $process.Id}).Count) {
+            $snapshot.relatedProcesses+=@{processId=$process.Id;notInLiveSnapshot=$true;windows=@([StepAcceptanceNative]::Windows($process.Id,$false))}
+        }
+    } catch {$snapshot.ancestryError=Error-Detail $_}
+    $name='process-'+$process.Id+'-'+$stage+'.json'
+    Write-JsonFile (Join-Path $OutputDirectory $name) $snapshot
+    return $name
+}
 function Start-Step([string[]]$arguments) {
+    $script:launchNumber++
+    $label='step-launch-'+$script:launchNumber.ToString('00')
     $quoted = @($arguments | ForEach-Object { '"'+$_+'"' }) -join ' '
-    $p = Start-Process -FilePath $Executable -ArgumentList $quoted -PassThru
+    $logged=[StepAcceptanceNative+ProcessLog]::new($Executable,$quoted,(Join-Path $OutputDirectory ($label+'.stdout.log')),(Join-Path $OutputDirectory ($label+'.stderr.log')),$false)
+    $p=$logged.Process
+    $loggedProcesses[$p.Id]=$logged
     $processes.Add($p)
+    [void](Update-FixtureTree $p)
+    [void](Write-ProcessDiagnostic $p 'started')
     return $p
 }
 function Stop-Step($process) {
     if ($null -eq $process) {return}
-    if ($process.HasExited) {
-        $script:lastExitEvidence=@{processId=$process.Id;confirmedExited=$true;forced=$false;exitObservedUtc=[DateTimeOffset]::UtcNow.ToString('o')}
-        return
+    $tree=Update-FixtureTree $process
+    $closeRequested=$false;$forced=$false
+    foreach ($member in @($tree.known.Values)) {
+        if ($member.HasExited) {continue}
+        foreach ($w in @([StepAcceptanceNative]::Windows($member.Id))) {
+            if ($w.Title -eq 'Step' -and [StepAcceptanceNative]::PostMessage([IntPtr]$w.Handle,0x10,[IntPtr]::Zero,[IntPtr]::Zero)) {$closeRequested=$true}
+        }
     }
-    foreach ($w in @([StepAcceptanceNative]::Windows($process.Id))) {
-        if ($w.Title -eq 'Step') {[void][StepAcceptanceNative]::PostMessage([IntPtr]$w.Handle,0x10,[IntPtr]::Zero,[IntPtr]::Zero)}
+    $timer=[Diagnostics.Stopwatch]::StartNew()
+    do {
+        $tree=Update-FixtureTree $process
+        $live=@($tree.known.Values | Where-Object {!$_.HasExited})
+        if (!$live.Count) {break}
+        Start-Sleep -Milliseconds 300
+    } while ($timer.Elapsed.TotalSeconds -lt 10)
+    if ($live.Count) {
+        [void](Write-ProcessDiagnostic $process 'before-forced-stop')
+        foreach ($member in $live) {
+            # Only descendants of this explicitly launched fixture are candidates. Unknown
+            # child executables are left alone and make process-tree exit unconfirmed.
+            if ($tree.names[$member.Id] -in @('Step','java','javaw','powershell')) {
+                $forced=$true;try {$member.Kill();[void]$member.WaitForExit(5000)} catch {}
+            }
+        }
     }
-    $forced=$false
-    if (!$process.WaitForExit(10000)) {
-        $forced=$true;$process.Kill()
-        if (!$process.WaitForExit(5000)) {throw 'Isolated Step still has not exited after termination; after-exit acceptance is invalid.'}
-    }
-    if (!$process.HasExited) {throw 'Isolated Step exit could not be confirmed.'}
-    $script:lastExitEvidence=@{processId=$process.Id;confirmedExited=$true;forced=$forced;exitObservedUtc=[DateTimeOffset]::UtcNow.ToString('o')}
+    $tree=Update-FixtureTree $process
+    $live=@($tree.known.Values | Where-Object {!$_.HasExited})
+    $treeExited=$tree.complete -and $live.Count -eq 0
+    $code=$null;if($process.HasExited){$code=Get-ProcessExitCode $process;if($treeExited){Flush-ProcessLogs $process}}
+    $members=@($tree.known.Values | ForEach-Object {@{processId=$_.Id;name=$tree.names[$_.Id];exited=$_.HasExited;exitCode=$(if($_.HasExited){Get-ProcessExitCode $_}else{$null})}})
+    $badAppExit=@($members | Where-Object {$_.name -in @('Step','java','javaw') -and $_.exitCode -ne 0}).Count -gt 0
+    $script:lastExitEvidence=@{processId=$process.Id;confirmedExited=$process.HasExited;processTreeExited=$treeExited;treeObservationComplete=$tree.complete;treeError=$tree.error;relatedProcesses=$members;forced=$forced;normalExitObserved=($treeExited -and !$forced -and !$badAppExit -and $closeRequested -and $code -eq 0);closeRequested=$closeRequested;exitCode=$code;exitObservedUtc=[DateTimeOffset]::UtcNow.ToString('o')}
+    [void](Write-ProcessDiagnostic $process 'exited')
 }
 function Get-Inbox {
     $path=Join-Path $DataDirectory 'sync-state.json'
@@ -124,22 +241,36 @@ function Focus-Step([long]$handle) {
 }
 function Open-Capture {
     [StepAcceptanceNative]::Chord([ushort[]]@(0x11,0x10,0x20))
-    if (!(Wait-Until { @([StepAcceptanceNative]::Windows($uiProcess.Id) | Where-Object {$_.Title -like 'Step*随手记*'}).Count -gt 0 } 8)) {throw 'Ctrl+Shift+Space did not reveal the Step quick-capture window.'}
-    return @([StepAcceptanceNative]::Windows($uiProcess.Id) | Where-Object {$_.Title -like 'Step*随手记*'})[0]
+    if (!(Wait-Until { @(Get-StepWindows $uiProcess | Where-Object {$_.Title -like 'Step*随手记*'}).Count -gt 0 } 8)) {throw 'Ctrl+Shift+Space did not reveal the Step quick-capture window.'}
+    return @(Get-StepWindows $uiProcess | Where-Object {$_.Title -like 'Step*随手记*'})[0]
 }
 function Invoke-PackagedHelper([string]$operation,[hashtable]$payload) {
+    $script:helperNumber++
+    $label='helper-'+$script:helperNumber.ToString('00')+'-'+$operation
     $request=@{operation=$operation;home=$DataDirectory;executable=$Executable;profile=$profileId;appId=$appId;scheme=('step-'+$profileId)}
     foreach ($key in $payload.Keys) {$request[$key]=$payload[$key]}
-    $requestPath=Join-Path $OutputDirectory ('helper-'+$operation+'.json')
+    $requestPath=Join-Path $OutputDirectory ($label+'.request.json')
     Write-JsonFile $requestPath $request
-    $stdout=Join-Path $OutputDirectory ('helper-'+$operation+'.out')
-    $stderr=Join-Path $OutputDirectory ('helper-'+$operation+'.err')
+    $stdout=Join-Path $OutputDirectory ($label+'.stdout.log')
+    $stderr=Join-Path $OutputDirectory ($label+'.stderr.log')
+    $command='-NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File "'+$helper+'" -InputFile "'+$requestPath+'"'
+    $logged=[StepAcceptanceNative+ProcessLog]::new("$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe",$command,$stdout,$stderr,$true)
+    $p=$logged.Process
+    $loggedProcesses[$p.Id]=$logged
+    $processes.Add($p)
     try {
-        $p=Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','RemoteSigned','-File',('"'+$helper+'"'),'-InputFile',('"'+$requestPath+'"')) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
-        if (!$p.WaitForExit(35000)) {$p.Kill();throw 'Packaged notification helper timed out.'}
-        if ($p.ExitCode -ne 0) {throw ('Packaged notification helper exit '+$p.ExitCode)}
+        if (!$p.WaitForExit(35000)) {
+            $p.Kill()
+            if (!$p.WaitForExit(5000)) {throw ('Packaged helper remained alive after timeout; inspect '+$label+' logs.')}
+            throw ('Packaged helper timed out; inspect '+$label+' logs.')
+        }
+        $code=Get-ProcessExitCode $p;Flush-ProcessLogs $p
+        if ($code -ne 0) {throw ('Packaged notification helper exit '+$code+'; inspect '+$label+'.stderr.log')}
         return (Get-Content -LiteralPath $stdout -Raw -Encoding UTF8).Trim()
-    } finally {foreach ($path in @($requestPath,$stdout,$stderr)) {Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue}}
+    } finally {
+        # These requests contain only this fictional profile. Keep every attempt and failure log.
+        [void](Write-ProcessDiagnostic $p 'helper-finished')
+    }
 }
 function Get-ToastEvidence([string]$tag,[string]$marker,[bool]$tryVisible) {
     $history=$false;$historyError=$null;$visible=$false
@@ -183,6 +314,7 @@ function Is-ReminderHandled($event) {
     return @($ledger.handled) -contains $event.token
 }
 function Wait-Reminder($event,[int]$seconds=90) {
+    if (!$event.exitEvidence.processTreeExited) {return @{handled=$false;observationSkipped=$true;exitScope='unconfirmed-process-tree';exitEvidence=$event.exitEvidence;detail='Known fixture descendants were not all confirmed exited; no after-exit claim is possible.'}}
     $taskObservation=@{lastRunUtc=$null;lastTaskResult=$null}
     $handled=Wait-Until {
         # Step removes a handled task itself. Observe real Scheduler state while it exists,
@@ -199,7 +331,8 @@ function Wait-Reminder($event,[int]$seconds=90) {
             return @($ledger.handled) -contains $event.token
         } catch {return $false}
     } $seconds
-    $evidence=@{handled=$handled;exitEvidence=$event.exitEvidence;taskSchedulerObservation=$taskObservation;dueUtc=[DateTimeOffset]::FromUnixTimeMilliseconds($event.atMillis).ToString('o');observedUtc=[DateTimeOffset]::UtcNow.ToString('o');scheduledAction='packaged Step --deliver-reminder';manuallyInvoked=$false}
+    $exitScope=if($event.exitEvidence.normalExitObserved){'normal-exit'}elseif($event.exitEvidence.forced){'forced-termination'}else{'unexpected-or-unverified-exit'}
+    $evidence=@{handled=$handled;observationSkipped=$false;schedulerEvidenceLimit='Step may delete its task before polling observes LastRunTime; null is not proof of an observed Scheduler run.';exitScope=$exitScope;exitEvidence=$event.exitEvidence;taskSchedulerObservation=$taskObservation;dueUtc=[DateTimeOffset]::FromUnixTimeMilliseconds($event.atMillis).ToString('o');observedUtc=[DateTimeOffset]::UtcNow.ToString('o');scheduledAction='packaged Step --deliver-reminder';manuallyInvoked=$false}
     if ($handled) {
         $sha=[Security.Cryptography.SHA256]::Create()
         try {$tag=([BitConverter]::ToString($sha.ComputeHash($utf8.GetBytes($event.token)))).Replace('-','').ToLowerInvariant().Substring(0,16)} finally {$sha.Dispose()}
@@ -243,15 +376,36 @@ try {
         foreach ($name in @('window_open','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling','notification_history','notification_visible','scheduled_delivery','lock_screen_delivery')) {Result $name 'unsupported' 'No interactive operations attempted outside the disposable runner.'}
         return
     }
+    if (!$pinyinAvailable -and $probe.pinyinTipRegistered) {
+        try {
+            $originalLanguageList=Get-WinUserLanguageList
+            $testLanguageList=Get-WinUserLanguageList
+            if (!@($testLanguageList | Where-Object {$_.LanguageTag -eq 'zh-CN'}).Count) {$testLanguageList.Add('zh-CN')}
+            $chinese=@($testLanguageList | Where-Object {$_.LanguageTag -eq 'zh-CN'})[0]
+            if ($chinese.InputMethodTips -notcontains $pinyinTip) {$chinese.InputMethodTips.Add($pinyinTip)}
+            $languageChanged=$true
+            $languageWarnings=@()
+            Set-WinUserLanguageList -LanguageList $testLanguageList -Force -WarningVariable languageWarnings -WarningAction SilentlyContinue
+            $after=@(Get-WinUserLanguageList | ForEach-Object {@{language=$_.LanguageTag;inputMethodTips=@($_.InputMethodTips)}})
+            $pinyinAvailable=@($after | Where-Object {$_.inputMethodTips -contains $pinyinTip}).Count -gt 0
+            Result 'pinyin_profile_configuration' $(if($pinyinAvailable){'pass'}else{'unsupported'}) 'Appended the already-registered Microsoft Pinyin profile only on this disposable VM; original languages are retained. No package installation or login is performed.' @{before=$probe.inputLanguages;after=$after;warnings=@($languageWarnings | ForEach-Object {$_.ToString()} | Select-Object -First 3)}
+        } catch {Result 'pinyin_profile_configuration' 'unsupported' (Error-Detail $_)}
+    }
     $seed=Start-Step @('--self-test','--data-dir',$DataDirectory)
     if (!$seed.WaitForExit(45000)) {$seed.Kill();throw 'Packaged fixture self-test timed out.'}
-    if ($seed.ExitCode -ne 0 -or !(Test-Path -LiteralPath (Join-Path $DataDirectory 'smoke-result.json'))) {throw 'Packaged fixture self-test failed.'}
+    $seedCode=Get-ProcessExitCode $seed;Flush-ProcessLogs $seed
+    [void](Write-ProcessDiagnostic $seed 'self-test-finished')
+    if ($seedCode -ne 0 -or !(Test-Path -LiteralPath (Join-Path $DataDirectory 'smoke-result.json'))) {throw 'Packaged fixture self-test failed.'}
     [IO.File]::WriteAllText((Join-Path $DataDirectory 'window.properties'),"keepInTray=false`n",$utf8)
     if ($interactive) {
         try {
             $uiProcess=Start-Step @('--data-dir',$DataDirectory)
-            if (!(Wait-Until { @([StepAcceptanceNative]::Windows($uiProcess.Id) | Where-Object {$_.Title -eq 'Step'}).Count -gt 0 } 35)) {throw 'No visible Step main window within 35 seconds.'}
-            $main=@([StepAcceptanceNative]::Windows($uiProcess.Id) | Where-Object {$_.Title -eq 'Step'})[0]
+            if (!(Wait-Until { @(Get-StepWindows $uiProcess | Where-Object {$_.Title -eq 'Step'}).Count -gt 0 } 35)) {
+                $diagnostic=Write-ProcessDiagnostic $uiProcess 'window-timeout'
+                Result 'window_discovery' 'fail' 'Harness did not find the expected visible top-level Step window. Startup logs and all related process windows must distinguish product startup from discovery failure.' @{diagnostic=$diagnostic}
+                throw ('No matching Step window for launch PID within 35 seconds; inspect '+$diagnostic+' and referenced stdout/stderr.')
+            }
+            $main=@(Get-StepWindows $uiProcess | Where-Object {$_.Title -eq 'Step'})[0]
             Focus-Step $main.Handle
             Start-Sleep -Seconds 2
             Result 'window_open' 'pass' 'Packaged Step has a visible foreground main window.' $main
@@ -283,12 +437,15 @@ try {
                     $capture=Open-Capture;Focus-Step $capture.Handle
                     $originalLayout=[StepAcceptanceNative]::WindowKeyboardLayout([IntPtr]$capture.Handle)
                     $before=@(Get-Inbox | ForEach-Object {$_.id})
+                    $imeActivated=$false
                     if (![StepAcceptanceNative]::RequestChineseInput([IntPtr]$capture.Handle)) {throw 'No loaded Chinese input locale accepted the language-change request.'}
                     Start-Sleep -Milliseconds 400
                     $activation=[StepAcceptanceNative]::ActivatePinyin()
                     Start-Sleep -Milliseconds 700
                     $targetLayout=[StepAcceptanceNative]::WindowKeyboardLayout([IntPtr]$capture.Handle)
                     if ($activation -ne 0 -or ($targetLayout -band 0xffff) -ne 0x804) {throw 'Configured Microsoft Pinyin did not activate for the Step window.'}
+                    $imeActivated=$true
+                    Result 'pinyin_activation' 'pass' 'Registered Pinyin activated in the current session without signing in again.' @{activationHresult=$activation;targetLanguageId=($targetLayout -band 0xffff)}
                     [StepAcceptanceNative]::AsciiKeys('nihao')
                     Start-Sleep -Milliseconds 600
                     $candidate=[StepAcceptanceNative]::CandidateVisible()
@@ -298,14 +455,15 @@ try {
                     $converted=Wait-Until { @(Get-Inbox | Where-Object {$before -notcontains $_.id -and $_.payload.content.text -match '[\u4e00-\u9fff]'}).Count -gt 0 } 12
                     Result 'microsoft_pinyin' $(if($converted){'pass'}else{'fail'}) 'Real Microsoft Pinyin activated; only Latin virtual keys nihao and candidate commit were sent, then persisted Chinese was checked.' @{activationHresult=$activation;targetLanguageId=($targetLayout -band 0xffff);candidateWindowObserved=$candidate;chinesePersisted=$converted}
                     Result 'ime_candidate_layout' 'unsupported' 'Candidate-window observation alone cannot validate placement, clipping or all composition interactions.' @{candidateWindowObserved=$candidate}
-                } catch {Result 'microsoft_pinyin' 'fail' (Error-Detail $_)}
+                } catch {Result 'microsoft_pinyin' $(if((Get-Variable imeActivated -ErrorAction SilentlyContinue) -and $imeActivated){'fail'}else{'unsupported'}) ((Error-Detail $_)+'; no login, unlock or unregistered package installation attempted.')}
                 finally {if (Get-Variable originalLayout -ErrorAction SilentlyContinue) {[void][StepAcceptanceNative]::RestoreKeyboard($originalLayout)}}
-            } else {Result 'microsoft_pinyin' 'unsupported' 'Microsoft Pinyin is not in the configured Windows input method inventory; no Unicode result is counted as IME acceptance.'}
+            } else {Result 'microsoft_pinyin' 'unsupported' 'Microsoft Pinyin could not be made available from the existing registered/configured profiles in this session; no Unicode result counts as IME acceptance.'}
         } catch {Result 'interactive_input' 'fail' (Error-Detail $_)}
         finally {Stop-Step $uiProcess;$uiProcess=$null}
     } else {
         foreach ($name in @('window_open','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling')) {Result $name 'unsupported' 'Active interactive desktop prerequisite failed; see probe JSON.'}
     }
+    Restore-TestLanguages
     # Real notification and time-trigger tests are independent of keyboard automation.
     try {
         $event=Prepare-Reminder 70
@@ -327,11 +485,12 @@ try {
         Result 'notification_visible' $(if($toast.visibleTextObserved){'pass'}else{'unsupported'}) 'Pass requires the fictional title in a non-offscreen OS UI Automation element; API/history alone cannot pass.' $toast
         Stop-Step $uiProcess;$uiProcess=$null
         $event.exitEvidence=$script:lastExitEvidence
+        Result 'normal_exit_before_reminder' $(if($event.exitEvidence.normalExitObserved){'pass'}elseif($event.exitEvidence.closeRequested){'fail'}else{'unsupported'}) 'Normal exit requires WM_CLOSE, zero exit code and no forced kill. A sent close request that does not finish within ten seconds fails; no available main window is unsupported.' $event.exitEvidence
         if ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -ge $event.atMillis -or (Is-ReminderHandled $event)) {throw 'Reminder was due or already handled before Step fully exited; after-exit delivery cannot be claimed.'}
         $delivery=Wait-Reminder $event 95
-        Result 'scheduled_reminder_processing' $(if($delivery.handled){'pass'}else{'fail'}) 'Closed Step before the deadline, waited for its real OS time trigger, and checked the persisted handled token. No manual task Run or delivery command was issued.' $delivery
-        $deliveryStatus=if(!$delivery.handled){'fail'}elseif($delivery.toast.historyContainsTag){'pass'}elseif($delivery.toast.historyError){'unsupported'}else{'fail'}
-        Result 'scheduled_delivery' $deliveryStatus 'After-exit notification delivery additionally requires its real token-derived tag in OS notification history; visible display is a separate check.' $delivery
+        Result 'scheduled_reminder_processing' $(if($delivery.observationSkipped){'unsupported'}elseif($delivery.handled){'pass'}else{'fail'}) ('Termination scope: '+$delivery.exitScope+'. Waited for the real OS trigger after confirmed exit; checked the handled token. No manual task Run or delivery command was issued.') $delivery
+        $deliveryStatus=if($delivery.observationSkipped){'unsupported'}elseif(!$delivery.handled){'fail'}elseif($delivery.toast.historyContainsTag){'pass'}elseif($delivery.toast.historyError){'unsupported'}else{'fail'}
+        Result 'scheduled_delivery' $deliveryStatus ('Termination scope: '+$delivery.exitScope+'. Delivery requires its token-derived tag in OS history; this does not establish normal quit or visible display.') $delivery
     } catch {Result 'notification_and_schedule' 'fail' (Error-Detail $_)}
     finally {Stop-Step $uiProcess;$uiProcess=$null}
 
@@ -342,24 +501,26 @@ try {
             $event=Prepare-Reminder 35
             Stop-Step $uiProcess;$uiProcess=$null
             $event.exitEvidence=$script:lastExitEvidence
+            Result 'normal_exit_before_locked_reminder' $(if($event.exitEvidence.normalExitObserved){'pass'}elseif($event.exitEvidence.closeRequested){'fail'}else{'unsupported'}) 'Normal quit requires WM_CLOSE and clean exit within ten seconds; force after an attempted close fails, while unavailable close prerequisites are unsupported.' $event.exitEvidence
             Save-Report
             $observer=New-Object StepAcceptanceNative+LockObserver
             if (!$observer.Registered) {throw 'Could not subscribe to WTS session-lock events.'}
             $requested=[StepAcceptanceNative]::LockWorkStation()
             $locked=$observer.WaitForLock(8000)
             Result 'workstation_locked' $(if($locked){'pass'}else{'unsupported'}) 'Lock request is asynchronous; pass requires WTS_SESSION_LOCK for this process session. No unlock is attempted.' @{requestAccepted=$requested;wtsLockObserved=$locked}
-            $lockedBeforeDeadline=$locked -and [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $event.atMillis -and !(Is-ReminderHandled $event)
+            $lockedBeforeDeadline=$event.exitEvidence.processTreeExited -and $locked -and [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $event.atMillis -and !(Is-ReminderHandled $event)
             $delivery=Wait-Reminder $event 65
             $delivery.lockedBeforeDeadline=$lockedBeforeDeadline
-            Result 'locked_reminder_processing' $(if(!$lockedBeforeDeadline){'unsupported'}elseif($delivery.handled){'pass'}else{'fail'}) 'Checked the persisted handled token after an actual time trigger while WTS reported this session locked.' $delivery
+            Result 'locked_reminder_processing' $(if(!$lockedBeforeDeadline){'unsupported'}elseif($delivery.handled){'pass'}else{'fail'}) ('Termination scope: '+$delivery.exitScope+'. Checked the handled token after an actual time trigger while WTS reported this session locked.') $delivery
             $deliveryStatus=if(!$lockedBeforeDeadline){'unsupported'}elseif(!$delivery.handled){'fail'}elseif($delivery.toast.historyContainsTag){'pass'}elseif($delivery.toast.historyError){'unsupported'}else{'fail'}
-            Result 'lock_screen_delivery' $deliveryStatus 'Requires both processing while locked and the matching tag in OS notification history; this does not prove lock-screen visual display.' $delivery
+            Result 'lock_screen_delivery' $deliveryStatus ('Termination scope: '+$delivery.exitScope+'. Requires processing while locked and matching OS history; normal quit and lock-screen visibility are separate checks.') $delivery
             Result 'lock_screen_visible' 'unsupported' 'Secure lock-screen pixels and user perception cannot be verified from this process; no unlock or credential access attempted.'
         } catch {Result 'lock_screen_delivery' 'fail' (Error-Detail $_)}
         finally {if($null -ne $observer){$observer.Dispose()}}
     } else {Result 'lock_screen_delivery' 'unsupported' 'Requires -AttemptLock, an interactive desktop, notification setup and a disposable GitHub-hosted VM. Locking is deliberately the final stage.'}
 } catch {Result 'harness' 'fail' (Error-Detail $_)}
 finally {
+    Restore-TestLanguages
     foreach ($p in $processes) {try {if (!$p.HasExited) {Stop-Step $p}} catch {}}
     # A task-triggered process was not started by Start-Step. Stop only the same packaged
     # executable whose command explicitly points at this newly-created fictional profile.
@@ -380,7 +541,7 @@ finally {
             Result 'cleanup' $(if(!$cleaned.shortcut -and !$cleaned.protocol -and !$cleaned.taskFolder){'pass'}else{'fail'}) 'Removed only isolated Step notification registrations and scheduled-task folder.' $cleaned
         } catch {Result 'cleanup' 'fail' (Error-Detail $_)}
     }
-    foreach ($required in @('window_open','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling','notification_registration','notification_show_api','notification_history','notification_visible','scheduled_delivery','lock_screen_delivery','lock_screen_visible')) {
+    foreach ($required in @('window_open','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling','notification_registration','notification_show_api','notification_history','notification_visible','scheduled_delivery','normal_exit_before_reminder','normal_exit_before_locked_reminder','lock_screen_delivery','lock_screen_visible')) {
         if (!$checks.Contains($required)) {Result $required 'unsupported' 'Not reached because an earlier prerequisite/check failed; see other checks and probe JSON.'}
     }
     Save-Report

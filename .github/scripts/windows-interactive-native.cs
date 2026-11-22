@@ -7,13 +7,43 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Automation;
 using System.Windows.Forms;
 
 public static class StepAcceptanceNative {
+    // Use the .NET-created Process/OS handle directly. PowerShell 5.1 Start-Process can
+    // otherwise return a wrapper whose ExitCode is unavailable after a short-lived child.
+    // Drain both redirected pipes concurrently, including after the 256 KiB log limit.
+    public sealed class ProcessLog {
+        public readonly Process Process;
+        public readonly string StandardOutputPath, StandardErrorPath;
+        readonly Task outputTask,errorTask;
+        static async Task Pump(Stream source,string path) {
+            using(var file=new FileStream(path,FileMode.Create,FileAccess.Write,FileShare.Read,4096,true)) {
+                byte[] buffer=new byte[4096];int total=0,count;
+                while((count=await source.ReadAsync(buffer,0,buffer.Length).ConfigureAwait(false))>0) {
+                    int keep=Math.Min(count,Math.Max(0,262144-total));
+                    if(keep>0) {await file.WriteAsync(buffer,0,keep).ConfigureAwait(false);await file.FlushAsync().ConfigureAwait(false);total+=keep;}
+                }
+            }
+        }
+        public ProcessLog(string executable,string arguments,string stdout,string stderr,bool cleanPowerShellModules) {
+            StandardOutputPath=stdout;StandardErrorPath=stderr;
+            var info=new ProcessStartInfo(executable,arguments) {UseShellExecute=false,RedirectStandardOutput=true,RedirectStandardError=true};
+            if(cleanPowerShellModules)info.EnvironmentVariables["PSModulePath"]=Path.Combine(Path.GetDirectoryName(executable),"Modules");
+            Process=new Process {StartInfo=info};
+            if(!Process.Start())throw new InvalidOperationException("Process.Start returned false");
+            if(Process.Handle==IntPtr.Zero)throw new InvalidOperationException("Started process has no retained handle");
+            outputTask=Pump(Process.StandardOutput.BaseStream,stdout);errorTask=Pump(Process.StandardError.BaseStream,stderr);
+        }
+        public int ReadExitCode() {Process.Refresh();if(!Process.HasExited)throw new InvalidOperationException("Process has not exited");return Process.ExitCode;}
+        public bool Flush(int timeoutMillis) {return Task.WaitAll(new [] {outputTask,errorTask},timeoutMillis);}
+    }
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] struct MouseInput { public int X,Y; public uint Data,Flags,Time; public UIntPtr Extra; }
     [StructLayout(LayoutKind.Sequential)] struct KeyInput { public ushort Key,Scan; public uint Flags,Time; public UIntPtr Extra; }
@@ -62,14 +92,16 @@ public static class StepAcceptanceNative {
     [DllImport("wtsapi32.dll", SetLastError=true)] static extern bool WTSRegisterSessionNotification(IntPtr window, uint flags);
     [DllImport("wtsapi32.dll")] static extern bool WTSUnRegisterSessionNotification(IntPtr window);
 
-    public sealed class WindowInfo { public long Handle; public string Title; public int Width, Height; public bool Foreground; public uint Dpi; public int DpiAwareness; }
-    public static WindowInfo[] Windows(int process) {
+    public sealed class WindowInfo { public long Handle; public uint ProcessId; public string Title, ClassName; public int Width, Height; public bool Foreground, Visible; public uint Dpi; public int DpiAwareness; }
+    public static WindowInfo[] Windows(int process) {return Windows(process,true);}
+    public static WindowInfo[] Windows(int process,bool visibleOnly) {
         var result=new List<WindowInfo>();
         EnumWindows(delegate(IntPtr w, IntPtr p) {
             uint pid; GetWindowThreadProcessId(w,out pid);
-            if(pid==process && IsWindowVisible(w)) {
+            if(pid==process && (!visibleOnly || IsWindowVisible(w))) {
                 var text=new StringBuilder(256); GetWindowText(w,text,text.Capacity); Rect r; GetWindowRect(w,out r);
-                result.Add(new WindowInfo {Handle=w.ToInt64(),Title=text.ToString(),Width=r.Right-r.Left,Height=r.Bottom-r.Top,
+                var className=new StringBuilder(256);GetClassName(w,className,256);
+                result.Add(new WindowInfo {Handle=w.ToInt64(),ProcessId=pid,Title=text.ToString(),ClassName=className.ToString(),Visible=IsWindowVisible(w),Width=r.Right-r.Left,Height=r.Bottom-r.Top,
                     Foreground=GetForegroundWindow()==w,Dpi=GetDpiForWindow(w),DpiAwareness=GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(w))});
             }
             return true;

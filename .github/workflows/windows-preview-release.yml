@@ -1,0 +1,112 @@
+name: Stage Windows preview release
+on:
+  push:
+    branches: [codex/windows-preview]
+    paths: ['.github/workflows/windows-preview-release.yml', 'docs/releases/windows-v0.2.0-github.md']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: windows-preview-release-0.2.0
+  cancel-in-progress: false
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: Zita-Go/Pare
+      TAG: windows-v0.2.0
+      SOURCE: 71deb0d98cad2fd706fb8ffc8dab8a1056ba4d4e
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Verify accepted build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$REPO"
+          gh api "repos/$REPO/actions/runs/45035586093" > "$RUNNER_TEMP/step-release-run.json"
+          gh api "repos/$REPO/actions/artifacts/14759747938" > "$RUNNER_TEMP/step-release-artifact.json"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          run=json.loads((root/'step-release-run.json').read_text())
+          artifact=json.loads((root/'step-release-artifact.json').read_text())
+          assert run['conclusion']=='success' and run['head_sha']==os.environ['SOURCE']
+          assert not artifact['expired'] and artifact['workflow_run']['head_sha']==os.environ['SOURCE']
+          assert artifact['digest']=='sha256:950daac5823e6be38d9c750d0570aa45f232306dd3c794c956c24ab02039727e'
+          PY
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: '14759747938'
+          run-id: '45035586093'
+          github-token: ${{ github.token }}
+          repository: Zita-Go/Pare
+          path: packages
+          merge-multiple: true
+      - name: Validate package checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,re,json,os
+          root=Path('packages')
+          names={'Step-0.2.0.exe','Step-0.2.0.msi','Step-0.2.0-windows-x64-portable.zip'}
+          assert {p.name for p in root.iterdir()}==names|{'SHA256SUMS.txt'}
+          expected={}
+          for line in (root/'SHA256SUMS.txt').read_text().splitlines():
+              m=re.fullmatch(r'([0-9a-f]{64})  ([^/\\]+)',line)
+              assert m and m[2] in names and m[2] not in expected
+              expected[m[2]]=m[1]
+          assert set(expected)==names
+          for name,digest in expected.items():
+              with (root/name).open('rb') as f: actual=hashlib.file_digest(f,'sha256').hexdigest()
+              assert actual==digest,name
+          expected['SHA256SUMS.txt']=hashlib.sha256((root/'SHA256SUMS.txt').read_bytes()).hexdigest()
+          Path(os.environ['RUNNER_TEMP'],'step-release-hashes.json').write_text(json.dumps(expected))
+          print('Verified all three original packages and checksum manifest')
+          PY
+      - name: Stage draft without replacing published assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$REPO" --json isDraft,targetCommitish > "$RUNNER_TEMP/step-draft.json" 2>/dev/null; then
+            python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          r=json.loads(Path(os.environ['RUNNER_TEMP'],'step-draft.json').read_text())
+          assert r['isDraft'] and r['targetCommitish']==os.environ['SOURCE'],'Refusing to modify an existing published/different release'
+          PY
+          else
+            gh release create "$TAG" --repo "$REPO" --target "$SOURCE" --draft --prerelease --latest=false --title 'Step for Windows 0.2.0 · 预览版' --notes-file docs/releases/windows-v0.2.0-github.md
+          fi
+          release_id=$(gh release view "$TAG" --repo "$REPO" --json databaseId --jq .databaseId)
+          [[ "$release_id" =~ ^[0-9]+$ ]] || exit 1
+          gh api "repos/$REPO/releases/$release_id" > "$RUNNER_TEMP/step-existing-assets.json"
+          python3 - <<'PY' > "$RUNNER_TEMP/step-missing-assets.txt"
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          expected=json.loads((root/'step-release-hashes.json').read_text())
+          release=json.loads((root/'step-existing-assets.json').read_text())
+          assert release['draft']
+          for a in release['assets']:
+              assert a['name'] in expected and a.get('digest')=='sha256:'+expected[a['name']],'Existing draft asset differs; no overwrite attempted'
+          existing={a['name'] for a in release['assets']}
+          for name in sorted(set(expected)-existing):print(name)
+          PY
+          while IFS= read -r name; do gh release upload "$TAG" "packages/$name" --repo "$REPO"; done < "$RUNNER_TEMP/step-missing-assets.txt"
+          gh api "repos/$REPO/releases/$release_id" > "$RUNNER_TEMP/step-staged-release.json"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          r=json.loads((root/'step-staged-release.json').read_text());expected=json.loads((root/'step-release-hashes.json').read_text())
+          assert r['draft'] and r['prerelease'] and r['target_commitish']==os.environ['SOURCE']
+          assert {a['name'] for a in r['assets']}==set(expected)
+          assert all(a.get('digest')=='sha256:'+expected[a['name']] for a in r['assets'])
+          print('Draft ready with verified assets; public publication is a separate final action.')
+          PY
