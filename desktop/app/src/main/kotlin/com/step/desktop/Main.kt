@@ -32,10 +32,21 @@ private fun home(args:Array<String>):Path {
     return Path.of(root,"Step")
 }
 fun main(args:Array<String>) {
+    if(args.any {it in setOf("--self-test","--system-self-test","--upgrade-self-test")}) {
+        // jpackage's GUI launcher shows a modal error when main throws. Diagnostic commands
+        // must instead finish with a machine-readable exit status, including argument failures.
+        val result=try {
+            val diagnosticPath=home(args)
+            when {
+                "--self-test" in args->selfTest(diagnosticPath)
+                "--system-self-test" in args->systemSelfTest(diagnosticPath)
+                else->upgradeSelfTest(diagnosticPath)
+            }
+            0
+        } catch(failure:Throwable) {failure.printStackTrace(System.err);1}
+        kotlin.system.exitProcess(result)
+    }
     val path=home(args)
-    if("--self-test" in args) {selfTest(path);return}
-    if("--system-self-test" in args) {systemSelfTest(path);return}
-    if("--upgrade-self-test" in args) {upgradeSelfTest(path);return}
     val delivery=args.indexOf("--deliver-reminder")
     val activation=args.indexOf("--notification-activation")
     if(delivery>=0 || activation>=0) {

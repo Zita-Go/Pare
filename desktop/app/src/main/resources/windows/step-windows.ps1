@@ -14,7 +14,8 @@ function TaskFolder([bool]$create) {
 function RemoveTasks {
     $pair = TaskFolder $false
     if ($pair) {
-        foreach ($task in @($pair[1].GetTasks(0))) { $pair[1].DeleteTask($task.Name,0) }
+        # TASK_ENUM_HIDDEN (1): Step's tasks are deliberately hidden, but still need cleanup.
+        foreach ($task in @($pair[1].GetTasks(1))) { $pair[1].DeleteTask($task.Name,0) }
         $pair[0].GetFolder('\').DeleteFolder($folderName.TrimStart('\'),0)
     }
 }
@@ -81,7 +82,7 @@ switch ($request.operation) {
     'schedule' {
         $pair = TaskFolder $true; $service=$pair[0]; $folder=$pair[1]
         $wanted=@{}; foreach ($event in @($request.events)) { $wanted[$event.id]=$event }
-        foreach ($task in @($folder.GetTasks(0))) { if (!$wanted.ContainsKey($task.Name)) {$folder.DeleteTask($task.Name,0)} }
+        foreach ($task in @($folder.GetTasks(1))) { if (!$wanted.ContainsKey($task.Name)) {$folder.DeleteTask($task.Name,0)} }
         foreach ($event in @($request.events)) {
             if ($event.id -notmatch '^[a-f0-9]{24}$' -or $event.token -notmatch '^[A-Za-z0-9:_-]{1,200}$') {throw 'Invalid reminder identity'}
             $definition=$service.NewTask(0)
@@ -103,7 +104,7 @@ switch ($request.operation) {
     }
     'inspect' {
         $pair=TaskFolder $false
-        $tasks=@(); if ($pair) {$tasks=@($pair[1].GetTasks(0))}
+        $tasks=@(); if ($pair) {$tasks=@($pair[1].GetTasks(1))}
         $valid=$true
         foreach ($task in $tasks) {
             $definition=$task.Definition
