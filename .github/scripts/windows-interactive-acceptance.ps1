@@ -311,16 +311,20 @@ function Confirm-CaptureText([long]$handle,[string]$expected,[int]$seconds=5,[sw
                 # The complete expected value is never injected into the clipboard.
                 [void](Set-FictionalClipboardSource ('STEP_ACCEPTANCE_SENTINEL_'+[guid]::NewGuid().ToString('N')))
             }
+            [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
+            $selectionPaint=Wait-CaptureSurface $handle
+            if (!$selectionPaint.ready) {throw 'Selection paint did not settle; Ctrl+C was not sent.'}
+            # Establish the baseline only after Ctrl+A has settled. Pending begins at the
+            # actual copy request, and its ACK budget starts here rather than before paint.
             $sequenceBefore=[StepAcceptanceNative]::GetClipboardSequenceNumber()
             if ($sequenceBefore -eq 0) {throw 'Native clipboard sequence is unavailable.'}
             $ownerProcess=Get-Process -Id ([StepAcceptanceNative]::WindowProcessId([IntPtr]$handle))
             [void]$ownerProcess.Handle
             $script:pendingClipboardCopy=@{sequenceBefore=$sequenceBefore;process=$ownerProcess}
-            [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
             [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x43))
             $copies++
-            $remaining=[Math]::Max(1,[int](($seconds-$timer.Elapsed.TotalSeconds)*1000))
-            $ack=Wait-ClipboardCopyAck $remaining
+            $ack=Wait-ClipboardCopyAck ($seconds*1000)
+            $ack['selectionPaintMillis']=$selectionPaint.elapsedMillis
             [void]$acks.Add($ack)
             if (!$ack.acknowledged) {break}
             $observed=$ack.observedText
@@ -629,20 +633,28 @@ try {
                 $clipboardUsed=$true
                 $pasteSourceBefore=Set-FictionalClipboardSource $pasteInitial
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x56))
+                $initialPastePaint=Wait-CaptureSurface $capture.Handle
+                if (!$initialPastePaint.ready) {throw 'Initial paste paint did not settle before physical x.'}
                 [StepAcceptanceNative]::AsciiKeys('x')
+                $initialAppendPaint=Wait-CaptureSurface $capture.Handle
+                if (!$initialAppendPaint.ready) {throw 'Physical x paint did not settle before select/copy.'}
                 $pasteSequenceAfterKeys=[StepAcceptanceNative]::GetClipboardSequenceNumber()
                 $pasteFirst=Confirm-CaptureText $capture.Handle ($pasteInitial+'x') 5 -PreserveSourceClipboard
-                $pasteFirst['pasteClipboard']=@{before=$pasteSourceBefore;sequenceAfterPasteKeys=$pasteSequenceAfterKeys;afterCopySequence=[StepAcceptanceNative]::GetClipboardSequenceNumber();afterCopyValue=$pasteFirst.observedText}
+                $pasteFirst['pasteClipboard']=@{pastePaintMillis=$initialPastePaint.elapsedMillis;appendPaintMillis=$initialAppendPaint.elapsedMillis;before=$pasteSourceBefore;sequenceAfterPasteKeys=$pasteSequenceAfterKeys;afterCopySequence=[StepAcceptanceNative]::GetClipboardSequenceNumber();afterCopyValue=$pasteFirst.observedText}
                 Result 'clipboard_paste_initial' $(if($pasteFirst.exactReadback){'pass'}else{'fail'}) 'Pasted fictional Chinese, appended a real x key, then required native Ctrl+A/C to return initial+x, which was never placed on the clipboard.' $pasteFirst
                 Require-ClipboardIdle
                 Focus-Step $capture.Handle
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
                 $pasteReplacementBefore=Set-FictionalClipboardSource $pasteReplacement
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x56))
+                $replacementPastePaint=Wait-CaptureSurface $capture.Handle
+                if (!$replacementPastePaint.ready) {throw 'Replacement paste paint did not settle before physical y.'}
                 [StepAcceptanceNative]::AsciiKeys('y')
+                $replacementAppendPaint=Wait-CaptureSurface $capture.Handle
+                if (!$replacementAppendPaint.ready) {throw 'Physical y paint did not settle before select/copy.'}
                 $replacementSequenceAfterKeys=[StepAcceptanceNative]::GetClipboardSequenceNumber()
                 $pasteSecond=Confirm-CaptureText $capture.Handle ($pasteReplacement+'y') 5 -PreserveSourceClipboard
-                $pasteSecond['pasteClipboard']=@{before=$pasteReplacementBefore;sequenceAfterPasteKeys=$replacementSequenceAfterKeys;afterCopySequence=[StepAcceptanceNative]::GetClipboardSequenceNumber();afterCopyValue=$pasteSecond.observedText}
+                $pasteSecond['pasteClipboard']=@{pastePaintMillis=$replacementPastePaint.elapsedMillis;appendPaintMillis=$replacementAppendPaint.elapsedMillis;before=$pasteReplacementBefore;sequenceAfterPasteKeys=$replacementSequenceAfterKeys;afterCopySequence=[StepAcceptanceNative]::GetClipboardSequenceNumber();afterCopyValue=$pasteSecond.observedText}
                 Result 'clipboard_paste_replace' $(if($pasteSecond.exactReadback){'pass'}else{'fail'}) 'Replaced the selection by real paste, appended a real y key, and required copying replacement+y from Step.' $pasteSecond
                 Require-ClipboardIdle
                 Focus-Step $capture.Handle
