@@ -59,6 +59,7 @@ $stepTrees = @{}
 $windowFitSamples = New-Object Collections.ArrayList
 $languageChanged = $false
 $clipboardUsed = $false
+$pendingClipboardCopy = $null
 $originalLanguageList = $null
 $disposable = $env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted'
 $profileIdHash = [Security.Cryptography.SHA256]::Create()
@@ -251,44 +252,86 @@ function Check-WindowFit([string]$surface,[long]$handle) {
     $aggregate=if(@($windowFitSamples | Where-Object {$_.status -eq 'fail'}).Count){'fail'}elseif($sampled -notcontains 'main' -or $sampled -notcontains 'capture' -or @($windowFitSamples | Where-Object {$_.status -eq 'unsupported'}).Count){'unsupported'}else{'pass'}
     Result 'window_fit_in_workarea' $aggregate 'Main and quick-capture window samples must both fit the real monitor working area. A later fitting sample cannot erase an earlier overflow.' @($windowFitSamples)
 }
+function Wait-ClipboardCopyAck([int]$timeoutMillis=2000) {
+    if ($null -eq $pendingClipboardCopy) {return @{acknowledged=$true;pending=$false;sequenceAfter=[StepAcceptanceNative]::GetClipboardSequenceNumber()}}
+    $pending=$pendingClipboardCopy;$timer=[Diagnostics.Stopwatch]::StartNew();$readAttempts=0;$readError=$null
+    do {
+        # Neither call opens the clipboard. Do not contend with AWT while it completes copy.
+        $sequence=[StepAcceptanceNative]::GetClipboardSequenceNumber()
+        $owner=[StepAcceptanceNative]::GetClipboardOwner()
+        $ownerPid=if($owner -ne [IntPtr]::Zero){[StepAcceptanceNative]::WindowProcessId($owner)}else{0}
+        if ($sequence -ne $pending.sequenceBefore -and $ownerPid -eq $pending.process.Id -and [StepAcceptanceNative]::GetOpenClipboardWindow() -eq [IntPtr]::Zero -and $readAttempts -lt 3) {
+            # A null open-window handle can also mean OpenClipboard(NULL), so it is only
+            # a hint. Successful readback after sequence change is the final acknowledgement.
+            $readAttempts++
+            try {
+                $actual=[Windows.Forms.Clipboard]::GetText([Windows.Forms.TextDataFormat]::UnicodeText)
+                $afterSequence=[StepAcceptanceNative]::GetClipboardSequenceNumber()
+                $afterOwner=[StepAcceptanceNative]::GetClipboardOwner()
+                if ($afterSequence -eq $sequence -and $afterOwner -eq $owner) {
+                    $script:pendingClipboardCopy=$null
+                    return @{acknowledged=$true;pending=$false;sequenceBefore=$pending.sequenceBefore;sequenceAfter=$sequence;sequenceAfterRead=$afterSequence;ownerProcessId=$ownerPid;observedText=$actual.Substring(0,[Math]::Min(256,$actual.Length));observedLength=$actual.Length;readAttempts=$readAttempts;elapsedMillis=$timer.ElapsedMilliseconds}
+                }
+            } catch {$readError=Error-Detail $_}
+        }
+        if ($pending.process.HasExited) {
+            $script:pendingClipboardCopy=$null
+            return @{acknowledged=$false;pending=$false;sequenceBefore=$pending.sequenceBefore;sequenceAfter=$sequence;reason='Target process exited before copy acknowledgement.'}
+        }
+        Start-Sleep -Milliseconds 40
+    } while ($timer.ElapsedMilliseconds -lt $timeoutMillis)
+    return @{acknowledged=$false;pending=$true;sequenceBefore=$pending.sequenceBefore;sequenceAfter=$sequence;readAttempts=$readAttempts;readError=$readError;reason='Copy has no clipboard sequence acknowledgement; no additional copy or source write is allowed.'}
+}
+function Require-ClipboardIdle {
+    if ($null -eq $pendingClipboardCopy) {return}
+    $ack=Wait-ClipboardCopyAck 2000
+    if ($ack.pending) {throw 'Previous Ctrl+C is still unacknowledged; refusing more clipboard writes or copy keys.'}
+}
+function Set-FictionalClipboardSource([string]$value) {
+    if (!$disposable) {throw 'Clipboard writes require the fictional disposable VM.'}
+    Require-ClipboardIdle
+    $script:clipboardUsed=$true
+    [Windows.Forms.Clipboard]::SetText($value,[Windows.Forms.TextDataFormat]::UnicodeText)
+    $sequence=[StepAcceptanceNative]::GetClipboardSequenceNumber()
+    $actual=[Windows.Forms.Clipboard]::GetText([Windows.Forms.TextDataFormat]::UnicodeText)
+    if (![string]::Equals($actual,$value,[StringComparison]::Ordinal)) {throw 'Fictional paste source did not match immediately after setting it.'}
+    return @{sequence=$sequence;sourceValue=$actual;verified=$true}
+}
 function Confirm-CaptureText([long]$handle,[string]$expected,[int]$seconds=5,[switch]$PreserveSourceClipboard) {
     if (!$disposable) {throw 'Clipboard inspection is limited to the disposable fictional-data VM.'}
     $script:clipboardUsed=$true
     $timer=[Diagnostics.Stopwatch]::StartNew();$observed=$null;$copies=0;$clipboardError=$null
-    do {
-        if ([StepAcceptanceNative]::GetForegroundWindow().ToInt64() -ne $handle) {
-            return @{exactReadback=$false;foreground=$false;copies=$copies;observedText=$observed;reason='Capture window lost foreground; no further copy keys were sent.'}
-        }
-        # Ordinarily use a new ASCII sentinel to rule out stale clipboard contents.
-        # Paste tests preserve their pending source until Ctrl+V consumes it; their expected
-        # value additionally contains a physical x/y key NEVER written to the clipboard.
-        $sentinel=$null
+    $acks=New-Object Collections.ArrayList;$readback=$false;$foreground=$true
+    Require-ClipboardIdle
+    while ($copies -lt 3 -and $timer.Elapsed.TotalSeconds -lt $seconds) {
+        $foreground=[StepAcceptanceNative]::GetForegroundWindow().ToInt64() -eq $handle
+        if (!$foreground) {break}
         try {
             if (!$PreserveSourceClipboard) {
-                $sentinel='STEP_ACCEPTANCE_SENTINEL_'+[guid]::NewGuid().ToString('N')
-                [Windows.Forms.Clipboard]::SetText($sentinel,[Windows.Forms.TextDataFormat]::UnicodeText)
+                # The complete expected value is never injected into the clipboard.
+                [void](Set-FictionalClipboardSource ('STEP_ACCEPTANCE_SENTINEL_'+[guid]::NewGuid().ToString('N')))
             }
+            $sequenceBefore=[StepAcceptanceNative]::GetClipboardSequenceNumber()
+            if ($sequenceBefore -eq 0) {throw 'Native clipboard sequence is unavailable.'}
+            $ownerProcess=Get-Process -Id ([StepAcceptanceNative]::WindowProcessId([IntPtr]$handle))
+            [void]$ownerProcess.Handle
+            $script:pendingClipboardCopy=@{sequenceBefore=$sequenceBefore;process=$ownerProcess}
             [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
             [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x43))
-            $copies++;$copyTimer=[Diagnostics.Stopwatch]::StartNew()
-            do {
-                $actual=if([Windows.Forms.Clipboard]::ContainsText([Windows.Forms.TextDataFormat]::UnicodeText)){[Windows.Forms.Clipboard]::GetText([Windows.Forms.TextDataFormat]::UnicodeText)}else{''}
-                if (![string]::Equals($actual,$sentinel,[StringComparison]::Ordinal)) {
-                    $observed=$actual.Substring(0,[Math]::Min(256,$actual.Length))
-                    if ([string]::Equals($actual,$expected,[StringComparison]::Ordinal)) {
-                        return @{exactReadback=$true;foreground=$true;copies=$copies;observedText=$observed;observedLength=$actual.Length;elapsedMillis=$timer.ElapsedMilliseconds;method='native Ctrl+A/C, complete expected text never written to clipboard';sourceClipboardPreserved=[bool]$PreserveSourceClipboard}
-                    }
-                    break
-                }
-                Start-Sleep -Milliseconds 20
-            } while ($copyTimer.ElapsedMilliseconds -lt 300 -and $timer.Elapsed.TotalSeconds -lt $seconds)
-        } catch {$clipboardError=Error-Detail $_;Start-Sleep -Milliseconds 50}
-        Start-Sleep -Milliseconds 20
-    } while ($timer.Elapsed.TotalSeconds -lt $seconds)
-    return @{exactReadback=$false;foreground=$true;copies=$copies;observedText=$observed;elapsedMillis=$timer.ElapsedMilliseconds;clipboardError=$clipboardError;reason='Expected text was not copied from the capture field before the bounded condition deadline.'}
+            $copies++
+            $remaining=[Math]::Max(1,[int](($seconds-$timer.Elapsed.TotalSeconds)*1000))
+            $ack=Wait-ClipboardCopyAck $remaining
+            [void]$acks.Add($ack)
+            if (!$ack.acknowledged) {break}
+            $observed=$ack.observedText
+            if ($ack.observedLength -eq $expected.Length -and [string]::Equals($observed,$expected,[StringComparison]::Ordinal)) {$readback=$true;break}
+        } catch {$clipboardError=Error-Detail $_;break}
+    }
+    return @{exactReadback=$readback;foreground=$foreground;copies=$copies;copyAcknowledged=($copies -gt 0 -and $null -eq $pendingClipboardCopy -and @($acks | Where-Object {!$_.acknowledged}).Count -eq 0);acknowledgements=@($acks);observedText=$observed;elapsedMillis=$timer.ElapsedMilliseconds;clipboardError=$clipboardError;sourceClipboardPreserved=[bool]$PreserveSourceClipboard;method='at most three sequential Ctrl+A/C requests; native sequence acknowledgement before readback; no complete expected text written to clipboard'}
 }
 function Clear-TestClipboard {
     if (!$clipboardUsed -or !$disposable) {return}
+    try {Require-ClipboardIdle} catch {Result 'fictional_clipboard_cleanup' 'unsupported' 'Clipboard was not cleared because a previous copy is still unacknowledged; cleanup will retry after the target exits.';return}
     $cleared=$false
     for ($attempt=0;$attempt -lt 5;$attempt++) {
         try {[Windows.Forms.Clipboard]::Clear();$cleared=$true;break} catch {Start-Sleep -Milliseconds 50}
@@ -313,6 +356,7 @@ function Ensure-Capture {
 }
 function Reset-CaptureEditor([long]$handle,[string]$checkName) {
     if (!$disposable) {throw 'Editor readiness uses only the fictional disposable profile.'}
+    Require-ClipboardIdle
     $timer=[Diagnostics.Stopwatch]::StartNew();$proof=$null;$attempt=0
     do {
         $attempt++;Focus-Step $handle
@@ -320,7 +364,7 @@ function Reset-CaptureEditor([long]$handle,[string]$checkName) {
         [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x08))
         [StepAcceptanceNative]::AsciiKeys('stepready')
         $proof=Confirm-CaptureText $handle 'stepready' 2
-    } while (!$proof.exactReadback -and $attempt -lt 2)
+    } while (!$proof.exactReadback -and $proof.copyAcknowledged -and $attempt -lt 2)
     # Exact ASCII readback proves old Chinese was replaced. The following ordered native
     # Ctrl+A/Backspace clears it; later exact saved text independently detects stale remnants.
     if ($proof.exactReadback) {
@@ -328,6 +372,7 @@ function Reset-CaptureEditor([long]$handle,[string]$checkName) {
         [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x08))
     }
     Result $checkName $(if($proof.exactReadback){'pass'}else{'fail'}) 'Confirmed real ASCII typing and Ctrl+A/C readback, then sent native Ctrl+A/Backspace to clear the fictional field. Retries depend on observed readiness, not a blind delay.' @{ready=$proof.exactReadback;attempts=$attempt;elapsedMillis=$timer.ElapsedMilliseconds;readback=$proof;clearKeysSent=$proof.exactReadback}
+    Require-ClipboardIdle
     return [bool]$proof.exactReadback
 }
 function Clear-CaptureDraft {
@@ -526,6 +571,7 @@ try {
             [StepAcceptanceNative]::UnicodeText($initialText)
             $initialReadback=Confirm-CaptureText $capture.Handle $initialText
             Result 'unicode_initial_input' $(if($initialReadback.exactReadback){'pass'}else{'fail'}) 'Sent KEYEVENTF_UNICODE once, then waited for exact native Ctrl+A/C readback from the real capture field.' $initialReadback
+            Require-ClipboardIdle
             Focus-Step $capture.Handle
             [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
             $savedText='验收中文：整理想法，迈出最小一步。'
@@ -533,6 +579,7 @@ try {
             $replacementReadback=Confirm-CaptureText $capture.Handle $savedText
             Result 'unicode_select_all_replace' $(if($replacementReadback.exactReadback){'pass'}else{'fail'}) 'Sent native Ctrl+A and replacement Unicode once; waited until copying the field returned the exact replacement.' $replacementReadback
             try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$capture.Handle,(Join-Path $OutputDirectory 'step-chinese-text-native.png'))} catch {Result 'text_screenshot' 'unsupported' (Error-Detail $_)}
+            Require-ClipboardIdle
             Focus-Step $capture.Handle
             [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
             $saved=Wait-Until { @(Get-Inbox | Where-Object {$beforeUnicode -notcontains $_.id -and [string]::Equals($_.payload.content.text,$savedText,[StringComparison]::Ordinal)}).Count -eq 1 } 12
@@ -553,18 +600,24 @@ try {
                 $pasteReplacement='虚构粘贴验收：迈出最小一步'
                 if (!$disposable) {throw 'Paste is restricted to the disposable fictional-data VM.'}
                 $clipboardUsed=$true
-                [Windows.Forms.Clipboard]::SetText($pasteInitial,[Windows.Forms.TextDataFormat]::UnicodeText)
+                $pasteSourceBefore=Set-FictionalClipboardSource $pasteInitial
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x56))
                 [StepAcceptanceNative]::AsciiKeys('x')
+                $pasteSequenceAfterKeys=[StepAcceptanceNative]::GetClipboardSequenceNumber()
                 $pasteFirst=Confirm-CaptureText $capture.Handle ($pasteInitial+'x') 5 -PreserveSourceClipboard
+                $pasteFirst['pasteClipboard']=@{before=$pasteSourceBefore;sequenceAfterPasteKeys=$pasteSequenceAfterKeys;afterCopySequence=[StepAcceptanceNative]::GetClipboardSequenceNumber();afterCopyValue=$pasteFirst.observedText}
                 Result 'clipboard_paste_initial' $(if($pasteFirst.exactReadback){'pass'}else{'fail'}) 'Pasted fictional Chinese, appended a real x key, then required native Ctrl+A/C to return initial+x, which was never placed on the clipboard.' $pasteFirst
+                Require-ClipboardIdle
                 Focus-Step $capture.Handle
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
-                [Windows.Forms.Clipboard]::SetText($pasteReplacement,[Windows.Forms.TextDataFormat]::UnicodeText)
+                $pasteReplacementBefore=Set-FictionalClipboardSource $pasteReplacement
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x56))
                 [StepAcceptanceNative]::AsciiKeys('y')
+                $replacementSequenceAfterKeys=[StepAcceptanceNative]::GetClipboardSequenceNumber()
                 $pasteSecond=Confirm-CaptureText $capture.Handle ($pasteReplacement+'y') 5 -PreserveSourceClipboard
+                $pasteSecond['pasteClipboard']=@{before=$pasteReplacementBefore;sequenceAfterPasteKeys=$replacementSequenceAfterKeys;afterCopySequence=[StepAcceptanceNative]::GetClipboardSequenceNumber();afterCopyValue=$pasteSecond.observedText}
                 Result 'clipboard_paste_replace' $(if($pasteSecond.exactReadback){'pass'}else{'fail'}) 'Replaced the selection by real paste, appended a real y key, and required copying replacement+y from Step.' $pasteSecond
+                Require-ClipboardIdle
                 Focus-Step $capture.Handle
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
                 $pasteSaved=Wait-Until {@(Get-Inbox | Where-Object {$beforePaste -notcontains $_.id -and [string]::Equals($_.payload.content.text,($pasteReplacement+'y'),[StringComparison]::Ordinal)}).Count -eq 1} 12
@@ -685,6 +738,7 @@ finally {
             }
         } catch {}
     }
+    Clear-TestClipboard
     # Only registrations keyed by this fresh profile are removed. Preserve all fictional data.
     if (Test-Path -LiteralPath $helper) {
         try {

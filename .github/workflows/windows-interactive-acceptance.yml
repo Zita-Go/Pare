@@ -23,14 +23,14 @@ jobs:
       - name: Verify accepted artifact identity
         shell: pwsh
         run: |
-          $run = gh api repos/Zita-Go/Pare/actions/runs/45049680687 | ConvertFrom-Json
-          if ($run.conclusion -ne 'success' -or $run.head_sha -ne 'bd0c42e0a455cc2d4a6adbf1b6ba5f20283c2ad9') { throw 'Accepted source/build changed' }
-          $artifact = gh api repos/Zita-Go/Pare/actions/artifacts/14764548920 | ConvertFrom-Json
-          if ($artifact.expired -or $artifact.digest -ne 'sha256:89cc3809cce8830c7867e6624cbef24d89195594b4552f31a19f66518f145e1a') { throw 'Accepted artifact changed' }
+          $run = gh api repos/Zita-Go/Pare/actions/runs/45057502473 | ConvertFrom-Json
+          if ($run.conclusion -ne 'success' -or $run.head_sha -ne 'f09b99da73938873a855adceaa65ceffa0be4b9b') { throw 'Accepted source/build changed' }
+          $artifact = gh api repos/Zita-Go/Pare/actions/artifacts/14767814259 | ConvertFrom-Json
+          if ($artifact.expired -or $artifact.digest -ne 'sha256:1c6160d1341fc658b77c7878e0e170b6e5b2efc50c9c3c320e2ae51fba831d05') { throw 'Accepted artifact changed' }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          artifact-ids: '14764548920'
-          run-id: '45049680687'
+          artifact-ids: '14767814259'
+          run-id: '45057502473'
           github-token: ${{ github.token }}
           repository: Zita-Go/Pare
           path: packages
