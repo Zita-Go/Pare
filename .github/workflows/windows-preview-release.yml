@@ -2,13 +2,13 @@ name: Stage Windows preview release
 on:
   push:
     branches: [codex/windows-preview]
-    paths: ['.github/workflows/windows-preview-release.yml', 'docs/releases/windows-v0.2.0-github.md']
+    paths: ['.github/workflows/windows-preview-release.yml', 'docs/releases/windows-v0.2.1-github.md']
   workflow_dispatch:
 permissions:
   contents: write
   actions: read
 concurrency:
-  group: windows-preview-release-0.2.0
+  group: windows-preview-release-0.2.1
   cancel-in-progress: false
 jobs:
   stage:
@@ -17,8 +17,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: Zita-Go/Pare
-      TAG: windows-v0.2.0
-      SOURCE: 71deb0d98cad2fd706fb8ffc8dab8a1056ba4d4e
+      TAG: windows-v0.2.1
+      SOURCE: bd0c42e0a455cc2d4a6adbf1b6ba5f20283c2ad9
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: Verify accepted build identity
@@ -26,8 +26,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$REPO"
-          gh api "repos/$REPO/actions/runs/45035586093" > "$RUNNER_TEMP/step-release-run.json"
-          gh api "repos/$REPO/actions/artifacts/14759747938" > "$RUNNER_TEMP/step-release-artifact.json"
+          gh api "repos/$REPO/actions/runs/45049680687" > "$RUNNER_TEMP/step-release-run.json"
+          gh api "repos/$REPO/actions/artifacts/14764548920" > "$RUNNER_TEMP/step-release-artifact.json"
           python3 - <<'PY'
           import json,os
           from pathlib import Path
@@ -36,12 +36,12 @@ jobs:
           artifact=json.loads((root/'step-release-artifact.json').read_text())
           assert run['conclusion']=='success' and run['head_sha']==os.environ['SOURCE']
           assert not artifact['expired'] and artifact['workflow_run']['head_sha']==os.environ['SOURCE']
-          assert artifact['digest']=='sha256:950daac5823e6be38d9c750d0570aa45f232306dd3c794c956c24ab02039727e'
+          assert artifact['digest']=='sha256:89cc3809cce8830c7867e6624cbef24d89195594b4552f31a19f66518f145e1a'
           PY
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          artifact-ids: '14759747938'
-          run-id: '45035586093'
+          artifact-ids: '14764548920'
+          run-id: '45049680687'
           github-token: ${{ github.token }}
           repository: Zita-Go/Pare
           path: packages
@@ -54,7 +54,7 @@ jobs:
           from pathlib import Path
           import hashlib,re,json,os
           root=Path('packages')
-          names={'Step-0.2.0.exe','Step-0.2.0.msi','Step-0.2.0-windows-x64-portable.zip'}
+          names={'Step-0.2.1.exe','Step-0.2.1.msi','Step-0.2.1-windows-x64-portable.zip'}
           assert {p.name for p in root.iterdir()}==names|{'SHA256SUMS.txt'}
           expected={}
           for line in (root/'SHA256SUMS.txt').read_text().splitlines():
@@ -81,7 +81,7 @@ jobs:
           assert r['isDraft'] and r['targetCommitish']==os.environ['SOURCE'],'Refusing to modify an existing published/different release'
           PY
           else
-            gh release create "$TAG" --repo "$REPO" --target "$SOURCE" --draft --prerelease --latest=false --title 'Step for Windows 0.2.0 · 预览版' --notes-file docs/releases/windows-v0.2.0-github.md
+            gh release create "$TAG" --repo "$REPO" --target "$SOURCE" --draft --prerelease --latest=false --title 'Step for Windows 0.2.1 · 预览版' --notes-file docs/releases/windows-v0.2.1-github.md
           fi
           release_id=$(gh release view "$TAG" --repo "$REPO" --json databaseId --jq .databaseId)
           [[ "$release_id" =~ ^[0-9]+$ ]] || exit 1

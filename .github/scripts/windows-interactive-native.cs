@@ -45,6 +45,7 @@ public static class StepAcceptanceNative {
         public bool Flush(int timeoutMillis) {return Task.WaitAll(new [] {outputTask,errorTask},timeoutMillis);}
     }
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
     [StructLayout(LayoutKind.Sequential)] struct MouseInput { public int X,Y; public uint Data,Flags,Time; public UIntPtr Extra; }
     [StructLayout(LayoutKind.Sequential)] struct KeyInput { public ushort Key,Scan; public uint Flags,Time; public UIntPtr Extra; }
     [StructLayout(LayoutKind.Explicit)] struct InputUnion {
@@ -64,6 +65,10 @@ public static class StepAcceptanceNative {
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc callback, IntPtr parameter);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out Rect rect, int size);
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr window,uint flags);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool GetMonitorInfo(IntPtr monitor,ref MonitorInfo info);
+    [DllImport("user32.dll",SetLastError=true)] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
@@ -92,7 +97,42 @@ public static class StepAcceptanceNative {
     [DllImport("wtsapi32.dll", SetLastError=true)] static extern bool WTSRegisterSessionNotification(IntPtr window, uint flags);
     [DllImport("wtsapi32.dll")] static extern bool WTSUnRegisterSessionNotification(IntPtr window);
 
-    public sealed class WindowInfo { public long Handle; public uint ProcessId; public string Title, ClassName; public int Width, Height; public bool Foreground, Visible; public uint Dpi; public int DpiAwareness; }
+    public sealed class WindowBounds {
+        public Rect WindowRect, VisibleFrame, MonitorBounds, WorkingArea;
+        public bool GeometryAvailable, PhysicalPixels, UsedDwm, FitsWorkingArea;
+        public int DwmHresult, OverflowLeft, OverflowTop, OverflowRight, OverflowBottom;
+        public string BoundsSource, Error;
+    }
+    public static WindowBounds Bounds(IntPtr window) {
+        var result=new WindowBounds();IntPtr previous=IntPtr.Zero;
+        try {
+            // DWM extended frames are physical pixels, whereas GetWindowRect can be DPI
+            // virtualized. Read every rectangle under a temporary per-monitor-aware context
+            // on this test thread; never change the target app or the system's scale.
+            previous=SetThreadDpiAwarenessContext(new IntPtr(-4));
+            if(previous==IntPtr.Zero)previous=SetThreadDpiAwarenessContext(new IntPtr(-3));
+            result.PhysicalPixels=previous!=IntPtr.Zero;
+            if(!result.PhysicalPixels) {result.Error="Cannot establish physical-pixel coordinate context";return result;}
+            Rect outer;
+            if(!GetWindowRect(window,out outer)) {result.Error="GetWindowRect failed";return result;}
+            result.WindowRect=outer;
+            Rect frame;result.DwmHresult=DwmGetWindowAttribute(window,9,out frame,Marshal.SizeOf(typeof(Rect)));
+            result.UsedDwm=result.DwmHresult==0&&frame.Right>frame.Left&&frame.Bottom>frame.Top;
+            result.VisibleFrame=result.UsedDwm?frame:outer;
+            result.BoundsSource=result.UsedDwm?"DWM extended frame bounds (invisible resize border excluded)":"GetWindowRect fallback (includes resize border; strict zero tolerance)";
+            var monitor=MonitorFromWindow(window,2);var info=new MonitorInfo();info.Size=Marshal.SizeOf(info);
+            if(monitor==IntPtr.Zero||!GetMonitorInfo(monitor,ref info)) {result.Error="Monitor working area unavailable";return result;}
+            result.MonitorBounds=info.Monitor;result.WorkingArea=info.Work;
+            var visible=result.VisibleFrame;
+            result.GeometryAvailable=visible.Right>visible.Left&&visible.Bottom>visible.Top&&info.Work.Right>info.Work.Left&&info.Work.Bottom>info.Work.Top;
+            result.OverflowLeft=Math.Max(0,info.Work.Left-visible.Left);result.OverflowTop=Math.Max(0,info.Work.Top-visible.Top);
+            result.OverflowRight=Math.Max(0,visible.Right-info.Work.Right);result.OverflowBottom=Math.Max(0,visible.Bottom-info.Work.Bottom);
+            result.FitsWorkingArea=result.GeometryAvailable&&result.OverflowLeft==0&&result.OverflowTop==0&&result.OverflowRight==0&&result.OverflowBottom==0;
+        } catch(Exception error) {result.Error=error.GetType().Name+": "+error.Message;}
+        finally {if(previous!=IntPtr.Zero)SetThreadDpiAwarenessContext(previous);}
+        return result;
+    }
+    public sealed class WindowInfo { public long Handle; public uint ProcessId; public string Title, ClassName; public int Width, Height; public bool Foreground, Visible; public uint Dpi; public int DpiAwareness; public WindowBounds Bounds; }
     public static WindowInfo[] Windows(int process) {return Windows(process,true);}
     public static WindowInfo[] Windows(int process,bool visibleOnly) {
         var result=new List<WindowInfo>();
@@ -102,7 +142,7 @@ public static class StepAcceptanceNative {
                 var text=new StringBuilder(256); GetWindowText(w,text,text.Capacity); Rect r; GetWindowRect(w,out r);
                 var className=new StringBuilder(256);GetClassName(w,className,256);
                 result.Add(new WindowInfo {Handle=w.ToInt64(),ProcessId=pid,Title=text.ToString(),ClassName=className.ToString(),Visible=IsWindowVisible(w),Width=r.Right-r.Left,Height=r.Bottom-r.Top,
-                    Foreground=GetForegroundWindow()==w,Dpi=GetDpiForWindow(w),DpiAwareness=GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(w))});
+                    Foreground=GetForegroundWindow()==w,Dpi=GetDpiForWindow(w),DpiAwareness=GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(w)),Bounds=Bounds(w)});
             }
             return true;
         },IntPtr.Zero);

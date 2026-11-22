@@ -56,7 +56,9 @@ $loggedProcesses = @{}
 $launchNumber = 0
 $helperNumber = 0
 $stepTrees = @{}
+$windowFitSamples = New-Object Collections.ArrayList
 $languageChanged = $false
+$clipboardUsed = $false
 $originalLanguageList = $null
 $disposable = $env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted'
 $profileIdHash = [Security.Cryptography.SHA256]::Create()
@@ -195,7 +197,7 @@ function Start-Step([string[]]$arguments) {
 function Stop-Step($process) {
     if ($null -eq $process) {return}
     $tree=Update-FixtureTree $process
-    $closeRequested=$false;$forced=$false
+    $closeRequested=$false;$forced=$false;$draftProtection=$false
     foreach ($member in @($tree.known.Values)) {
         if ($member.HasExited) {continue}
         foreach ($w in @([StepAcceptanceNative]::Windows($member.Id))) {
@@ -207,6 +209,7 @@ function Stop-Step($process) {
         $tree=Update-FixtureTree $process
         $live=@($tree.known.Values | Where-Object {!$_.HasExited})
         if (!$live.Count) {break}
+        foreach ($member in $live) {if(@([StepAcceptanceNative]::Windows($member.Id) | Where-Object {$_.Title -like '*退出 Step*'}).Count){$draftProtection=$true}}
         Start-Sleep -Milliseconds 300
     } while ($timer.Elapsed.TotalSeconds -lt 10)
     if ($live.Count) {
@@ -225,7 +228,7 @@ function Stop-Step($process) {
     $code=$null;if($process.HasExited){$code=Get-ProcessExitCode $process;if($treeExited){Flush-ProcessLogs $process}}
     $members=@($tree.known.Values | ForEach-Object {@{processId=$_.Id;name=$tree.names[$_.Id];exited=$_.HasExited;exitCode=$(if($_.HasExited){Get-ProcessExitCode $_}else{$null})}})
     $badAppExit=@($members | Where-Object {$_.name -in @('Step','java','javaw') -and $_.exitCode -ne 0}).Count -gt 0
-    $script:lastExitEvidence=@{processId=$process.Id;confirmedExited=$process.HasExited;processTreeExited=$treeExited;treeObservationComplete=$tree.complete;treeError=$tree.error;relatedProcesses=$members;forced=$forced;normalExitObserved=($treeExited -and !$forced -and !$badAppExit -and $closeRequested -and $code -eq 0);closeRequested=$closeRequested;exitCode=$code;exitObservedUtc=[DateTimeOffset]::UtcNow.ToString('o')}
+    $script:lastExitEvidence=@{processId=$process.Id;confirmedExited=$process.HasExited;processTreeExited=$treeExited;treeObservationComplete=$tree.complete;treeError=$tree.error;relatedProcesses=$members;forced=$forced;normalExitObserved=($treeExited -and !$forced -and !$badAppExit -and $closeRequested -and $code -eq 0);closeRequested=$closeRequested;draftProtectionObserved=$draftProtection;exitCode=$code;exitObservedUtc=[DateTimeOffset]::UtcNow.ToString('o')}
     [void](Write-ProcessDiagnostic $process 'exited')
 }
 function Get-Inbox {
@@ -239,10 +242,100 @@ function Focus-Step([long]$handle) {
     [void][StepAcceptanceNative]::SetForegroundWindow([IntPtr]$handle)
     if (!(Wait-Until { [StepAcceptanceNative]::GetForegroundWindow().ToInt64() -eq $handle } 3)) {throw 'Step could not acquire the foreground; input was not sent.'}
 }
+function Check-WindowFit([string]$surface,[long]$handle) {
+    $bounds=[StepAcceptanceNative]::Bounds([IntPtr]$handle)
+    $status=if(!$bounds.GeometryAvailable){'unsupported'}elseif($bounds.FitsWorkingArea){'pass'}else{'fail'}
+    [void]$windowFitSamples.Add(@{surface=$surface;handle=$handle;status=$status;bounds=$bounds})
+    Result ($surface+'_window_fit_in_workarea') $status 'Compared the actual visible frame with its monitor working area, including taskbar exclusion, in physical pixels. Only DWM-excluded invisible resize borders are tolerated; fallback uses zero tolerance.' $bounds
+    $sampled=@($windowFitSamples | ForEach-Object {$_.surface} | Select-Object -Unique)
+    $aggregate=if(@($windowFitSamples | Where-Object {$_.status -eq 'fail'}).Count){'fail'}elseif($sampled -notcontains 'main' -or $sampled -notcontains 'capture' -or @($windowFitSamples | Where-Object {$_.status -eq 'unsupported'}).Count){'unsupported'}else{'pass'}
+    Result 'window_fit_in_workarea' $aggregate 'Main and quick-capture window samples must both fit the real monitor working area. A later fitting sample cannot erase an earlier overflow.' @($windowFitSamples)
+}
+function Confirm-CaptureText([long]$handle,[string]$expected,[int]$seconds=5,[switch]$PreserveSourceClipboard) {
+    if (!$disposable) {throw 'Clipboard inspection is limited to the disposable fictional-data VM.'}
+    $script:clipboardUsed=$true
+    $timer=[Diagnostics.Stopwatch]::StartNew();$observed=$null;$copies=0;$clipboardError=$null
+    do {
+        if ([StepAcceptanceNative]::GetForegroundWindow().ToInt64() -ne $handle) {
+            return @{exactReadback=$false;foreground=$false;copies=$copies;observedText=$observed;reason='Capture window lost foreground; no further copy keys were sent.'}
+        }
+        # Ordinarily use a new ASCII sentinel to rule out stale clipboard contents.
+        # Paste tests preserve their pending source until Ctrl+V consumes it; their expected
+        # value additionally contains a physical x/y key NEVER written to the clipboard.
+        $sentinel=$null
+        try {
+            if (!$PreserveSourceClipboard) {
+                $sentinel='STEP_ACCEPTANCE_SENTINEL_'+[guid]::NewGuid().ToString('N')
+                [Windows.Forms.Clipboard]::SetText($sentinel,[Windows.Forms.TextDataFormat]::UnicodeText)
+            }
+            [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
+            [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x43))
+            $copies++;$copyTimer=[Diagnostics.Stopwatch]::StartNew()
+            do {
+                $actual=if([Windows.Forms.Clipboard]::ContainsText([Windows.Forms.TextDataFormat]::UnicodeText)){[Windows.Forms.Clipboard]::GetText([Windows.Forms.TextDataFormat]::UnicodeText)}else{''}
+                if (![string]::Equals($actual,$sentinel,[StringComparison]::Ordinal)) {
+                    $observed=$actual.Substring(0,[Math]::Min(256,$actual.Length))
+                    if ([string]::Equals($actual,$expected,[StringComparison]::Ordinal)) {
+                        return @{exactReadback=$true;foreground=$true;copies=$copies;observedText=$observed;observedLength=$actual.Length;elapsedMillis=$timer.ElapsedMilliseconds;method='native Ctrl+A/C, complete expected text never written to clipboard';sourceClipboardPreserved=[bool]$PreserveSourceClipboard}
+                    }
+                    break
+                }
+                Start-Sleep -Milliseconds 20
+            } while ($copyTimer.ElapsedMilliseconds -lt 300 -and $timer.Elapsed.TotalSeconds -lt $seconds)
+        } catch {$clipboardError=Error-Detail $_;Start-Sleep -Milliseconds 50}
+        Start-Sleep -Milliseconds 20
+    } while ($timer.Elapsed.TotalSeconds -lt $seconds)
+    return @{exactReadback=$false;foreground=$true;copies=$copies;observedText=$observed;elapsedMillis=$timer.ElapsedMilliseconds;clipboardError=$clipboardError;reason='Expected text was not copied from the capture field before the bounded condition deadline.'}
+}
+function Clear-TestClipboard {
+    if (!$clipboardUsed -or !$disposable) {return}
+    $cleared=$false
+    for ($attempt=0;$attempt -lt 5;$attempt++) {
+        try {[Windows.Forms.Clipboard]::Clear();$cleared=$true;break} catch {Start-Sleep -Milliseconds 50}
+    }
+    Result 'fictional_clipboard_cleanup' $(if($cleared){'pass'}else{'fail'}) 'Cleared the clipboard used for fictional text readback; original clipboard contents were never inspected.'
+    if ($cleared) {$script:clipboardUsed=$false}
+}
 function Open-Capture {
     [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x10,0x20))
     if (!(Wait-Until { @(Get-StepWindows $uiProcess | Where-Object {$_.Title -like 'Step*随手记*'}).Count -gt 0 } 8)) {throw 'Ctrl+Shift+Space did not reveal the Step quick-capture window.'}
     return @(Get-StepWindows $uiProcess | Where-Object {$_.Title -like 'Step*随手记*'})[0]
+}
+function Fresh-StepWindow([long]$handle) {
+    $matching=@(Get-StepWindows $uiProcess | Where-Object {$_.Handle -eq $handle})
+    if ($matching.Count -ne 1) {throw 'Expected Step window disappeared before its fresh-state check.'}
+    return $matching[0]
+}
+function Ensure-Capture {
+    $visible=@(Get-StepWindows $uiProcess | Where-Object {$_.Title -like 'Step*随手记*'})
+    if ($visible.Count) {return $visible[0]}
+    return (Open-Capture)
+}
+function Reset-CaptureEditor([long]$handle,[string]$checkName) {
+    if (!$disposable) {throw 'Editor readiness uses only the fictional disposable profile.'}
+    $timer=[Diagnostics.Stopwatch]::StartNew();$proof=$null;$attempt=0
+    do {
+        $attempt++;Focus-Step $handle
+        [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
+        [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x08))
+        [StepAcceptanceNative]::AsciiKeys('stepready')
+        $proof=Confirm-CaptureText $handle 'stepready' 2
+    } while (!$proof.exactReadback -and $attempt -lt 2)
+    # Exact ASCII readback proves old Chinese was replaced. The following ordered native
+    # Ctrl+A/Backspace clears it; later exact saved text independently detects stale remnants.
+    if ($proof.exactReadback) {
+        [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
+        [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x08))
+    }
+    Result $checkName $(if($proof.exactReadback){'pass'}else{'fail'}) 'Confirmed real ASCII typing and Ctrl+A/C readback, then sent native Ctrl+A/Backspace to clear the fictional field. Retries depend on observed readiness, not a blind delay.' @{ready=$proof.exactReadback;attempts=$attempt;elapsedMillis=$timer.ElapsedMilliseconds;readback=$proof;clearKeysSent=$proof.exactReadback}
+    return [bool]$proof.exactReadback
+}
+function Clear-CaptureDraft {
+    if ($null -eq $uiProcess) {return}
+    $visible=@(Get-StepWindows $uiProcess | Where-Object {$_.Title -like 'Step*随手记*'})
+    if (!$visible.Count) {return}
+    try {[void](Reset-CaptureEditor $visible[0].Handle 'test_draft_cleanup')}
+    catch {Result 'test_draft_cleanup' 'unsupported' ('Draft cleanup could not be verified; a subsequent draft-protection dialog is not an exit regression. '+(Error-Detail $_))}
 }
 function Invoke-PackagedHelper([string]$operation,[hashtable]$payload) {
     $script:helperNumber++
@@ -373,7 +466,7 @@ try {
     Result 'notification_platform' $(if($probe.notificationSetting -eq 'unavailable'){'unsupported'}else{'pass'}) 'Queried OS notification setting; this does not prove delivery or visibility.' @{setting=$probe.notificationSetting;taskScheduler=$probe.taskSchedulerConnected}
     if (!$disposable) {
         Result 'runner_scope' 'unsupported' 'Synthetic input and profile mutation are limited to a disposable GitHub-hosted runner.'
-        foreach ($name in @('window_open','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling','notification_history','notification_visible','scheduled_delivery','lock_screen_delivery')) {Result $name 'unsupported' 'No interactive operations attempted outside the disposable runner.'}
+        foreach ($name in @('window_open','window_fit_in_workarea','main_window_fit_in_workarea','capture_window_fit_in_workarea','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling','notification_history','notification_visible','scheduled_delivery','lock_screen_delivery')) {Result $name 'unsupported' 'No interactive operations attempted outside the disposable runner.'}
         return
     }
     if (!$pinyinAvailable -and $probe.pinyinTipRegistered) {
@@ -408,7 +501,9 @@ try {
             $main=@(Get-StepWindows $uiProcess | Where-Object {$_.Title -eq 'Step'})[0]
             Focus-Step $main.Handle
             Start-Sleep -Seconds 2
+            $main=Fresh-StepWindow $main.Handle
             Result 'window_open' 'pass' 'Packaged Step has a visible foreground main window.' $main
+            Check-WindowFit 'main' $main.Handle
             Result 'actual_window_dpi' 'pass' 'Read GetDpiForWindow and actual window awareness; no Compose density override was used.' @{dpi=$main.Dpi;dpiAwareness=$main.DpiAwareness;displayCount=$probe.screens.Count}
             try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$main.Handle,(Join-Path $OutputDirectory 'step-main-native.png'))} catch {Result 'main_screenshot' 'unsupported' (Error-Detail $_)}
             $moves=@()
@@ -423,18 +518,69 @@ try {
             $capture=Open-Capture
             Result 'quick_capture_hotkey' $(if($capture.Foreground){'pass'}else{'fail'}) 'Sent native Ctrl+Shift+Space; checked quick-capture visibility and foreground without forcing focus.' $capture
             Focus-Step $capture.Handle
-            [StepAcceptanceNative]::UnicodeText('虚构草稿：需要替换')
+            $rawEditorReady=Reset-CaptureEditor $capture.Handle 'editor_ready_for_unicode'
+            $capture=Fresh-StepWindow $capture.Handle
+            Check-WindowFit 'capture' $capture.Handle
+            $beforeUnicode=@(Get-Inbox | ForEach-Object {$_.id})
+            $initialText='虚构草稿：需要替换'
+            [StepAcceptanceNative]::UnicodeText($initialText)
+            $initialReadback=Confirm-CaptureText $capture.Handle $initialText
+            Result 'unicode_initial_input' $(if($initialReadback.exactReadback){'pass'}else{'fail'}) 'Sent KEYEVENTF_UNICODE once, then waited for exact native Ctrl+A/C readback from the real capture field.' $initialReadback
+            Focus-Step $capture.Handle
             [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
             $savedText='验收中文：整理想法，迈出最小一步。'
             [StepAcceptanceNative]::UnicodeText($savedText)
+            $replacementReadback=Confirm-CaptureText $capture.Handle $savedText
+            Result 'unicode_select_all_replace' $(if($replacementReadback.exactReadback){'pass'}else{'fail'}) 'Sent native Ctrl+A and replacement Unicode once; waited until copying the field returned the exact replacement.' $replacementReadback
             try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$capture.Handle,(Join-Path $OutputDirectory 'step-chinese-text-native.png'))} catch {Result 'text_screenshot' 'unsupported' (Error-Detail $_)}
+            Focus-Step $capture.Handle
             [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
-            $saved=Wait-Until { @(Get-Inbox | Where-Object {$_.payload.content.text -eq $savedText}).Count -eq 1 } 12
-            Result 'unicode_edit_save' $(if($saved){'pass'}else{'fail'}) 'KEYEVENTF_UNICODE text, native Ctrl+A replacement and Ctrl+Enter save checked against isolated persisted inbox; this is NOT an IME test.' @{exactPersistedText=$saved}
+            $saved=Wait-Until { @(Get-Inbox | Where-Object {$beforeUnicode -notcontains $_.id -and [string]::Equals($_.payload.content.text,$savedText,[StringComparison]::Ordinal)}).Count -eq 1 } 12
+            $persistedTexts=@(Get-Inbox | Where-Object {$beforeUnicode -notcontains $_.id} | Select-Object -First 3 | ForEach-Object {$value=[string]$_.payload.content.text;$value.Substring(0,[Math]::Min(256,$value.Length))})
+            Result 'unicode_save_persistence' $(if($saved){'pass'}else{'fail'}) 'Sent native Ctrl+Enter once, then checked newly created isolated inbox records for exact persisted text.' @{exactPersistedText=$saved;persistedTexts=$persistedTexts;replacementWasReadBack=$replacementReadback.exactReadback}
+            $unicodePassed=$rawEditorReady -and $initialReadback.exactReadback -and $replacementReadback.exactReadback -and $saved
+            Result 'unicode_edit_save' $(if($unicodePassed){'pass'}else{'fail'}) 'Unicode initial input, select-all replacement and save must each pass their independent readback/persistence check. This is NOT an IME test.' @{initialReadback=$initialReadback;replacementReadback=$replacementReadback;exactPersistedText=$saved;persistedTexts=$persistedTexts}
+            Clear-TestClipboard
+            # Independent user paste path. Expected text contains a native x/y keystroke,
+            # so merely reading the string written to the clipboard cannot pass this test.
+            try {
+                $capture=Ensure-Capture;Focus-Step $capture.Handle
+                $pasteReady=Reset-CaptureEditor $capture.Handle 'editor_ready_for_paste'
+                $capture=Fresh-StepWindow $capture.Handle
+                Check-WindowFit 'capture' $capture.Handle
+                $beforePaste=@(Get-Inbox | ForEach-Object {$_.id})
+                $pasteInitial='虚构粘贴草稿：整理想法'
+                $pasteReplacement='虚构粘贴验收：迈出最小一步'
+                if (!$disposable) {throw 'Paste is restricted to the disposable fictional-data VM.'}
+                $clipboardUsed=$true
+                [Windows.Forms.Clipboard]::SetText($pasteInitial,[Windows.Forms.TextDataFormat]::UnicodeText)
+                [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x56))
+                [StepAcceptanceNative]::AsciiKeys('x')
+                $pasteFirst=Confirm-CaptureText $capture.Handle ($pasteInitial+'x') 5 -PreserveSourceClipboard
+                Result 'clipboard_paste_initial' $(if($pasteFirst.exactReadback){'pass'}else{'fail'}) 'Pasted fictional Chinese, appended a real x key, then required native Ctrl+A/C to return initial+x, which was never placed on the clipboard.' $pasteFirst
+                Focus-Step $capture.Handle
+                [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
+                [Windows.Forms.Clipboard]::SetText($pasteReplacement,[Windows.Forms.TextDataFormat]::UnicodeText)
+                [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x56))
+                [StepAcceptanceNative]::AsciiKeys('y')
+                $pasteSecond=Confirm-CaptureText $capture.Handle ($pasteReplacement+'y') 5 -PreserveSourceClipboard
+                Result 'clipboard_paste_replace' $(if($pasteSecond.exactReadback){'pass'}else{'fail'}) 'Replaced the selection by real paste, appended a real y key, and required copying replacement+y from Step.' $pasteSecond
+                Focus-Step $capture.Handle
+                [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
+                $pasteSaved=Wait-Until {@(Get-Inbox | Where-Object {$beforePaste -notcontains $_.id -and [string]::Equals($_.payload.content.text,($pasteReplacement+'y'),[StringComparison]::Ordinal)}).Count -eq 1} 12
+                $pasteActual=@(Get-Inbox | Where-Object {$beforePaste -notcontains $_.id} | Select-Object -First 3 | ForEach-Object {$value=[string]$_.payload.content.text;$value.Substring(0,[Math]::Min(256,$value.Length))})
+                $pastePassed=$pasteReady -and $pasteFirst.exactReadback -and $pasteSecond.exactReadback -and $pasteSaved
+                Result 'clipboard_paste_edit_save' $(if($pastePassed){'pass'}else{'fail'}) 'Independent real clipboard paste, physical x/y append, select-all replacement and Ctrl+Enter persistence. This is NOT an IME or KEYEVENTF_UNICODE test.' @{editorReady=$pasteReady;initial=$pasteFirst;replacement=$pasteSecond;exactPersistedText=$pasteSaved;persistedTexts=$pasteActual}
+            } catch {Result 'clipboard_paste_edit_save' 'fail' (Error-Detail $_)}
+            finally {Clear-TestClipboard}
             if ($pinyinAvailable) {
                 try {
                     Focus-Step $main.Handle
-                    $capture=Open-Capture;Focus-Step $capture.Handle
+                    $capture=Ensure-Capture;Focus-Step $capture.Handle
+                    $imeClean=Reset-CaptureEditor $capture.Handle 'ime_draft_reset'
+                    if (!$imeClean) {throw 'Could not prove removal of the earlier fictional draft; IME test not attempted.'}
+                    $capture=Fresh-StepWindow $capture.Handle
+                    Check-WindowFit 'capture' $capture.Handle
                     $originalLayout=[StepAcceptanceNative]::WindowKeyboardLayout([IntPtr]$capture.Handle)
                     $before=@(Get-Inbox | ForEach-Object {$_.id})
                     $imeActivated=$false
@@ -449,20 +595,26 @@ try {
                     [StepAcceptanceNative]::AsciiKeys('nihao')
                     Start-Sleep -Milliseconds 600
                     $candidate=[StepAcceptanceNative]::CandidateVisible()
+                    if ($candidate) {
+                        try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$capture.Handle,(Join-Path $OutputDirectory 'step-ime-candidate-native.png'));Result 'ime_candidate_screenshot' 'pass' 'Captured the real candidate phase before Space; placement still requires image inspection.'}
+                        catch {Result 'ime_candidate_screenshot' 'unsupported' (Error-Detail $_)}
+                    } else {Result 'ime_candidate_screenshot' 'unsupported' 'No visible candidate window was observed before committing with Space.'}
                     [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x20))
                     Start-Sleep -Milliseconds 300
                     [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
-                    $converted=Wait-Until { @(Get-Inbox | Where-Object {$before -notcontains $_.id -and $_.payload.content.text -match '[\u4e00-\u9fff]'}).Count -gt 0 } 12
-                    Result 'microsoft_pinyin' $(if($converted){'pass'}else{'fail'}) 'Real Microsoft Pinyin activated; only Latin virtual keys nihao and candidate commit were sent, then persisted Chinese was checked.' @{activationHresult=$activation;targetLanguageId=($targetLayout -band 0xffff);candidateWindowObserved=$candidate;chinesePersisted=$converted}
+                    $converted=Wait-Until { @(Get-Inbox | Where-Object {$before -notcontains $_.id -and [string]::Equals($_.payload.content.text,'你好',[StringComparison]::Ordinal)}).Count -gt 0 } 12
+                    $imeActual=@(Get-Inbox | Where-Object {$before -notcontains $_.id} | Select-Object -First 3 | ForEach-Object {$value=[string]$_.payload.content.text;$value.Substring(0,[Math]::Min(256,$value.Length))})
+                    Result 'microsoft_pinyin' $(if($imeClean -and $converted){'pass'}else{'fail'}) 'Proved the earlier draft was replaced by ASCII and cleared; activated real Pinyin; sent only Latin nihao and Space; required a new inbox text exactly equal to 你好.' @{draftResetVerified=$imeClean;activationHresult=$activation;targetLanguageId=($targetLayout -band 0xffff);candidateWindowObserved=$candidate;exactChinesePersisted=$converted;persistedTexts=$imeActual}
                     Result 'ime_candidate_layout' 'unsupported' 'Candidate-window observation alone cannot validate placement, clipping or all composition interactions.' @{candidateWindowObserved=$candidate}
                 } catch {Result 'microsoft_pinyin' $(if((Get-Variable imeActivated -ErrorAction SilentlyContinue) -and $imeActivated){'fail'}else{'unsupported'}) ((Error-Detail $_)+'; no login, unlock or unregistered package installation attempted.')}
                 finally {if (Get-Variable originalLayout -ErrorAction SilentlyContinue) {[void][StepAcceptanceNative]::RestoreKeyboard($originalLayout)}}
             } else {Result 'microsoft_pinyin' 'unsupported' 'Microsoft Pinyin could not be made available from the existing registered/configured profiles in this session; no Unicode result counts as IME acceptance.'}
         } catch {Result 'interactive_input' 'fail' (Error-Detail $_)}
-        finally {Stop-Step $uiProcess;$uiProcess=$null}
+        finally {Clear-CaptureDraft;Clear-TestClipboard;Stop-Step $uiProcess;$uiProcess=$null}
     } else {
-        foreach ($name in @('window_open','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling')) {Result $name 'unsupported' 'Active interactive desktop prerequisite failed; see probe JSON.'}
+        foreach ($name in @('window_open','window_fit_in_workarea','main_window_fit_in_workarea','capture_window_fit_in_workarea','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling')) {Result $name 'unsupported' 'Active interactive desktop prerequisite failed; see probe JSON.'}
     }
+    Clear-TestClipboard
     Restore-TestLanguages
     # Real notification and time-trigger tests are independent of keyboard automation.
     try {
@@ -485,7 +637,7 @@ try {
         Result 'notification_visible' $(if($toast.visibleTextObserved){'pass'}else{'unsupported'}) 'Pass requires the fictional title in a non-offscreen OS UI Automation element; API/history alone cannot pass.' $toast
         Stop-Step $uiProcess;$uiProcess=$null
         $event.exitEvidence=$script:lastExitEvidence
-        Result 'normal_exit_before_reminder' $(if($event.exitEvidence.normalExitObserved){'pass'}elseif($event.exitEvidence.closeRequested){'fail'}else{'unsupported'}) 'Normal exit requires WM_CLOSE, zero exit code and no forced kill. A sent close request that does not finish within ten seconds fails; no available main window is unsupported.' $event.exitEvidence
+        Result 'normal_exit_before_reminder' $(if($event.exitEvidence.normalExitObserved){'pass'}elseif($event.exitEvidence.closeRequested -and !$event.exitEvidence.draftProtectionObserved){'fail'}else{'unsupported'}) 'Normal exit requires WM_CLOSE, zero exit code and no forced kill. A visible unsaved-draft protection dialog or unavailable main window is unsupported; other close timeouts fail.' $event.exitEvidence
         if ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -ge $event.atMillis -or (Is-ReminderHandled $event)) {throw 'Reminder was due or already handled before Step fully exited; after-exit delivery cannot be claimed.'}
         $delivery=Wait-Reminder $event 95
         Result 'scheduled_reminder_processing' $(if($delivery.observationSkipped){'unsupported'}elseif($delivery.handled){'pass'}else{'fail'}) ('Termination scope: '+$delivery.exitScope+'. Waited for the real OS trigger after confirmed exit; checked the handled token. No manual task Run or delivery command was issued.') $delivery
@@ -501,7 +653,7 @@ try {
             $event=Prepare-Reminder 35
             Stop-Step $uiProcess;$uiProcess=$null
             $event.exitEvidence=$script:lastExitEvidence
-            Result 'normal_exit_before_locked_reminder' $(if($event.exitEvidence.normalExitObserved){'pass'}elseif($event.exitEvidence.closeRequested){'fail'}else{'unsupported'}) 'Normal quit requires WM_CLOSE and clean exit within ten seconds; force after an attempted close fails, while unavailable close prerequisites are unsupported.' $event.exitEvidence
+            Result 'normal_exit_before_locked_reminder' $(if($event.exitEvidence.normalExitObserved){'pass'}elseif($event.exitEvidence.closeRequested -and !$event.exitEvidence.draftProtectionObserved){'fail'}else{'unsupported'}) 'Normal quit requires WM_CLOSE and clean exit within ten seconds. Observed unsaved-draft protection is not an exit regression; other forced close attempts fail.' $event.exitEvidence
             Save-Report
             $observer=New-Object StepAcceptanceNative+LockObserver
             if (!$observer.Registered) {throw 'Could not subscribe to WTS session-lock events.'}
@@ -520,6 +672,7 @@ try {
     } else {Result 'lock_screen_delivery' 'unsupported' 'Requires -AttemptLock, an interactive desktop, notification setup and a disposable GitHub-hosted VM. Locking is deliberately the final stage.'}
 } catch {Result 'harness' 'fail' (Error-Detail $_)}
 finally {
+    Clear-TestClipboard
     Restore-TestLanguages
     foreach ($p in $processes) {try {if (!$p.HasExited) {Stop-Step $p}} catch {}}
     # A task-triggered process was not started by Start-Step. Stop only the same packaged
@@ -541,7 +694,7 @@ finally {
             Result 'cleanup' $(if(!$cleaned.shortcut -and !$cleaned.protocol -and !$cleaned.taskFolder){'pass'}else{'fail'}) 'Removed only isolated Step notification registrations and scheduled-task folder.' $cleaned
         } catch {Result 'cleanup' 'fail' (Error-Detail $_)}
     }
-    foreach ($required in @('window_open','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling','notification_registration','notification_show_api','notification_history','notification_visible','scheduled_delivery','normal_exit_before_reminder','normal_exit_before_locked_reminder','lock_screen_delivery','lock_screen_visible')) {
+    foreach ($required in @('window_open','window_fit_in_workarea','main_window_fit_in_workarea','capture_window_fit_in_workarea','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling','notification_registration','notification_show_api','notification_history','notification_visible','scheduled_delivery','normal_exit_before_reminder','normal_exit_before_locked_reminder','lock_screen_delivery','lock_screen_visible')) {
         if (!$checks.Contains($required)) {Result $required 'unsupported' 'Not reached because an earlier prerequisite/check failed; see other checks and probe JSON.'}
     }
     Save-Report

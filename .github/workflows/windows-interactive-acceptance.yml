@@ -23,14 +23,14 @@ jobs:
       - name: Verify accepted artifact identity
         shell: pwsh
         run: |
-          $run = gh api repos/Zita-Go/Pare/actions/runs/45035586093 | ConvertFrom-Json
-          if ($run.conclusion -ne 'success' -or $run.head_sha -ne '71deb0d98cad2fd706fb8ffc8dab8a1056ba4d4e') { throw 'Accepted source/build changed' }
-          $artifact = gh api repos/Zita-Go/Pare/actions/artifacts/14759747938 | ConvertFrom-Json
-          if ($artifact.expired -or $artifact.digest -ne 'sha256:950daac5823e6be38d9c750d0570aa45f232306dd3c794c956c24ab02039727e') { throw 'Accepted artifact changed' }
+          $run = gh api repos/Zita-Go/Pare/actions/runs/45049680687 | ConvertFrom-Json
+          if ($run.conclusion -ne 'success' -or $run.head_sha -ne 'bd0c42e0a455cc2d4a6adbf1b6ba5f20283c2ad9') { throw 'Accepted source/build changed' }
+          $artifact = gh api repos/Zita-Go/Pare/actions/artifacts/14764548920 | ConvertFrom-Json
+          if ($artifact.expired -or $artifact.digest -ne 'sha256:89cc3809cce8830c7867e6624cbef24d89195594b4552f31a19f66518f145e1a') { throw 'Accepted artifact changed' }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          artifact-ids: '14759747938'
-          run-id: '45035586093'
+          artifact-ids: '14764548920'
+          run-id: '45049680687'
           github-token: ${{ github.token }}
           repository: Zita-Go/Pare
           path: packages
@@ -38,7 +38,7 @@ jobs:
       - name: Verify each installer checksum
         shell: pwsh
         run: |
-          $expectedNames = @('Step-0.2.0.exe','Step-0.2.0.msi','Step-0.2.0-windows-x64-portable.zip')
+          $expectedNames = @('Step-0.2.1.exe','Step-0.2.1.msi','Step-0.2.1-windows-x64-portable.zip')
           $seen = @()
           foreach ($line in Get-Content packages/SHA256SUMS.txt) {
             if ($line -notmatch '^([0-9a-f]{64})  ([^\\/]+)$') { throw 'Invalid checksum entry' }
@@ -48,29 +48,50 @@ jobs:
             $seen += $name
           }
           if ($seen.Count -ne 3) { throw 'Missing installer checksums' }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: '14759747938'
+          run-id: '45035586093'
+          github-token: ${{ github.token }}
+          repository: Zita-Go/Pare
+          path: prior-packages
+          merge-multiple: true
       - name: Parse native acceptance script
         shell: pwsh
         run: |
           $tokens=$null; $issues=$null
           [Management.Automation.Language.Parser]::ParseFile((Resolve-Path .github/scripts/windows-interactive-acceptance.ps1),[ref]$tokens,[ref]$issues) | Out-Null
           if ($issues.Count) { $issues | Format-List; throw 'Acceptance script parse failed' }
-      - name: Install accepted preview
-        timeout-minutes: 4
+      - name: Upgrade from the previous 0.2.0 preview
+        timeout-minutes: 8
         shell: pwsh
         run: |
           . .github/scripts/windows-checks.ps1
-          $msi=(Resolve-Path packages/Step-0.2.0.msi).Path
+          $line = Get-Content prior-packages/SHA256SUMS.txt | Where-Object { $_ -match '^([0-9a-f]{64})  Step-0[.]2[.]0[.]msi$' }
+          if (!$line -or $line -notmatch '^([0-9a-f]{64})  Step-0[.]2[.]0[.]msi$') { throw 'Missing prior installer checksum' }
+          if ((Get-FileHash prior-packages/Step-0.2.0.msi -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Matches[1]) { throw 'Prior installer checksum mismatch' }
+          $prior=(Resolve-Path prior-packages/Step-0.2.0.msi).Path
+          $code=Invoke-StepCheckProcess msiexec.exe @('/i',$prior,'/qn','/norestart') 'step-interactive-prior-install' 180
+          if ($code -notin @(0,3010)) { throw "Prior install failed: $code" }
+          $oldData=Join-Path $env:RUNNER_TEMP 'step-from-02-fixture'
+          $code=Invoke-StepCheckProcess (Get-StepInstalledExecutable) @('--self-test','--data-dir',"`"$oldData`"") 'step-interactive-prior-fixture'
+          if ($code -ne 0) { throw 'Prior fixture creation failed' }
+          $msi=(Resolve-Path packages/Step-0.2.1.msi).Path
           $code=Invoke-StepCheckProcess msiexec.exe @('/i',$msi,'/qn','/norestart') 'step-interactive-install' 180
           if ($code -notin @(0,3010)) { throw "Install failed: $code" }
+          $code=Invoke-StepCheckProcess (Get-StepInstalledExecutable) @('--upgrade-self-test','--data-dir',"`"$oldData`"") 'step-interactive-upgrade-fixture'
+          if ($code -ne 0 -or !(Test-Path "$oldData/upgrade-self-test.json")) { throw '0.2.0 upgrade validation failed' }
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/step-interactive-reports" | Out-Null
+          Copy-Item "$oldData/upgrade-self-test.json" "$env:RUNNER_TEMP/step-interactive-reports/from-0.2.0-upgrade.json"
       - name: Exercise actual installed desktop and final lock stage
         timeout-minutes: 10
         shell: pwsh
         run: |
           . .github/scripts/windows-checks.ps1
           $exe=Get-StepInstalledExecutable
-          $profile=Join-Path $env:RUNNER_TEMP 'step-interactive-fictional-profile'
+          $stepQaProfile=Join-Path $env:RUNNER_TEMP 'step-interactive-fictional-profile'
           $reports=Join-Path $env:RUNNER_TEMP 'step-interactive-reports'
-          & .github/scripts/windows-interactive-acceptance.ps1 -Executable $exe -DataDirectory $profile -OutputDirectory $reports -AttemptLock
+          & .github/scripts/windows-interactive-acceptance.ps1 -Executable $exe -DataDirectory $stepQaProfile -OutputDirectory $reports -AttemptLock
           if ($LASTEXITCODE -ne 0) { throw 'Acceptance reported a failure; inspect the JSON' }
           Get-Content "$reports/interactive-acceptance.json"
       - name: Remove fixture installation
@@ -79,8 +100,8 @@ jobs:
         shell: pwsh
         run: |
           . .github/scripts/windows-checks.ps1
-          if (Test-Path packages/Step-0.2.0.msi) {
-            $msi=(Resolve-Path packages/Step-0.2.0.msi).Path
+          if (Test-Path packages/Step-0.2.1.msi) {
+            $msi=(Resolve-Path packages/Step-0.2.1.msi).Path
             Invoke-StepCheckProcess msiexec.exe @('/x',$msi,'/qn','/norestart') 'step-interactive-uninstall' 180 | Out-Null
           }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
