@@ -60,6 +60,7 @@ $windowFitSamples = New-Object Collections.ArrayList
 $languageChanged = $false
 $clipboardUsed = $false
 $pendingClipboardCopy = $null
+$copyFailureNumber = 0
 $originalLanguageList = $null
 $disposable = $env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted'
 $profileIdHash = [Security.Cryptography.SHA256]::Create()
@@ -302,8 +303,8 @@ function Confirm-CaptureText([long]$handle,[string]$expected,[int]$seconds=5,[sw
     $script:clipboardUsed=$true
     $timer=[Diagnostics.Stopwatch]::StartNew();$observed=$null;$copies=0;$clipboardError=$null
     $acks=New-Object Collections.ArrayList;$readback=$false;$foreground=$true
-    Require-ClipboardIdle
-    while ($copies -lt 3 -and $timer.Elapsed.TotalSeconds -lt $seconds) {
+    try {Require-ClipboardIdle} catch {$clipboardError=Error-Detail $_}
+    while ($null -eq $clipboardError -and $copies -lt 3 -and $timer.Elapsed.TotalSeconds -lt $seconds) {
         $foreground=[StepAcceptanceNative]::GetForegroundWindow().ToInt64() -eq $handle
         if (!$foreground) {break}
         try {
@@ -312,8 +313,7 @@ function Confirm-CaptureText([long]$handle,[string]$expected,[int]$seconds=5,[sw
                 [void](Set-FictionalClipboardSource ('STEP_ACCEPTANCE_SENTINEL_'+[guid]::NewGuid().ToString('N')))
             }
             [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
-            $selectionPaint=Wait-CaptureSurface $handle
-            if (!$selectionPaint.ready) {throw 'Selection paint did not settle; Ctrl+C was not sent.'}
+            $selectionPaint=Settle-CaptureStage $handle 'copy-selection'
             # Establish the baseline only after Ctrl+A has settled. Pending begins at the
             # actual copy request, and its ACK budget starts here rather than before paint.
             $sequenceBefore=[StepAcceptanceNative]::GetClipboardSequenceNumber()
@@ -331,7 +331,14 @@ function Confirm-CaptureText([long]$handle,[string]$expected,[int]$seconds=5,[sw
             if ($ack.observedLength -eq $expected.Length -and [string]::Equals($observed,$expected,[StringComparison]::Ordinal)) {$readback=$true;break}
         } catch {$clipboardError=Error-Detail $_;break}
     }
-    return @{exactReadback=$readback;foreground=$foreground;copies=$copies;copyAcknowledged=($copies -gt 0 -and $null -eq $pendingClipboardCopy -and @($acks | Where-Object {!$_.acknowledged}).Count -eq 0);acknowledgements=@($acks);observedText=$observed;elapsedMillis=$timer.ElapsedMilliseconds;clipboardError=$clipboardError;sourceClipboardPreserved=[bool]$PreserveSourceClipboard;method='at most three sequential Ctrl+A/C requests; native sequence acknowledgement before readback; no complete expected text written to clipboard'}
+    $result=@{exactReadback=$readback;foreground=$foreground;copies=$copies;copyAcknowledged=($copies -gt 0 -and $null -eq $pendingClipboardCopy -and @($acks | Where-Object {!$_.acknowledged}).Count -eq 0);acknowledgements=@($acks);expectedText=$expected;observedText=$observed;elapsedMillis=$timer.ElapsedMilliseconds;clipboardError=$clipboardError;sourceClipboardPreserved=[bool]$PreserveSourceClipboard;method='at most three sequential Ctrl+A/C requests; native sequence acknowledgement before readback; no complete expected text written to clipboard'}
+    if (!$readback) {
+        $script:copyFailureNumber++
+        $name='capture-copy-'+$script:copyFailureNumber.ToString('00')
+        $result['failureEvidence']=$name+'-failure.json'
+        Save-CaptureReadinessFailure $handle $name @{readback=$result;nativeState=[StepAcceptanceNative]::InputSurface([IntPtr]$handle,$null)}
+    }
+    return $result
 }
 function Clear-TestClipboard {
     if (!$clipboardUsed -or !$disposable) {return}
@@ -377,6 +384,14 @@ function Save-CaptureReadinessFailure([long]$handle,[string]$name,$evidence) {
     try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$handle,(Join-Path $OutputDirectory ($name+'-failure.png')))}
     catch {Result ($name+'_screenshot') 'unsupported' (Error-Detail $_)}
 }
+function Settle-CaptureStage([long]$handle,[string]$phase) {
+    $state=Wait-CaptureSurface $handle
+    if (!$state.ready) {
+        Save-CaptureReadinessFailure $handle $phase $state
+        throw ('Capture stage did not settle: '+$phase)
+    }
+    return $state
+}
 function Reset-CaptureEditor([long]$handle,[string]$checkName) {
     if (!$disposable) {throw 'Editor readiness uses only the fictional disposable profile.'}
     Require-ClipboardIdle
@@ -391,15 +406,20 @@ function Reset-CaptureEditor([long]$handle,[string]$checkName) {
     do {
         $attempt++;Focus-Step $handle
         [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
+        [void](Settle-CaptureStage $handle ($checkName+'-select-before-clear'))
         [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x08))
+        [void](Settle-CaptureStage $handle ($checkName+'-clear-before-ascii'))
         [StepAcceptanceNative]::AsciiKeys('stepready')
+        [void](Settle-CaptureStage $handle ($checkName+'-ascii-before-copy'))
         $proof=Confirm-CaptureText $handle 'stepready' 2
     } while (!$proof.exactReadback -and $proof.copyAcknowledged -and $attempt -lt 2)
     # Exact ASCII readback proves old Chinese was replaced. The following ordered native
     # Ctrl+A/Backspace clears it; later exact saved text independently detects stale remnants.
     if ($proof.exactReadback) {
         [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
+        [void](Settle-CaptureStage $handle ($checkName+'-select-before-final-clear'))
         [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x08))
+        [void](Settle-CaptureStage $handle ($checkName+'-final-clear'))
     }
     if (!$proof.exactReadback) {Save-CaptureReadinessFailure $handle $checkName @{surfaceBeforeInput=$surface;readback=$proof;nativeStateAfterFailure=[StepAcceptanceNative]::InputSurface([IntPtr]$handle,$null)}}
     Result $checkName $(if($proof.exactReadback){'pass'}else{'fail'}) 'Confirmed real ASCII typing and Ctrl+A/C readback, then sent native Ctrl+A/Backspace to clear the fictional field. Retries depend on observed readiness, not a blind delay.' @{ready=$proof.exactReadback;attempts=$attempt;elapsedMillis=$timer.ElapsedMilliseconds;surfaceBeforeInput=$surface;readback=$proof;clearKeysSent=$proof.exactReadback}
@@ -600,24 +620,28 @@ try {
             $beforeUnicode=@(Get-Inbox | ForEach-Object {$_.id})
             $initialText='虚构草稿：需要替换'
             [StepAcceptanceNative]::UnicodeText($initialText)
+            [void](Settle-CaptureStage $capture.Handle 'unicode-initial-text')
             $initialReadback=Confirm-CaptureText $capture.Handle $initialText
             Result 'unicode_initial_input' $(if($initialReadback.exactReadback){'pass'}else{'fail'}) 'Sent KEYEVENTF_UNICODE once, then waited for exact native Ctrl+A/C readback from the real capture field.' $initialReadback
             Require-ClipboardIdle
             Focus-Step $capture.Handle
             [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
+            [void](Settle-CaptureStage $capture.Handle 'unicode-replacement-selection')
             $savedText='验收中文：整理想法，迈出最小一步。'
             [StepAcceptanceNative]::UnicodeText($savedText)
+            [void](Settle-CaptureStage $capture.Handle 'unicode-replacement-text')
             $replacementReadback=Confirm-CaptureText $capture.Handle $savedText
             Result 'unicode_select_all_replace' $(if($replacementReadback.exactReadback){'pass'}else{'fail'}) 'Sent native Ctrl+A and replacement Unicode once; waited until copying the field returned the exact replacement.' $replacementReadback
             try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$capture.Handle,(Join-Path $OutputDirectory 'step-chinese-text-native.png'))} catch {Result 'text_screenshot' 'unsupported' (Error-Detail $_)}
             Require-ClipboardIdle
             Focus-Step $capture.Handle
+            [void](Settle-CaptureStage $capture.Handle 'unicode-before-save')
             [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
             $saved=Wait-Until { @(Get-Inbox | Where-Object {$beforeUnicode -notcontains $_.id -and [string]::Equals($_.payload.content.text,$savedText,[StringComparison]::Ordinal)}).Count -eq 1 } 12
             $persistedTexts=@(Get-Inbox | Where-Object {$beforeUnicode -notcontains $_.id} | Select-Object -First 3 | ForEach-Object {$value=[string]$_.payload.content.text;$value.Substring(0,[Math]::Min(256,$value.Length))})
             Result 'unicode_save_persistence' $(if($saved){'pass'}else{'fail'}) 'Sent native Ctrl+Enter once, then checked newly created isolated inbox records for exact persisted text.' @{exactPersistedText=$saved;persistedTexts=$persistedTexts;replacementWasReadBack=$replacementReadback.exactReadback}
             $unicodePassed=$rawEditorReady -and $initialReadback.exactReadback -and $replacementReadback.exactReadback -and $saved
-            Result 'unicode_edit_save' $(if($unicodePassed){'pass'}else{'fail'}) 'Unicode initial input, select-all replacement and save must each pass their independent readback/persistence check. This is NOT an IME test.' @{initialReadback=$initialReadback;replacementReadback=$replacementReadback;exactPersistedText=$saved;persistedTexts=$persistedTexts}
+            Result 'unicode_edit_save' $(if($unicodePassed){'pass'}else{'fail'}) 'Unicode initial input, select-all replacement and save must each pass their independent readback/persistence check. This is NOT an IME test.' @{unicodeCharacterIntervalMillis=110;initialReadback=$initialReadback;replacementReadback=$replacementReadback;exactPersistedText=$saved;persistedTexts=$persistedTexts}
             Clear-TestClipboard
             # Independent user paste path. Expected text contains a native x/y keystroke,
             # so merely reading the string written to the clipboard cannot pass this test.
@@ -633,11 +657,9 @@ try {
                 $clipboardUsed=$true
                 $pasteSourceBefore=Set-FictionalClipboardSource $pasteInitial
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x56))
-                $initialPastePaint=Wait-CaptureSurface $capture.Handle
-                if (!$initialPastePaint.ready) {throw 'Initial paste paint did not settle before physical x.'}
+                $initialPastePaint=Settle-CaptureStage $capture.Handle 'paste-initial-before-x'
                 [StepAcceptanceNative]::AsciiKeys('x')
-                $initialAppendPaint=Wait-CaptureSurface $capture.Handle
-                if (!$initialAppendPaint.ready) {throw 'Physical x paint did not settle before select/copy.'}
+                $initialAppendPaint=Settle-CaptureStage $capture.Handle 'paste-x-before-copy'
                 $pasteSequenceAfterKeys=[StepAcceptanceNative]::GetClipboardSequenceNumber()
                 $pasteFirst=Confirm-CaptureText $capture.Handle ($pasteInitial+'x') 5 -PreserveSourceClipboard
                 $pasteFirst['pasteClipboard']=@{pastePaintMillis=$initialPastePaint.elapsedMillis;appendPaintMillis=$initialAppendPaint.elapsedMillis;before=$pasteSourceBefore;sequenceAfterPasteKeys=$pasteSequenceAfterKeys;afterCopySequence=[StepAcceptanceNative]::GetClipboardSequenceNumber();afterCopyValue=$pasteFirst.observedText}
@@ -645,19 +667,19 @@ try {
                 Require-ClipboardIdle
                 Focus-Step $capture.Handle
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
+                [void](Settle-CaptureStage $capture.Handle 'paste-replacement-selection')
                 $pasteReplacementBefore=Set-FictionalClipboardSource $pasteReplacement
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x56))
-                $replacementPastePaint=Wait-CaptureSurface $capture.Handle
-                if (!$replacementPastePaint.ready) {throw 'Replacement paste paint did not settle before physical y.'}
+                $replacementPastePaint=Settle-CaptureStage $capture.Handle 'paste-replacement-before-y'
                 [StepAcceptanceNative]::AsciiKeys('y')
-                $replacementAppendPaint=Wait-CaptureSurface $capture.Handle
-                if (!$replacementAppendPaint.ready) {throw 'Physical y paint did not settle before select/copy.'}
+                $replacementAppendPaint=Settle-CaptureStage $capture.Handle 'paste-y-before-copy'
                 $replacementSequenceAfterKeys=[StepAcceptanceNative]::GetClipboardSequenceNumber()
                 $pasteSecond=Confirm-CaptureText $capture.Handle ($pasteReplacement+'y') 5 -PreserveSourceClipboard
                 $pasteSecond['pasteClipboard']=@{pastePaintMillis=$replacementPastePaint.elapsedMillis;appendPaintMillis=$replacementAppendPaint.elapsedMillis;before=$pasteReplacementBefore;sequenceAfterPasteKeys=$replacementSequenceAfterKeys;afterCopySequence=[StepAcceptanceNative]::GetClipboardSequenceNumber();afterCopyValue=$pasteSecond.observedText}
                 Result 'clipboard_paste_replace' $(if($pasteSecond.exactReadback){'pass'}else{'fail'}) 'Replaced the selection by real paste, appended a real y key, and required copying replacement+y from Step.' $pasteSecond
                 Require-ClipboardIdle
                 Focus-Step $capture.Handle
+                [void](Settle-CaptureStage $capture.Handle 'paste-before-save')
                 [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
                 $pasteSaved=Wait-Until {@(Get-Inbox | Where-Object {$beforePaste -notcontains $_.id -and [string]::Equals($_.payload.content.text,($pasteReplacement+'y'),[StringComparison]::Ordinal)}).Count -eq 1} 12
                 $pasteActual=@(Get-Inbox | Where-Object {$beforePaste -notcontains $_.id} | Select-Object -First 3 | ForEach-Object {$value=[string]$_.payload.content.text;$value.Substring(0,[Math]::Min(256,$value.Length))})
@@ -684,15 +706,16 @@ try {
                     if ($activation -ne 0 -or ($targetLayout -band 0xffff) -ne 0x804) {throw 'Configured Microsoft Pinyin did not activate for the Step window.'}
                     $imeActivated=$true
                     Result 'pinyin_activation' 'pass' 'Registered Pinyin activated in the current session without signing in again.' @{activationHresult=$activation;targetLanguageId=($targetLayout -band 0xffff)}
+                    [void](Settle-CaptureStage $capture.Handle 'ime-before-latin-input')
                     [StepAcceptanceNative]::AsciiKeys('nihao')
-                    Start-Sleep -Milliseconds 600
+                    [void](Settle-CaptureStage $capture.Handle 'ime-composition')
                     $candidate=[StepAcceptanceNative]::CandidateVisible()
                     if ($candidate) {
                         try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$capture.Handle,(Join-Path $OutputDirectory 'step-ime-candidate-native.png'));Result 'ime_candidate_screenshot' 'pass' 'Captured the real candidate phase before Space; placement still requires image inspection.'}
                         catch {Result 'ime_candidate_screenshot' 'unsupported' (Error-Detail $_)}
                     } else {Result 'ime_candidate_screenshot' 'unsupported' 'No visible candidate window was observed before committing with Space.'}
                     [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x20))
-                    Start-Sleep -Milliseconds 300
+                    [void](Settle-CaptureStage $capture.Handle 'ime-commit-before-save')
                     [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
                     $converted=Wait-Until { @(Get-Inbox | Where-Object {$before -notcontains $_.id -and [string]::Equals($_.payload.content.text,'你好',[StringComparison]::Ordinal)}).Count -gt 0 } 12
                     $imeActual=@(Get-Inbox | Where-Object {$before -notcontains $_.id} | Select-Object -First 3 | ForEach-Object {$value=[string]$_.payload.content.text;$value.Substring(0,[Math]::Min(256,$value.Length))})

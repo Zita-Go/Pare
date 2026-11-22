@@ -236,8 +236,9 @@ public static class StepAcceptanceNative {
         for(int n=keys.Length-1;n>=0;n--)events.Add(Key(keys[n],0,2));Send(events.ToArray());
     }
     public static void UnicodeText(string text) {
-        // KEYEVENTF_UNICODE is deliberately separate from IME typing.
-        foreach(char c in text)Send(new [] {Key(0,c,4),Key(0,c,6)});
+        // KEYEVENTF_UNICODE is deliberately separate from IME typing. Match the ASCII
+        // 110 ms character cadence; the independent paste case covers bulk insertion.
+        foreach(char c in text) {Send(new [] {Key(0,c,4),Key(0,c,6)});Thread.Sleep(110);}
     }
     public static void AsciiKeys(string text) {
         foreach(char c in text) {if(c<'a'||c>'z')throw new ArgumentException("Lowercase Latin letters only");Chord(new [] {(ushort)Char.ToUpperInvariant(c)});Thread.Sleep(110);}
