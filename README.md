@@ -11,7 +11,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Zita-Go/Pare/releases/download/v2.7.1/Pare-2.7.1-macos-arm64.zip"><strong>下载旧版 Pare 2.7.1（预发布）</strong></a>
+  <a href="https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-2.16.0-macos-arm64.zip"><strong>下载 Mac 2.16.0</strong></a>
+  · <a href="https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-0.15.0-android-debug.apk"><strong>下载 Android 0.15.0</strong></a>
   · <a href="#一分钟开始使用">开始使用</a>
   · <a href="docs/guide.md">完整指南</a>
 </p>
@@ -24,7 +25,7 @@ Step（原 Pare）是一个支持 macOS 菜单栏和 Android 的个人规划工�
 
 > 不必先整理完人生。先选一件，开始一点。
 
-**Step 是当前开发版的新名称。** 上方公开下载仍为旧版 Pare 2.7.1，尚未发布本次更名包。[查看品牌升级与兼容说明](docs/releases/step-brand-c.md)。
+**当前为开发预发布版：Mac 2.16.0 / Android 0.15.0。** 包含新的 Step 名称与图标、跨端同步，以及可单独完成并记录历史的下一步。[查看安装步骤、验证范围和已知限制](docs/releases/step-2.16.0-preview.md)。
 
 ## Step 能帮你什么
 
@@ -42,12 +43,12 @@ Step（原 Pare）是一个支持 macOS 菜单栏和 Android 的个人规划工�
 1. **记下来：** 点击菜单栏 Step 图标，或按 `⌥Space`，输入一句话并回车。
 2. **分清轻重：** 打开「整理」，把待整理内容拖进四象限。
 3. **选择今天：** 点任务旁的太阳，在「今日计划」里选出“今天只赢一件”。
-4. **降低门槛：** 写一个 5–15 分钟能完成的下一步，然后点「开始 5 分钟」。
+4. **逐步推进：** 写一个具体的下一步，做完点「完成这一步」，再写下一步；主任务保留，历史可回看。
 5. **需要时再排时间：** 在今日计划切到「时间轴」，拖入任务或单击选择开始时间。
 
 不需要每天使用所有功能。只用“随手记 → 今日重点 → 开始五分钟”，Step 就已经能发挥作用。
 
-当前源码开发版包含「想法与项目」、情境 AI 助手和本地请求历史，并采用深绿暖金界面。先看到下一步，再采纳；建议下方可查看对应输入与原始回复，参考范围和反馈按需展开，采纳可撤销。本地轻提示只在你主动生成后才请求模型。当前公开下载仍为上方的 2.7.1 预发布版；[查看 2.12.0 本地候选说明](docs/releases/v2.12.0.md)。
+当前源码开发版包含「想法与项目」、情境 AI 助手和本地请求历史，并采用深绿暖金界面。先看到下一步，再采纳；建议下方可查看对应输入与原始回复，参考范围和反馈按需展开，采纳可撤销。本地轻提示只在你主动生成后才请求模型。[查看当前预发布说明](docs/releases/step-2.16.0-preview.md)。
 
 ### Android 与跨端同步（开发预览）
 
@@ -55,7 +56,7 @@ Step（原 Pare）是一个支持 macOS 菜单栏和 Android 的个人规划工�
 
 两端使用同一个 **Step 同步账号**：Mac 打开「设置 → 同步」，Android 打开右上角「更多 → 账号与同步」。首次登录先查看合并预览，确认后再上传；离线修改保留在本机，重连后继续同步。有冲突时先比较两个版本，再决定保留哪一个。
 
-API 密钥、AI 原始请求历史、计时控制和系统设置留在各自设备。运行状态共享有独立开关，默认关闭：开启后可看到其他设备最近报告的专注或等待状态，过期会注明，不能远程接管计时。仅本机使用不需要账号。开发者可查看 [Android 构建与验收](android/README.md) 和 [同步部署说明](backend/supabase/README.md)。当前公开下载链接仍指向上方已发布版本，尚不包含跨端同步。
+API 密钥、AI 原始请求历史、计时控制和系统设置留在各自设备。运行状态共享有独立开关，默认关闭：开启后可看到其他设备最近报告的专注或等待状态，过期会注明，不能远程接管计时。仅本机使用不需要账号。开发者可查看 [Android 构建与验收](android/README.md) 和 [同步部署说明](backend/supabase/README.md)。当前预发布包包含跨端同步；托管服务仍用于开发体验，正式邮件发送与服务容量不作生产承诺。
 
 [查看同步测试包的安装步骤与已知限制](docs/releases/v2.13.0-preview.md)。
 
@@ -166,18 +167,20 @@ AI 可以：
 
 ## 安装
 
-当前提供 **Apple Silicon（M 系列）预发布版**，需要 macOS 13 或更高版本。
+Mac 提供 **Apple Silicon（M 系列）预发布版**，需要 macOS 13 或更高版本；Android 需要 8.0 或更高版本。
 
-1. 下载 [Pare-2.7.1-macos-arm64.zip](https://github.com/Zita-Go/Pare/releases/download/v2.7.1/Pare-2.7.1-macos-arm64.zip)。
-2. 可用 [SHA256SUMS.txt](https://github.com/Zita-Go/Pare/releases/download/v2.7.1/SHA256SUMS.txt) 核对文件。
-3. 解压后，把 `Pare.app` 拖入「应用程序」文件夹，再从那里启动。
+1. 下载 [Step-2.16.0-macos-arm64.zip](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-2.16.0-macos-arm64.zip)。
+2. 可用 [Step-SHA256SUMS.txt](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-SHA256SUMS.txt) 核对文件。
+3. 解压后，把 `Step.app` 拖入「应用程序」文件夹，再从那里启动。
 4. 首次打开后，在「设置 → 通用」开启通知并发送测试提醒。
 
 更新前建议在「设置 → 数据」导出备份，退出旧版后再替换 App。为让通知中心稳定识别图标，请不要长期从下载目录、源码目录的 `dist` 或其它临时路径运行。
 
+Android：下载 [Step-0.15.0-android-debug.apk](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-0.15.0-android-debug.apk)，传到手机后安装。这是测试签名包，尚未完成物理手机验收；不同签名的已安装版本可能无法直接覆盖，先保留数据备份。
+
 ### macOS 拦截打开时
 
-当前安装包尚未使用 Developer ID 签名和 Apple 公证。请确认文件来自本仓库并核对 SHA-256，然后在 Finder 中右键 Pare，选择「打开」。[查看 2.7.1 版本说明](docs/releases/v2.7.1.md)。
+当前安装包尚未使用 Developer ID 签名和 Apple 公证。请确认文件来自本仓库并核对 SHA-256，然后在 Finder 中右键 Step，选择「打开」。[查看当前预发布说明](docs/releases/step-2.16.0-preview.md)。
 
 ## 你的内容由你控制
 
@@ -207,4 +210,4 @@ open dist/Step.app
 
 长期使用时仍应把构建得到的 `Step.app` 拖入「应用程序」。
 
-[完整使用指南](docs/guide.md) · [2.7.1 版本说明](docs/releases/v2.7.1.md) · [开发与截图方法](docs/development.md) · [发布验收记录](Tests/RELEASE_ACCEPTANCE.md)
+[完整使用指南](docs/guide.md) · [当前预发布说明](docs/releases/step-2.16.0-preview.md) · [开发与截图方法](docs/development.md) · [发布验收记录](Tests/RELEASE_ACCEPTANCE.md)
