@@ -100,11 +100,18 @@
     "visible lock-screen notification card",
     "notification action button clicks"
   ],
-  "release_published": false,
+  "release_published": true,
   "package_sha256": {
     "Step-0.2.1.exe": "445a9141e2134b10b14d39965f4b5286180e7bb95cf72e67411b97c6dc8457c0",
     "Step-0.2.1.msi": "a72944bcf73f8780ece3a93a152db7823701d90c97dc5318c6cf35c4e2daf93d",
     "Step-0.2.1-windows-x64-portable.zip": "7e83994b624e3d5bf91f202f0f385c572f6358d742adfd219a8440d47cff9a08",
     "SHA256SUMS.txt": "2704b3159cc249b8b27417c8e5e15771f512594efa71f7bbe82d490af237adf2"
+  },
+  "release": {
+    "url": "https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1",
+    "published_at": "2026-11-22T19:45:38Z",
+    "prerelease": true,
+    "marked_latest": false,
+    "public_checksum_download_verified": true
   }
 }
