@@ -55,7 +55,7 @@ import java.time.format.DateTimeFormatter
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         StepOutlinedButton({work.edit {DayTaskActions.setIncluded(it,id,!included,planId,Instant.now())}},enabled=!work.busy){Text(if(included)"移出所选日期"else"加入所选日期")}
                         StepOutlinedButton({work.edit {DayTaskActions.setWin(it,id,!win,planId,Instant.now())}},enabled=!work.busy&&!current.completed()){Text(if(win)"取消当日重点"else"设为当日重点")}
-                        StepTextButton({val done=!current.completed();work.edit {CompletionActions.set(it,id,done,Instant.now())}},enabled=!work.busy){Text(if(current.completed())"恢复整个任务"else"完成整个任务")}
+                        StepTextButton({val done=!current.completed();work.complete(id,done)},enabled=!work.busy){Text(if(current.completed())"恢复整个任务"else"完成整个任务")}
                     }
                 }
                 "schedule" -> SchedulePanel(runtime,current,planId,requireNotNull(scheduleDraft),work)

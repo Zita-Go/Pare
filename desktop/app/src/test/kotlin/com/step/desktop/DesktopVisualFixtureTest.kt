@@ -1,6 +1,8 @@
 package com.step.desktop
 
 import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.*
 import com.pare.app.*
 import kotlinx.serialization.json.*
@@ -40,6 +42,11 @@ class DesktopVisualFixtureTest {
             assertEquals(2,TimelineProjection.project(runtime.engine.state.value,day).blocks.size)
             assertTrue(planWin(runtime.engine.state.value,planId,REPORT))
             onNodeWithTag("nav_今天").assertIsDisplayed()
+            // A container change must not turn the uncolored page title black on the dark surface.
+            val titlePixels=onNodeWithTag("workspace_title").captureToImage().toPixelMap()
+            val titleLuminance=(0 until titlePixels.height).flatMap {y->(0 until titlePixels.width).map {x->titlePixels[x,y].luminance()}}
+            assertTrue("Page title must remain readable in the selected appearance",
+                if(dark)titleLuminance.any {it>.45f}else titleLuminance.any {it<.20f})
             onAllNodesWithText("完成报告提纲").onFirst().assertIsDisplayed()
             capture(dark,width,height,"today","desktop_root",fullWindow=true)
 

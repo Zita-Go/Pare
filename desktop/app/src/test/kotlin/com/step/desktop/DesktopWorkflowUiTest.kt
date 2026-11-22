@@ -188,6 +188,26 @@ class DesktopWorkflowUiTest {
         } finally {runtime.close()}
     }
 
+    @Test fun circularTaskCompletionKeepsFocusHistoryAndDoesNotOpenEditor() = runDesktopComposeUiTest(width=1280,height=900) {
+        val clock=FixtureClock().apply {time=time.copy(wallMillis=Instant.now().toEpochMilli())}
+        val runtime=fixtureRuntime(clock)
+        try {
+            runtime.execute {it.startFocus(TASK,5)}.getOrThrow()
+            clock.time=clock.time.copy(wallMillis=clock.time.wallMillis+60_000,elapsedMillis=clock.time.elapsedMillis+60_000)
+            setContent {DesktopUi(runtime,{}, {}, {})}
+            onNodeWithTag("nav_四象限").performClick()
+            val toggle=onNodeWithContentDescription("完成任务：示例｜整理读书笔记")
+            toggle.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role,androidx.compose.ui.semantics.Role.Checkbox))
+            toggle.performClick()
+            awaitSaved(runtime) {it.completed()}
+            val task=runtime.engine.state.value.items.getValue("task:$TASK")
+            assertEquals(1,task.content().array("progressSessions").size)
+            assertEquals(1,task.content().number("actualMinutes"))
+            assertNull(runtime.execution.state.value.focus)
+            onNodeWithTag("desktop_dialog").assertDoesNotExist()
+        } finally {runtime.close()}
+    }
+
     private fun DesktopComposeUiTest.input(label:String) = onNode(hasSetTextAction() and hasText(label))
 
     private fun DesktopComposeUiTest.awaitSaved(runtime:DesktopRuntime,predicate:(Entity)->Boolean) {
@@ -204,10 +224,10 @@ class DesktopWorkflowUiTest {
         assertTrue(ImageIO.write(onNodeWithTag(tag).captureToImage().toAwtImage(),"png",output.resolve("headless-$host-$name.png").toFile()))
     }
 
-    private suspend fun fixtureRuntime():DesktopRuntime {
+    private suspend fun fixtureRuntime(clock:FixtureClock=FixtureClock()):DesktopRuntime {
         val runtime=DesktopRuntime(
             Files.createTempDirectory("step-fictional-ui-"),DesktopConfig(),{_,_->},TestProtector(),
-            UiNoNetwork,FixtureClock(),MobileAIClient {_,_,_->error("UI fixture must never request AI")}
+            UiNoNetwork,clock,MobileAIClient {_,_,_->error("UI fixture must never request AI")}
         )
         try {
             runtime.initialize()

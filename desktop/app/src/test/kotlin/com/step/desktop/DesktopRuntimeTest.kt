@@ -34,6 +34,114 @@ internal fun fictionalTask(id:String=taskId,remindAt:String?=null)=buildJsonObje
 }
 
 class DesktopRuntimeTest {
+    @Test fun completingFocusedTaskSavesMinutesAndHistoryExactlyOnce()=runBlocking {
+        val home=Files.createTempDirectory("step-complete-focus-test");val clock=FixtureClock()
+        DesktopRuntime(home,DesktopConfig(),{_,_->},TestProtector(),NoNetwork,clock,MobileAIClient()).use {r->
+            r.initialize();r.edit {StateMachine.edit(it,"task",taskId,fictionalTask())}.getOrThrow()
+            r.execute {it.startFocus(taskId,5)}.getOrThrow()
+            val runId=r.execution.state.value.focus!!.id
+            clock.time=clock.time.copy(wallMillis=clock.time.wallMillis+60_000,elapsedMillis=clock.time.elapsedMillis+60_000)
+            r.setTaskCompleted(taskId,true).getOrThrow()
+            val completed=r.engine.state.value.items.getValue("task:$taskId")
+            assertTrue(completed.completed())
+            assertNotNull("Finishing a focused task must record its elapsed effort",completed.content()!!["actualMinutes"])
+            assertEquals(1,completed.content()!!["actualMinutes"]!!.jsonPrimitive.int)
+            val history=completed.content()!!["progressSessions"]!!.jsonArray
+            assertEquals(1,history.size)
+            assertEquals(runId,history.single().jsonObject["id"]!!.jsonPrimitive.content)
+            assertEquals(1,history.single().jsonObject["minutes"]!!.jsonPrimitive.int)
+            assertNull(r.execution.state.value.runFor(taskId))
+            r.setTaskCompleted(taskId,true).getOrThrow()
+            assertEquals(completed,r.engine.state.value.items.getValue("task:$taskId"))
+        }
+        DesktopStore(home).use {store->
+            val persisted=store.read().items.getValue("task:$taskId")
+            assertTrue(persisted.completed());assertEquals(1,persisted.content()!!["progressSessions"]!!.jsonArray.size)
+        }
+    }
+
+    @Test fun completingExternalRunSavesWaitHistoryWithoutCountingFocusMinutes()=runBlocking {
+        val home=Files.createTempDirectory("step-complete-external-test");val clock=FixtureClock()
+        DesktopRuntime(home,DesktopConfig(),{_,_->},TestProtector(),NoNetwork,clock,MobileAIClient()).use {r->
+            r.initialize();r.edit {StateMachine.edit(it,"task",taskId,fictionalTask())}.getOrThrow()
+            r.execute {it.startExternal(taskId,10)}.getOrThrow()
+            val runId=r.execution.state.value.external.single().id
+            clock.time=clock.time.copy(wallMillis=clock.time.wallMillis+60_000,elapsedMillis=clock.time.elapsedMillis+60_000)
+            r.setTaskCompleted(taskId,true).getOrThrow()
+            val completed=r.engine.state.value.items.getValue("task:$taskId")
+            assertTrue(completed.completed())
+            assertNotNull("Finishing a waiting task must preserve the run",completed.content()!!["parallelRunSessions"])
+            val history=completed.content()!!["parallelRunSessions"]!!.jsonArray
+            assertEquals(1,history.size)
+            assertEquals(runId,history.single().jsonObject["id"]!!.jsonPrimitive.content)
+            assertEquals(1,history.single().jsonObject["elapsedMinutes"]!!.jsonPrimitive.int)
+            assertEquals("completed",history.single().jsonObject["reason"]!!.jsonPrimitive.content)
+            assertEquals(0,completed.content()!!["actualMinutes"]?.jsonPrimitive?.int ?: 0)
+            assertNull(r.execution.state.value.runFor(taskId))
+        }
+    }
+
+    @Test fun failedFinishKeepsParentIncompleteAndRetainsRunForRetry()=runBlocking {
+        val home=Files.createTempDirectory("step-complete-failure-test");val clock=FixtureClock()
+        val disk=DesktopExecutionPersistence(home)
+        var rejectFinish=false
+        val persistence=object:ExecutionPersistence {
+            override fun load()=disk.load()
+            override fun save(snapshot:ExecutionSnapshot) {
+                if(rejectFinish && snapshot.focus?.pendingFinish!=null) throw java.io.IOException("Fictional disk failure")
+                disk.save(snapshot)
+            }
+        }
+        DesktopRuntime(home,DesktopConfig(),{_,_->},TestProtector(),NoNetwork,clock,MobileAIClient(),persistence).use {r->
+            r.initialize();r.edit {StateMachine.edit(it,"task",taskId,fictionalTask())}.getOrThrow()
+            r.execute {it.startFocus(taskId,5)}.getOrThrow()
+            val runId=r.execution.state.value.focus!!.id
+            clock.time=clock.time.copy(wallMillis=clock.time.wallMillis+60_000,elapsedMillis=clock.time.elapsedMillis+60_000)
+            rejectFinish=true
+            assertTrue(r.setTaskCompleted(taskId,true).isFailure)
+            val unfinished=r.engine.state.value.items.getValue("task:$taskId")
+            assertFalse(unfinished.completed());assertNull(unfinished.content()!!["completedAt"])
+            assertEquals(runId,r.execution.state.value.runFor(taskId)!!.id)
+            rejectFinish=false
+            r.setTaskCompleted(taskId,true).getOrThrow()
+            assertTrue(r.engine.state.value.items.getValue("task:$taskId").completed())
+            assertEquals(1,r.engine.state.value.items.getValue("task:$taskId").content()!!["progressSessions"]!!.jsonArray.size)
+        }
+    }
+
+    @Test fun completingTaskRefusesToBypassUnreadableExecutionLedger()=runBlocking {
+        val home=Files.createTempDirectory("step-complete-unreadable-test")
+        val persistence=object:ExecutionPersistence {
+            override fun load():ExecutionSnapshot?=throw java.io.IOException("Fictional corrupt ledger")
+            override fun save(snapshot:ExecutionSnapshot)=error("Must not overwrite an unreadable ledger")
+        }
+        DesktopRuntime(home,DesktopConfig(),{_,_->},TestProtector(),NoNetwork,FixtureClock(),MobileAIClient(),persistence).use {r->
+            r.initialize();assertFalse(r.executionReady.value)
+            r.edit {StateMachine.edit(it,"task",taskId,fictionalTask())}.getOrThrow()
+            assertTrue(r.setTaskCompleted(taskId,true).isFailure)
+            assertFalse(r.engine.state.value.items.getValue("task:$taskId").completed())
+        }
+    }
+
+    @Test fun undoingCompletionPreservesHistoryWithoutRestartingExecution()=runBlocking {
+        val home=Files.createTempDirectory("step-undo-complete-test");val clock=FixtureClock()
+        DesktopRuntime(home,DesktopConfig(),{_,_->},TestProtector(),NoNetwork,clock,MobileAIClient()).use {r->
+            r.initialize();r.edit {StateMachine.edit(it,"task",taskId,fictionalTask())}.getOrThrow()
+            r.execute {it.startFocus(taskId,5)}.getOrThrow()
+            clock.time=clock.time.copy(wallMillis=clock.time.wallMillis+60_000,elapsedMillis=clock.time.elapsedMillis+60_000)
+            r.setTaskCompleted(taskId,true).getOrThrow()
+            val history=r.engine.state.value.items.getValue("task:$taskId").content()!!["progressSessions"]
+            assertNotNull(history)
+            r.setTaskCompleted(taskId,false).getOrThrow()
+            val reopened=r.engine.state.value.items.getValue("task:$taskId")
+            assertFalse(reopened.completed());assertNull(reopened.content()!!["completedAt"])
+            assertEquals(history,reopened.content()!!["progressSessions"])
+            assertNull(r.execution.state.value.runFor(taskId))
+            r.setTaskCompleted(taskId,false).getOrThrow()
+            assertEquals(reopened,r.engine.state.value.items.getValue("task:$taskId"))
+        }
+    }
+
     @Test fun closeRetainsExclusiveLockUntilBlockedInitializationStopsWriting() {
         val home=Files.createTempDirectory("step-start-close-test")
         val shared=DesktopStore(home).use {store->store.update {StateMachine.edit(it,"task",taskId,fictionalTask())}}

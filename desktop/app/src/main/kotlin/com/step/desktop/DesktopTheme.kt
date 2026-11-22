@@ -1,6 +1,7 @@
 package com.step.desktop
 
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.LocalScrollbarStyle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
@@ -34,6 +35,7 @@ private val LightPalette=StepPalette(
     Color(0xFF3F7255),Color(0xFF416F88),listOf(Color(0xFFA55D46),Color(0xFF8C6B21),Color(0xFF47778A),Color(0xFF617D69))
 )
 internal val LocalStepPalette=staticCompositionLocalOf {DarkPalette}
+internal val LocalStepIsDark=staticCompositionLocalOf {true}
 internal val StepGreen:Color @Composable get()=LocalStepPalette.current.success
 internal val StepGold:Color @Composable get()=MaterialTheme.colorScheme.primary
 internal val StepMuted:Color @Composable get()=MaterialTheme.colorScheme.onSurfaceVariant
@@ -54,7 +56,8 @@ internal val StepLine:Color @Composable get()=MaterialTheme.colorScheme.outlineV
         surfaceVariant=Color(0xFFE8EDE4),onSurfaceVariant=Color(0xFF59695E),outline=Color(0xFFA5B0A5),outlineVariant=Color(0xFF536353).copy(alpha=.16f),
         error=Color(0xFFA7473F),surfaceTint=Color.Transparent
     )
-    CompositionLocalProvider(LocalStepPalette provides if(dark)DarkPalette else LightPalette) {
+    CompositionLocalProvider(LocalStepPalette provides if(dark)DarkPalette else LightPalette,LocalStepIsDark provides dark,
+        LocalScrollbarStyle provides LocalScrollbarStyle.current.copy(unhoverColor=scheme.onSurfaceVariant.copy(alpha=.25f),hoverColor=scheme.primary.copy(alpha=.68f))) {
         MaterialTheme(
             colorScheme=scheme,
             typography=Typography(
@@ -68,14 +71,14 @@ internal val StepLine:Color @Composable get()=MaterialTheme.colorScheme.outlineV
                 titleLarge=TextStyle(fontFamily=StepFontFamily,fontSize=18.sp,fontWeight=FontWeight.Medium,lineHeight=26.sp),
                 titleMedium=TextStyle(fontFamily=StepFontFamily,fontSize=14.sp,fontWeight=FontWeight.Medium,lineHeight=22.sp),
                 bodyLarge=TextStyle(fontFamily=StepFontFamily,fontSize=15.sp,fontWeight=FontWeight.Normal,lineHeight=24.sp),
-                bodyMedium=TextStyle(fontFamily=StepFontFamily,fontSize=14.sp,fontWeight=FontWeight.Medium,lineHeight=22.sp),
+                bodyMedium=TextStyle(fontFamily=StepFontFamily,fontSize=14.sp,fontWeight=FontWeight.Normal,lineHeight=22.sp),
                 bodySmall=TextStyle(fontFamily=StepFontFamily,fontSize=12.sp,fontWeight=FontWeight.Normal,lineHeight=19.sp),
                 labelLarge=TextStyle(fontFamily=StepFontFamily,fontSize=13.sp,fontWeight=FontWeight.Medium,lineHeight=20.sp),
-                labelMedium=TextStyle(fontFamily=StepFontFamily,fontSize=12.sp,fontWeight=FontWeight.Medium,lineHeight=18.sp),
-                labelSmall=TextStyle(fontFamily=StepFontFamily,fontSize=11.sp,fontWeight=FontWeight.Medium,lineHeight=16.sp)
+                labelMedium=TextStyle(fontFamily=StepFontFamily,fontSize=12.sp,fontWeight=FontWeight.Normal,lineHeight=18.sp),
+                labelSmall=TextStyle(fontFamily=StepFontFamily,fontSize=11.sp,fontWeight=FontWeight.Normal,lineHeight=16.sp)
             ),
             shapes=Shapes(extraSmall=RoundedCornerShape(8.dp),small=RoundedCornerShape(8.dp),medium=RoundedCornerShape(14.dp),large=RoundedCornerShape(18.dp),extraLarge=RoundedCornerShape(18.dp)),
-            content=content
+            content={CompositionLocalProvider(LocalContentColor provides scheme.onBackground,content=content)}
         )
     }
 }

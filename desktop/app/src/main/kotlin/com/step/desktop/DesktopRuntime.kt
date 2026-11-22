@@ -7,6 +7,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 import java.nio.file.Path
+import java.time.Instant
 
 data class DesktopConfig(val syncUrl:String="",val syncPublicKey:String="")
 data class DesktopAISettings(val config:MobileAIConfig=MobileAIConfig(),val hasKey:Boolean=false)
@@ -107,6 +108,19 @@ class DesktopRuntime internal constructor(
     suspend fun execute(command:(ExecutionController)->Unit):Result<Unit> = localOperation {
         check(ready.value) {"本机推进状态尚未准备好"}
         command(execution);refreshLocal();requestAutomaticSync()
+    }
+    /** Persist local effort before completion makes the task ineligible for execution reconciliation. */
+    suspend fun setTaskCompleted(taskId:String,completed:Boolean):Result<Unit> = localOperation {
+        check(ready.value) {"本机推进状态尚未准备好，暂不能更改任务完成状态"}
+        val before=engine.state.value
+        val timestamp=Instant.ofEpochMilli(clock.now().wallMillis)
+        // Validate lifecycle/conflicts before touching the ledger, and make repeated desired values no-ops.
+        if(CompletionActions.set(before,taskId,completed,timestamp)==before)return@localOperation
+        if(completed && execution.state.value.runFor(taskId)!=null) execution.finish(taskId)
+        // Read the latest content after finish has durably appended its history. A failed finish
+        // exits before this write, retaining an incomplete task and its recoverable local run.
+        engine.edit {CompletionActions.set(it,taskId,completed,Instant.ofEpochMilli(clock.now().wallMillis))}
+        refreshLocal();requestAutomaticSync()
     }
     fun now():ExecutionMoment=clock.now()
     private suspend fun localOperation(action:()->Unit):Result<Unit> = withContext(Dispatchers.IO) {

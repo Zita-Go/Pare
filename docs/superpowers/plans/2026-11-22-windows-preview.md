@@ -8,7 +8,7 @@
 - [x] Shared core extraction: Session, HTTP configuration injection, reusable projections/actions; desktop core JVM module/tests; Android regression.
 - [x] Desktop runtime: atomic store/backup/lock, DPAPI vault, async sync lifecycle, execution ledger, reminders and local AI settings/history; tests.
 - [x] Desktop UI: four quadrants, inbox, today scheduling, ideas/linked tasks, step completion/history, sync preview/conflicts, focus and AI review; no empty entries.
-- [ ] Root integration: pinned Gradle/Compose setup, Main/tray/hotkeys, approved icons, public config packaging, Windows CI installers.
+- [x] Root integration: pinned Gradle/Compose setup, Main/tray/hotkeys, approved icons, public config packaging, Windows CI installers.
 - [ ] Verify native Windows build/start/security tests; inspect UI with fictional data; independent audit; publish only verified artifacts with known limits.
 
 Runtime/UI contract is recorded in desktop/CONTRACT.md. Per-agent file ownership in task briefs; only root runs whole desktop Gradle while files are stable.
@@ -28,3 +28,7 @@ Runtime/UI contract is recorded in desktop/CONTRACT.md. Per-agent file ownership
 - Refined WindowsCI45010066528 at7815318 passed all steps: core294/app31, installers, MSI install, packaged self-test, portable/checksums/upload. Reviewed Windows-generated dark/light/960/1280 render evidence, source font axes confirmed400/500/600. Screenshots copied unmodified to docs/images/windows/visual-review.
 - Publication intentionally still pending user visual feedback after their quality concern. No WindowsRelease/tag/download link added to product README yet. Last old-package download was cancelled when that look was rejected; final verified build remains available as CI artifact.
 - OFL.txt is retained byte-for-byte from official upstream including one trailing space; this is an intentional vendored-license whitespace exception, not changed program source.
+
+- Second visual iteration adds shared restrained surface gradients, edge highlights, inset fields and stable hover/press/focus feedback. Today and quadrant tasks use grouped rows instead of nested cards; circular completion retains Checkbox semantics and a48dp hit target. Native OS frame effects are not simulated by screenshots.
+- Completing a task now persists its active local focus/wait effort first; a failed ledger write prevents completion. Five runtime regressions and a real UI completion test cover history retention. Added button paint/geometry/click regression and dark/light title contrast checks.
+- Local final material candidate: core294/app38, all passing. Independent read-only review found no blocking UI/focus issue. Mac headless captures checked at960/1280 dark/light; latest Windows build/install/render verification remains pending before publishing review images. No Windows release authorized by this visual iteration.

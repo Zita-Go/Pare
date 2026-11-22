@@ -4,6 +4,12 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -11,13 +17,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.pare.app.*
 import kotlinx.coroutines.delay
@@ -42,26 +57,29 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     var date by remember(todayId) {mutableStateOf(LocalDate.parse(todayId.substringBefore('@')))}
     val planId="$date@${todayId.substringAfter('@')}"
     DesktopTheme {
-        Surface(Modifier.fillMaxSize().testTag("desktop_root"),color=MaterialTheme.colorScheme.background) {
+        Surface(Modifier.fillMaxSize().stepWindowBackground().testTag("desktop_root"),color=Color.Transparent) {
             Row {
-                Column(Modifier.width(184.dp).fillMaxHeight().background(LocalStepPalette.current.sidebar).padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                    Text("Step",style=MaterialTheme.typography.headlineLarge,color=MaterialTheme.colorScheme.onSurface,modifier=Modifier.padding(start=12.dp,top=10.dp))
-                    Text("让下一步变得清楚",style=MaterialTheme.typography.bodySmall,color=StepMuted,modifier=Modifier.padding(start=12.dp,bottom=24.dp))
+                Column(Modifier.width(184.dp).fillMaxHeight().stepSidebarBackground().padding(12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                    Row(Modifier.padding(start=8.dp,top=12.dp,bottom=4.dp),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Image(painterResource("step.png"),contentDescription=null,modifier=Modifier.size(32.dp))
+                        Text("Step",style=MaterialTheme.typography.headlineMedium,color=MaterialTheme.colorScheme.onSurface)
+                    }
+                    Text("让下一步变得清楚",style=MaterialTheme.typography.bodySmall,color=StepMuted,modifier=Modifier.padding(start=10.dp,bottom=24.dp))
                     listOf("今天" to Icons.Outlined.CalendarToday,"四象限" to Icons.Outlined.Dashboard,"想法" to Icons.Outlined.Lightbulb,"目标" to Icons.Outlined.Flag).forEach {(name,symbol)->
-                        Surface(onClick={page=name},modifier=Modifier.testTag("nav_$name"),shape=MaterialTheme.shapes.small,color=if(page==name) LocalStepPalette.current.selection else Color.Transparent) {
-                            Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Surface(onClick={page=name},modifier=Modifier.testTag("nav_$name").stepSelectionSurface(page==name),shape=MaterialTheme.shapes.small,color=Color.Transparent) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=11.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
                                 StepIcon(symbol,color=if(page==name)StepGold else StepMuted);Text(name,fontWeight=FontWeight.Medium,color=if(page==name)StepGold else StepMuted)
                             }
                         }
                     }
-                    Spacer(Modifier.height(18.dp));HorizontalDivider(color=StepLine)
+                    Spacer(Modifier.height(16.dp));HorizontalDivider(Modifier.padding(horizontal=8.dp),color=StepLine)
                     StepTextButton({page="收件箱"},modifier=Modifier.fillMaxWidth()) {StepIcon(Icons.Outlined.Inbox);Spacer(Modifier.width(10.dp));Text("收件箱");Spacer(Modifier.weight(1f));Text(state.items.values.count {it.kind=="inbox" && !it.deleted}.toString())}
                     Spacer(Modifier.weight(1f))
                     Text("先选重要的事，\n再迈出小小一步。",style=MaterialTheme.typography.bodySmall,color=StepMuted,modifier=Modifier.padding(10.dp))
                     StepTextButton({settings=true}) {StepIcon(if(state.enabled)Icons.Outlined.CloudDone else Icons.Outlined.CloudOff);Spacer(Modifier.width(8.dp));Text(if(state.enabled)"同步已开启"else"本机优先")}
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Row(Modifier.fillMaxWidth().height(62.dp).padding(horizontal=24.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal=24.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         Text("我的空间",style=MaterialTheme.typography.bodyMedium,color=StepMuted,modifier=Modifier.weight(1f))
                         StepOutlinedButton(onQuickCapture,enabled=initialized){IconLabel(Icons.Outlined.Add,"随手记")}
                         StepTextButton({ai=AiTarget(PlanningAIKind.DAY,null,planId)},enabled=initialized){IconLabel(Icons.Outlined.AutoAwesome,"AI 助手")}
@@ -73,9 +91,9 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                     if(!initialized) {
                         Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.Center) {Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(16.dp)){CircularProgressIndicator();Text(syncStatus)}}
                     } else {
-                        Column(Modifier.weight(1f).padding(horizontal=24.dp,vertical=20.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
+                        Column(Modifier.weight(1f).padding(horizontal=24.dp,vertical=22.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
                             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                                Column(Modifier.weight(1f)) {Text(page,style=MaterialTheme.typography.headlineLarge);Text(when(page){"今天"->"给有限的精力，留出明确的位置";"四象限"->"分清轻重，再决定今天要做什么";"想法"->"保留背景、发现与决定，让想法慢慢长大";"目标"->"记住方向，把它连接到具体行动";else->"先接住，再整理。每一条都可以成为行动或想法。"},color=StepMuted,style=MaterialTheme.typography.bodyMedium)}
+                                Column(Modifier.weight(1f)) {Text(page,style=MaterialTheme.typography.headlineLarge,modifier=Modifier.testTag("workspace_title"));Text(when(page){"今天"->"给有限的精力，留出明确的位置";"四象限"->"分清轻重，再决定今天要做什么";"想法"->"保留背景、发现与决定，让想法慢慢长大";"目标"->"记住方向，把它连接到具体行动";else->"先接住，再整理。每一条都可以成为行动或想法。"},color=StepMuted,style=MaterialTheme.typography.bodyMedium)}
                                 if(page=="今天") {StepOutlinedButton({picker=true}){Text("选择任务")};StepButton({ai=AiTarget(PlanningAIKind.DAY,null,planId)}){IconLabel(Icons.Outlined.AutoAwesome,"规划这一天")}}
                                 else StepButton({editor=(when(page){"想法"->"idea";"目标"->"goal";"收件箱"->"inbox";else->"task"}) to null}){IconLabel(Icons.Outlined.Add,"新建")}
                             }
@@ -125,8 +143,11 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     val overview=TodayOverviewProjection.project(state,day)
     val tasks=(overview.scheduled+overview.unscheduled+overview.completed).map {it.task}.distinctBy {it.id}
     val focus=tasks.firstOrNull {planWin(state,planId,it.id)&&!it.completed()}
+    val remaining=tasks.filterNot {it.id==focus?.id}
     val effort=TodayEffort.summary(state,day,overview)
-    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+    val actionScroll=rememberLazyListState()
+    val scheduleScroll=rememberLazyListState()
+    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
         StepTextButton({onDate(date.minusDays(1))},contentPadding=PaddingValues(6.dp)){StepIcon(Icons.Outlined.ChevronLeft,"前一天")}
         Text(date.format(DateTimeFormatter.ofPattern("M月d日 · EEEE",java.util.Locale.CHINESE)),style=MaterialTheme.typography.titleMedium)
         StepTextButton({onDate(date.plusDays(1))},contentPadding=PaddingValues(6.dp)){StepIcon(Icons.Outlined.ChevronRight,"后一天")}
@@ -135,44 +156,84 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
         Text("${tasks.count {!it.completed()}} 件待推进 · ${tasks.count {it.completed()}} 件已完成",style=MaterialTheme.typography.bodySmall,color=StepMuted)
     }
     Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
-        LazyColumn(Modifier.weight(1.12f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-            if(focus!=null)item {TaskRow(focus,state,planId,work,onTask,featured=true)}
-            item {Row(Modifier.padding(top=if(focus!=null)8.dp else 0.dp,bottom=2.dp),verticalAlignment=Alignment.CenterVertically) {Text(if(focus!=null)"今天的其他行动"else"今天的行动",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f));Text("${tasks.size-(if(focus!=null)1 else 0)} 项",style=MaterialTheme.typography.bodySmall,color=StepMuted)}}
-            if(tasks.isEmpty())item {EmptyState("今天，还留有空间","从四象限选出值得推进的事，再安排一个能够开始的小动作。")}
-            items(tasks.filterNot {it.id==focus?.id},key={it.id}) {TaskRow(it,state,planId,work,onTask)}
-        }
-        LazyColumn(Modifier.weight(.88f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            item {
-                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {StepIcon(Icons.Outlined.Schedule,color=StepGold);Text("时间安排",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f));Text("${projection.blocks.sumOf {it.durationMinutes}} 分钟",style=MaterialTheme.typography.bodySmall,color=StepMuted)}
-            }
-            if(projection.blocks.isEmpty())item {
-                Surface(color=MaterialTheme.colorScheme.surface,shape=MaterialTheme.shapes.medium) {EmptyState("还没有时间块","打开任务的「安排与提醒」，为重要行动留出一段时间。")}
-            }
-            items(projection.blocks,key={it.key}) {block->
-                val accent=LocalStepPalette.current.quadrants[(block.task.content().number("quadrant")?:1).coerceIn(0,3)]
-                Surface(onClick={onTask(block.task.id)},color=MaterialTheme.colorScheme.surface,shape=MaterialTheme.shapes.medium) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        Column(Modifier.width(48.dp),verticalArrangement=Arrangement.spacedBy(3.dp)) {Text(block.start.atZone(day.zone).format(DateTimeFormatter.ofPattern("HH:mm")),color=accent,style=MaterialTheme.typography.titleMedium);Text(block.end.atZone(day.zone).format(DateTimeFormatter.ofPattern("HH:mm")),style=MaterialTheme.typography.bodySmall,color=StepMuted)}
-                        Box(Modifier.width(2.dp).height(58.dp).background(accent,MaterialTheme.shapes.small))
-                        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {Text(block.task.title(),style=MaterialTheme.typography.titleMedium,maxLines=2,overflow=TextOverflow.Ellipsis);Text("${block.durationMinutes} 分钟"+(if(block.laneCount>1)" · 有时间重叠"else""),style=MaterialTheme.typography.bodySmall,color=StepMuted)}
+        Box(Modifier.weight(1.16f).fillMaxHeight()) {
+            LazyColumn(state=actionScroll,modifier=Modifier.fillMaxSize().padding(end=10.dp),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(bottom=12.dp)) {
+                if(focus!=null)item {TaskRow(focus,state,planId,work,onTask,featured=true)}
+                item {
+                    StepCard(modifier=Modifier.fillMaxWidth()) {
+                        Column {
+                            Row(Modifier.fillMaxWidth().padding(horizontal=18.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically) {
+                                Text(if(focus!=null)"今天的其他行动"else"今天的行动",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
+                                Text("${remaining.size} 项",style=MaterialTheme.typography.bodySmall,color=StepMuted)
+                            }
+                            HorizontalDivider(Modifier.padding(horizontal=16.dp),color=StepLine)
+                            if(tasks.isEmpty())EmptyState("今天，还留有空间","从四象限选出值得推进的事，再安排一个能够开始的小动作。")
+                            remaining.forEachIndexed {index,task->
+                                key(task.id) {
+                                    TaskRow(task,state,planId,work,onTask)
+                                    if(index<remaining.lastIndex)HorizontalDivider(Modifier.padding(start=56.dp,end=16.dp),color=StepLine)
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                        }
                     }
                 }
             }
-            if(projection.unscheduled.isNotEmpty()) {
-                item {Text("还未安排时间",style=MaterialTheme.typography.labelLarge,color=StepMuted,modifier=Modifier.padding(top=8.dp))}
-                items(projection.unscheduled,key={"unscheduled-${it.id}"}) {task->
-                    Row(Modifier.fillMaxWidth().clickable {onTask(task.id)}.padding(vertical=5.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)) {StepIcon(Icons.Outlined.Schedule,color=StepMuted);Text(task.title(),style=MaterialTheme.typography.bodyMedium,modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis);StepIcon(Icons.Outlined.ChevronRight,color=StepMuted)}
+            VerticalScrollbar(rememberScrollbarAdapter(actionScroll),Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp))
+        }
+        StepCard(modifier=Modifier.weight(.84f)) {
+            Box(Modifier.fillMaxWidth().padding(start=18.dp,end=8.dp,top=18.dp,bottom=14.dp)) {
+                LazyColumn(state=scheduleScroll,modifier=Modifier.fillMaxWidth().padding(end=10.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    item {
+                        Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            StepIcon(Icons.Outlined.Schedule,color=StepGold)
+                            Text("时间安排",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
+                            Text("${projection.blocks.sumOf {it.durationMinutes}} 分钟",style=MaterialTheme.typography.bodySmall,color=StepMuted)
+                        }
+                        HorizontalDivider(Modifier.padding(top=14.dp),color=StepLine)
+                    }
+                    if(projection.blocks.isEmpty())item {EmptyState("还没有时间块","打开任务的「安排与提醒」，为重要行动留出一段时间。")}
+                    items(projection.blocks,key={it.key}) {block->
+                        val accent=LocalStepPalette.current.quadrants[(block.task.content().number("quadrant")?:1).coerceIn(0,3)]
+                        Surface(onClick={onTask(block.task.id)},color=Color.Transparent,shape=MaterialTheme.shapes.small) {
+                            Row(Modifier.fillMaxWidth().padding(vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                Column(Modifier.width(46.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                                    Text(block.start.atZone(day.zone).format(DateTimeFormatter.ofPattern("HH:mm")),color=MaterialTheme.colorScheme.onSurface,style=MaterialTheme.typography.titleMedium)
+                                    Text(block.end.atZone(day.zone).format(DateTimeFormatter.ofPattern("HH:mm")),style=MaterialTheme.typography.bodySmall,color=StepMuted)
+                                }
+                                Box(Modifier.width(3.dp).height(52.dp).background(accent.copy(alpha=.8f),CircleShape))
+                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                                    Text(block.task.title(),style=MaterialTheme.typography.titleMedium,maxLines=2,overflow=TextOverflow.Ellipsis)
+                                    Text("${block.durationMinutes} 分钟"+(if(block.laneCount>1)" · 有时间重叠"else""),style=MaterialTheme.typography.bodySmall,color=StepMuted)
+                                }
+                            }
+                        }
+                    }
+                    if(projection.unscheduled.isNotEmpty()) {
+                        item {
+                            HorizontalDivider(Modifier.padding(top=4.dp,bottom=14.dp),color=StepLine)
+                            Text("还未安排时间",style=MaterialTheme.typography.labelLarge,color=StepMuted)
+                        }
+                        items(projection.unscheduled,key={"unscheduled-${it.id}"}) {task->
+                            Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable {onTask(task.id)}.padding(vertical=7.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)) {
+                                StepIcon(Icons.Outlined.Schedule,color=StepMuted)
+                                Text(task.title(),style=MaterialTheme.typography.bodyMedium,modifier=Modifier.weight(1f),maxLines=2,overflow=TextOverflow.Ellipsis)
+                                StepIcon(Icons.Outlined.ChevronRight,color=StepMuted)
+                            }
+                        }
+                    }
+                    item {
+                        HorizontalDivider(Modifier.padding(top=4.dp,bottom=16.dp),color=StepLine)
+                        Text("今天的计划投入",style=MaterialTheme.typography.labelLarge,color=StepMuted)
+                        Row(Modifier.padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(26.dp)) {
+                            Column {Text("${effort.personalMinutes} 分钟",style=MaterialTheme.typography.titleLarge);Text("个人投入",style=MaterialTheme.typography.bodySmall,color=StepMuted)}
+                            Column {Text("${effort.checkMinutes} 分钟",style=MaterialTheme.typography.titleLarge);Text("检查结果",style=MaterialTheme.typography.bodySmall,color=StepMuted)}
+                        }
+                        if(effort.unplannedCount>0)Text("${effort.unplannedCount} 件行动尚未设置投入",style=MaterialTheme.typography.bodySmall,color=StepMuted,modifier=Modifier.padding(top=12.dp))
+                        Text(day.zone.id+" · 安排与实际专注分别记录",style=MaterialTheme.typography.labelSmall,color=StepMuted,modifier=Modifier.padding(top=16.dp))
+                    }
                 }
-            }
-            item {
-                HorizontalDivider(Modifier.padding(top=8.dp,bottom=14.dp),color=StepLine)
-                Text("今天的计划投入",style=MaterialTheme.typography.labelLarge,color=StepMuted)
-                Row(Modifier.padding(top=8.dp),horizontalArrangement=Arrangement.spacedBy(24.dp)) {
-                    Column {Text("${effort.personalMinutes} 分钟",style=MaterialTheme.typography.titleMedium);Text("个人投入",style=MaterialTheme.typography.bodySmall,color=StepMuted)}
-                    Column {Text("${effort.checkMinutes} 分钟",style=MaterialTheme.typography.titleMedium);Text("检查结果",style=MaterialTheme.typography.bodySmall,color=StepMuted)}
-                }
-                if(effort.unplannedCount>0)Text("${effort.unplannedCount} 件行动尚未设置投入",style=MaterialTheme.typography.bodySmall,color=StepMuted,modifier=Modifier.padding(top=10.dp))
-                Text(day.zone.id+" · 安排与实际专注分别记录",style=MaterialTheme.typography.labelSmall,color=StepMuted,modifier=Modifier.padding(top=12.dp))
+                Box(Modifier.matchParentSize()) { VerticalScrollbar(rememberScrollbarAdapter(scheduleScroll),Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp)) }
             }
         }
     }
@@ -180,13 +241,30 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
 @Composable private fun ColumnScope.QuadrantPane(state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,onNew:()->Unit) {
     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         repeat(2) {row-> Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-            repeat(2) {column->val q=row*2+column;val tasks=OrganizeActions.tasks(state,q);val accent=LocalStepPalette.current.quadrants[q]
-                Column(Modifier.weight(1f).fillMaxHeight().background(accent.copy(alpha=.055f).compositeOver(MaterialTheme.colorScheme.surface),MaterialTheme.shapes.medium).border(1.dp,StepLine,MaterialTheme.shapes.medium).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment=Alignment.CenterVertically) {Text("0${q+1}",color=accent,style=MaterialTheme.typography.titleMedium);Spacer(Modifier.width(10.dp));Text(quadrantNames[q],style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f));Text(tasks.size.toString(),color=StepMuted)}
-                    HorizontalDivider(color=StepLine)
-                    LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                        if(tasks.isEmpty())item {Text(listOf("优先处理真正有时限的事","给长期价值留出空间","考虑委托、简化或稍后处理","允许自己暂时放下")[q],color=StepMuted,style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(10.dp))}
-                        items(tasks,key={it.id}) {TaskRow(it,state,planId,work,onTask)}
+            repeat(2) {column->
+                val q=row*2+column
+                val tasks=OrganizeActions.tasks(state,q)
+                val accent=LocalStepPalette.current.quadrants[q]
+                val scroll=rememberLazyListState()
+                StepCard(modifier=Modifier.weight(1f).fillMaxHeight(),accent=accent) {
+                    Column(Modifier.fillMaxSize()) {
+                        Row(Modifier.padding(horizontal=18.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Box(Modifier.size(6.dp).background(accent,CircleShape))
+                            Text("0${q+1}",color=accent,style=MaterialTheme.typography.labelMedium)
+                            Text(quadrantNames[q],style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
+                            Text(tasks.size.toString(),color=StepMuted,style=MaterialTheme.typography.bodySmall)
+                        }
+                        HorizontalDivider(Modifier.padding(horizontal=16.dp),color=StepLine)
+                        Box(Modifier.weight(1f).fillMaxWidth().padding(start=4.dp,end=6.dp,bottom=6.dp)) {
+                            LazyColumn(state=scroll,modifier=Modifier.fillMaxSize().padding(end=8.dp),contentPadding=PaddingValues(vertical=4.dp)) {
+                                if(tasks.isEmpty())item {Text(listOf("优先处理真正有时限的事","给长期价值留出空间","考虑委托、简化或稍后处理","允许自己暂时放下")[q],color=StepMuted,style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(14.dp))}
+                                itemsIndexed(tasks,key={_,task->task.id}) {index,task->
+                                    TaskRow(task,state,planId,work,onTask)
+                                    if(index<tasks.lastIndex)HorizontalDivider(Modifier.padding(start=52.dp,end=10.dp),color=StepLine)
+                                }
+                            }
+                            VerticalScrollbar(rememberScrollbarAdapter(scroll),Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp))
+                        }
                     }
                 }
             }
@@ -213,23 +291,67 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
             }
         }
     }) {
-        Surface(onClick={onTask(task.id)},modifier=Modifier.testTag("task_${task.id}"),color=if(win)LocalStepPalette.current.warm else LocalStepPalette.current.field,shape=MaterialTheme.shapes.medium,
-            border=if(featured)BorderStroke(1.dp,StepGold.copy(alpha=.20f))else null) {
+        val rowContent:@Composable ()->Unit = {
             Column {
-            if(featured)Row(Modifier.padding(start=16.dp,end=16.dp,top=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {StepIcon(Icons.Outlined.StarBorder,color=StepGold);Text("今日重点",style=MaterialTheme.typography.labelLarge,color=StepGold);Spacer(Modifier.weight(1f));Text("先推进这一件",style=MaterialTheme.typography.bodySmall,color=StepMuted)}
-            Row(Modifier.fillMaxWidth().padding(vertical=12.dp,horizontal=10.dp),verticalAlignment=Alignment.Top) {
-                Checkbox(task.completed(),{value->work.edit {CompletionActions.set(it,task.id,value,Instant.now())}},enabled=!work.busy,modifier=Modifier.size(32.dp))
-                Column(Modifier.weight(1f).padding(start=5.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    Text(task.title(),maxLines=2,overflow=TextOverflow.Ellipsis,style=if(featured)MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium)
-                    val next=task.content().str("nextAction")
-                    if(next.isNotBlank())Text("下一步 · $next",maxLines=2,overflow=TextOverflow.Ellipsis,style=if(featured)MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,color=if(featured)MaterialTheme.colorScheme.onSurface else StepMuted)
-                    if(featured && task.content().str("definitionOfDone").isNotBlank())Text(task.content().str("definitionOfDone"),maxLines=2,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall,color=StepMuted)
-                    val effort=TodayEffort.forTask(state,TimelineDay.fromPlanId(planId),task.id)
-                    if(effort.minutes!=null)Text(effort.label,style=MaterialTheme.typography.bodySmall,color=StepGreen)
-                    if(task.conflict!=null)Text("存在同步冲突 · 在设置中处理",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                if(featured)Row(Modifier.padding(start=18.dp,end=18.dp,top=16.dp,bottom=2.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    StepIcon(Icons.Outlined.StarBorder,color=StepGold)
+                    Text("今日重点",style=MaterialTheme.typography.labelLarge,color=StepGold)
+                    Spacer(Modifier.weight(1f))
+                    Text("先推进这一件",style=MaterialTheme.typography.bodySmall,color=StepMuted)
                 }
-                StepTextButton({work.edit {DayTaskActions.setWin(it,task.id,!win,planId,Instant.now())}},enabled=!work.busy && !task.completed(),contentPadding=PaddingValues(4.dp),modifier=Modifier.width(34.dp)){StepIcon(if(win)Icons.Outlined.Star else Icons.Outlined.StarBorder,if(win)"取消当日重点"else"设为当日重点",if(win)StepGold else StepMuted)}
+                Row(Modifier.fillMaxWidth().padding(start=4.dp,end=8.dp,top=if(featured)4.dp else 2.dp,bottom=if(featured)14.dp else 6.dp),verticalAlignment=Alignment.Top) {
+                    TaskCompletionControl(task.completed(),!work.busy,task.title()) {value->
+                        work.complete(task.id,value)
+                    }
+                    Column(Modifier.weight(1f).padding(top=11.dp),verticalArrangement=Arrangement.spacedBy(if(featured)7.dp else 4.dp)) {
+                        Text(task.title(),maxLines=2,overflow=TextOverflow.Ellipsis,
+                            style=if(featured)MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+                            color=when {task.completed()->StepMuted;win->MaterialTheme.colorScheme.onPrimaryContainer;else->MaterialTheme.colorScheme.onSurface},
+                            textDecoration=if(task.completed())TextDecoration.LineThrough else TextDecoration.None)
+                        val next=task.content().str("nextAction")
+                        if(next.isNotBlank())Text("下一步 · $next",maxLines=2,overflow=TextOverflow.Ellipsis,style=if(featured)MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,color=if(featured)MaterialTheme.colorScheme.onSurface else StepMuted)
+                        if(featured && task.content().str("definitionOfDone").isNotBlank())Text(task.content().str("definitionOfDone"),maxLines=2,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall,color=StepMuted)
+                        val effort=TodayEffort.forTask(state,TimelineDay.fromPlanId(planId),task.id)
+                        if(effort.minutes!=null)Text(effort.label,style=MaterialTheme.typography.bodySmall,color=StepGreen)
+                        if(task.conflict!=null)Text("存在同步冲突 · 在设置中处理",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                    }
+                    StepTextButton({work.edit {DayTaskActions.setWin(it,task.id,!win,planId,Instant.now())}},enabled=!work.busy && !task.completed(),contentPadding=PaddingValues(4.dp),modifier=Modifier.padding(top=4.dp).width(36.dp)){
+                        StepIcon(if(win)Icons.Outlined.Star else Icons.Outlined.StarBorder,if(win)"取消当日重点"else"设为当日重点",if(win)StepGold else StepMuted)
+                    }
+                }
             }
+        }
+        if(featured)StepCard(modifier=Modifier.testTag("task_${task.id}"),emphasis=true,onClick={onTask(task.id)},content=rowContent)
+        else Surface(onClick={onTask(task.id)},modifier=Modifier.testTag("task_${task.id}"),color=Color.Transparent,shape=MaterialTheme.shapes.small,content=rowContent)
+    }
+}
+
+/** The 48dp toggle owns pointer, keyboard and Checkbox semantics; only its paint is custom. */
+@Composable private fun TaskCompletionControl(checked:Boolean,enabled:Boolean,title:String,onCheckedChange:(Boolean)->Unit) {
+    val interactions=remember {MutableInteractionSource()}
+    val focused by interactions.collectIsFocusedAsState()
+    val accent=StepGreen
+    val outline=StepMuted
+    val mark=MaterialTheme.colorScheme.background
+    Box(Modifier.size(48.dp).clip(CircleShape)
+        .toggleable(value=checked,interactionSource=interactions,indication=LocalIndication.current,enabled=enabled,role=Role.Checkbox,onValueChange=onCheckedChange)
+        .semantics {contentDescription="完成任务：$title"},contentAlignment=Alignment.Center) {
+        Canvas(Modifier.size(20.dp)) {
+            val alpha=if(enabled)1f else .45f
+            val radius=size.minDimension/2-1.dp.toPx()
+            if(focused)drawCircle(accent.copy(alpha=.6f),radius+4.dp.toPx(),style=Stroke(1.dp.toPx()))
+            if(checked) {
+                drawCircle(accent.copy(alpha=alpha),radius)
+                val check=Path().apply {
+                    moveTo(size.width*.27f,size.height*.51f)
+                    lineTo(size.width*.44f,size.height*.67f)
+                    lineTo(size.width*.75f,size.height*.34f)
+                }
+                drawPath(check,mark.copy(alpha=alpha),style=Stroke(width=1.7.dp.toPx(),cap=StrokeCap.Round))
+            } else {
+                drawCircle(outline.copy(alpha=.72f*alpha),radius,style=Stroke(1.4.dp.toPx()))
+                drawArc(Color.White.copy(alpha=.12f*alpha),startAngle=205f,sweepAngle=105f,useCenter=false,
+                    topLeft=Offset(1.dp.toPx(),1.dp.toPx()),size=size.copy(width=size.width-2.dp.toPx(),height=size.height-2.dp.toPx()),style=Stroke(.6.dp.toPx()))
             }
         }
     }
@@ -281,7 +403,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
             Text("先接住这个想法",style=MaterialTheme.typography.headlineMedium)
             Text("保存到收件箱，稍后再分清轻重。",color=StepMuted)
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                Field(text,{text=it},"此刻想到什么？",Modifier.focusRequester(focus),lines=3,enabled=!work.busy)
+                Field(text,{text=it},"此刻想到什么？",lines=3,enabled=!work.busy,inputModifier=Modifier.focusRequester(focus))
                 Text("Ctrl + Enter 保存",style=MaterialTheme.typography.bodySmall,color=StepMuted)
                 WorkFeedback(work)
             }
