@@ -79,6 +79,11 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         settings.todayCapacityMinutes = 120
         store.updateSettings(settings)
         store.rolloverIfNeeded()
+        if CommandLine.arguments.contains("--usability-demo") {
+            var preferences = store.agentPreferences
+            preferences.planningMinutes = 60
+            store.updateAgentPreferences(preferences)
+        }
 
         let report = store.addTask("完成报告提纲", to: .importantUrgent,
                                    addToToday: true, estimatedMinutes: 25)!
@@ -127,6 +132,22 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         store.capture("找个时间整理书桌")
         store.capture("给旅行相册加一页手绘地图")
         _ = store.addThought("每周留一个不排计划的下午", notes: "散步、阅读，或者什么都不做。")
+        if let idea = store.addThought("探索适合自己的研究流程", notes: "从真实问题出发，逐步整理成可以复用的方法。") {
+            _ = store.updateIdea(idea.id, text: idea.text, notes: idea.notes,
+                                 nextQuestion: "什么样的记录能帮助下一次开始？", stage: .exploring,
+                                 reviewAt: now.addingTimeInterval(7 * 86_400))
+            _ = store.addIdeaEntry(ideaID: idea.id, text: "先把一次探索缩小到一个问题，不要求一次完成整个方向。", kind: .finding)
+            _ = store.linkTaskToIdea(ideaID: idea.id, taskID: report.id)
+            if CommandLine.arguments.contains("--usability-demo") {
+                for number in 1...5 {
+                    _ = store.addIdeaEntry(ideaID: idea.id, text: "演示记录 \(number)：先验证一个具体问题，再根据结果决定下一步。", kind: .note,
+                                          now: now.addingTimeInterval(Double(number)))
+                }
+                for title in ["访谈一位使用者", "收集三个实际案例", "整理本次观察"] {
+                    _ = store.createTaskFromIdea(ideaID: idea.id, title: title)
+                }
+            }
+        }
         if parallelDemo {
             store.startParallelRun(trip.id, now: now.addingTimeInterval(-38 * 60),
                                    nextCheckAt: now.addingTimeInterval(7 * 60))
@@ -171,11 +192,7 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         main.addItem(demoItem)
         // Native edit menu enables ordinary copy/paste within the real views.
         let editItem = NSMenuItem()
-        let edit = NSMenu(title: "编辑")
-        edit.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        edit.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editItem.submenu = edit
+        editItem.submenu = AppMenus.makeEditMenu()
         main.addItem(editItem)
         NSApp.mainMenu = main
     }
@@ -225,7 +242,7 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
                 attention.start()
             }
             settings = SettingsWindowController(store: store, manager: notifications,
-                                                 attentionDetector: attention, shortcutController: shortcuts)
+                                                 attentionDetector: attention, shortcutController: shortcuts, syncCoordinator: SyncCoordinator(store: store))
         }
         settings?.present()
     }

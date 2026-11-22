@@ -29,7 +29,7 @@ if (CommandLine.arguments.count == 2 && CommandLine.arguments[1] == "--list")
               let id = integer(window[kCGWindowNumber as String]),
               let dictionary = window[kCGWindowBounds as String] as? [String: Any],
               let bounds = CGRect(dictionaryRepresentation: dictionary as CFDictionary) else { continue }
-        let owner = window[kCGWindowOwnerName as String] as? String ?? "Pare demo"
+        let owner = window[kCGWindowOwnerName as String] as? String ?? "Step demo"
         let name = window[kCGWindowName as String] as? String ?? ""
         let layer = window[kCGWindowLayer as String] as? Int ?? 0
         print("\(id)\t\(owner)\tlayer=\(layer)\t\(Int(bounds.width))x\(Int(bounds.height))\t\(name)")
@@ -51,7 +51,7 @@ guard let window = windows.first,
       isPareDemo(window),
       let dictionary = window[kCGWindowBounds as String] as? [String: Any],
       let bounds = CGRect(dictionaryRepresentation: dictionary as CFDictionary) else {
-    fatalError("Select an available Pare Screenshots demo window")
+    fatalError("Select an available Step Screenshots demo window")
 }
 guard inset >= 0, inset < bounds.height else { fatalError("Invalid top inset") }
 let crop = CGRect(x: bounds.minX, y: bounds.minY + inset,

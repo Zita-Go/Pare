@@ -30,10 +30,9 @@ final class UIContractTests: XCTestCase {
         let planning = try source("Sources/Pare/PlanningViews.swift")
         XCTAssertTrue(organize.contains("四象限"))
         XCTAssertTrue(organize.contains("今日计划"))
-        XCTAssertTrue(organize.contains("想法与历史"))
+        XCTAssertTrue(organize.contains("搜索与记录"))
         XCTAssertTrue(organize.contains("CollapsedInboxRail"))
         XCTAssertTrue(organize.contains("quadrantRowHeights"))
-        XCTAssertFalse(organize.contains("inboxManuallyExpanded"))
         XCTAssertFalse(organize.contains("rotationEffect(.degrees(-90))"))
         XCTAssertFalse(organize.contains("Text(quadrant.hint)"),
                        "行动提示应只保留在 help/VoiceOver，不再常驻象限标题")
@@ -60,10 +59,11 @@ final class UIContractTests: XCTestCase {
         XCTAssertFalse(planning.contains("showsLabel || isActive"),
                        "紧凑计时按钮不应因运行中而强行展开文字")
         XCTAssertTrue(planning.contains("已逾期"))
-        XCTAssertTrue(planning.contains("安排下次回看"))
+        let ideas = try source("Sources/Pare/IdeaWorkspaceView.swift")
+        XCTAssertTrue(ideas.contains("回看"))
         XCTAssertTrue(planning.contains("今天只赢一件"))
         XCTAssertTrue(planning.contains("开始 5 分钟"))
-        XCTAssertTrue(planning.contains("我卡住了"))
+        XCTAssertTrue(planning.contains("需要帮助"))
         XCTAssertTrue(planning.contains("如果—那么启动计划"))
         XCTAssertTrue(planning.contains("最低完成版本"))
         let settings = try source("Sources/Pare/SettingsWindowController.swift")
@@ -77,7 +77,7 @@ final class UIContractTests: XCTestCase {
         let settings = try source("Sources/Pare/SettingsWindowController.swift")
         XCTAssertTrue(onboarding.contains("开启提醒"))
         XCTAssertTrue(onboarding.contains("⌥Space"))
-        XCTAssertTrue(settings.contains("登录时自动启动 Pare"))
+        XCTAssertTrue(settings.contains("登录时自动启动 Step"))
         XCTAssertTrue(settings.contains("导出备份"))
         XCTAssertTrue(settings.contains("恢复自动备份"))
         let popover = try source("Sources/Pare/PopoverController.swift")
@@ -177,8 +177,25 @@ final class UIContractTests: XCTestCase {
         XCTAssertTrue(components.contains("else if let emptyLabel"))
         XCTAssertTrue(organize.contains("DurationPill(minutes: task.estimatedMinutes, emptyLabel: \"估时\")"),
                       "象限任务没有估时时也必须显示估时入口")
-        XCTAssertTrue(planning.contains("DurationPill(minutes: task.estimatedMinutes, emptyLabel: \"估时\")"),
-                      "今日清单没有估时时也必须显示估时入口")
+        XCTAssertTrue(planning.contains("DailyAllocationPill(store: store, task: task)"),
+                      "今日清单必须显示当日投入入口，与整项任务估时分开")
+        let rowStart = try XCTUnwrap(organize.range(of: "private struct QuadrantTaskRow"))
+        let rowEnd = try XCTUnwrap(organize.range(of: "enum OrganizeSelection"))
+        let row = organize[rowStart.lowerBound..<rowEnd.lowerBound]
+        let estimate = try XCTUnwrap(row.range(of: "DurationPill(minutes: task.estimatedMinutes, emptyLabel: \"估时\")"))
+        let details = try XCTUnwrap(row.range(of: "TaskDetailsButton(store: store, task: task)"))
+        XCTAssertLessThan(estimate.lowerBound, details.lowerBound,
+                          "估时应留在标题行，不能为所有任务强制增加第二行")
+        XCTAssertEqual(String(row).components(separatedBy: "emptyLabel: \"估时\"").count - 1, 1)
+
+        let pillStart = try XCTUnwrap(components.range(of: "struct DurationPill"))
+        let pillEnd = try XCTUnwrap(components.range(of: "enum ReminderFormat"))
+        let pill = components[pillStart.lowerBound..<pillEnd.lowerBound]
+        XCTAssertFalse(pill.contains("Menu {"),
+                       "每条任务常驻原生 Menu 会触发 SwiftUI AppKitPopUpAdaptor 更新循环")
+        XCTAssertTrue(pill.contains("Button { pickerPresented = true }"))
+        XCTAssertTrue(pill.contains(".popover(isPresented: $pickerPresented"),
+                      "估时选项应只在点击后按需创建")
     }
 
     func testAIResultsPutActionBeforeExpandableAnalysis() throws {
@@ -196,7 +213,7 @@ final class UIContractTests: XCTestCase {
 
     func testSettingsCategoriesPreserveDraftsAndHideInactiveAccessibility() throws {
         let settings = try source("Sources/Pare/SettingsWindowController.swift")
-        XCTAssertTrue(settings.contains("case general = \"通用\", reminders = \"提醒\", ai = \"AI\", data = \"数据\""))
+        XCTAssertTrue(settings.contains("case general = \"通用\", reminders = \"提醒\", ai = \"AI\", sync = \"同步\", data = \"数据\""))
         XCTAssertTrue(settings.contains("ZStack(alignment: .topLeading)"))
         XCTAssertTrue(settings.contains(".accessibilityHidden(category != tab)"))
         XCTAssertTrue(settings.contains(".allowsHitTesting(category == tab)"))

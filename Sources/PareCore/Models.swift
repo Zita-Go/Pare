@@ -145,8 +145,50 @@ public struct InboxItem: Identifiable, Codable, Hashable {
     }
 }
 
-/// A captured idea that should remain thinkable instead of being forced into
-/// the task system. Thoughts are intentionally light: a title and free notes.
+public enum IdeaStage: String, Codable, CaseIterable, Hashable {
+    case seed, exploring, building, parked, archived
+
+    public var title: String {
+        switch self {
+        case .seed: return "萌芽"
+        case .exploring: return "探索"
+        case .building: return "推进"
+        case .parked: return "暂放"
+        case .archived: return "归档"
+        }
+    }
+}
+
+public enum IdeaEntryKind: String, Codable, CaseIterable, Hashable {
+    case note, finding, decision
+
+    public var title: String {
+        switch self {
+        case .note: return "记录"
+        case .finding: return "发现"
+        case .decision: return "决定"
+        }
+    }
+}
+
+public struct IdeaEntry: Identifiable, Codable, Hashable {
+    public var id: UUID
+    public var text: String
+    public var kind: IdeaEntryKind
+    public var author: String?
+    public var createdAt: Date
+
+    public init(id: UUID = UUID(), text: String, kind: IdeaEntryKind = .note, createdAt: Date = Date(), author: String? = nil) {
+        self.id = id
+        self.text = text
+        self.kind = kind
+        self.author = author
+        self.createdAt = createdAt
+    }
+}
+
+/// An idea retains its evolving context while several concrete actions can
+/// move through the task system independently.
 public struct ThoughtItem: Identifiable, Codable, Hashable {
     public var id: UUID
     public var text: String
@@ -156,15 +198,46 @@ public struct ThoughtItem: Identifiable, Codable, Hashable {
     /// Optional date to intentionally bring the idea back into the morning
     /// planning nudge, without turning it into a task or standalone alert.
     public var reviewAt: Date?
+    public var stage: IdeaStage
+    public var entries: [IdeaEntry]
+    public var linkedTaskIDs: [UUID]
+    public var nextQuestion: String?
+    public var nextQuestionUpdatedAt: Date?
 
     public init(id: UUID = UUID(), text: String, notes: String? = nil,
-                createdAt: Date = Date(), updatedAt: Date = Date(), reviewAt: Date? = nil) {
+                createdAt: Date = Date(), updatedAt: Date = Date(), reviewAt: Date? = nil,
+                stage: IdeaStage = .seed, entries: [IdeaEntry] = [],
+                linkedTaskIDs: [UUID] = [], nextQuestion: String? = nil, nextQuestionUpdatedAt: Date? = nil) {
         self.id = id
         self.text = text
         self.notes = notes
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.reviewAt = reviewAt
+        self.stage = stage
+        self.entries = entries
+        self.linkedTaskIDs = linkedTaskIDs
+        self.nextQuestion = nextQuestion
+        self.nextQuestionUpdatedAt = nextQuestionUpdatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, text, notes, createdAt, updatedAt, reviewAt, stage, entries, linkedTaskIDs, nextQuestion, nextQuestionUpdatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        text = try container.decode(String.self, forKey: .text)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        reviewAt = try container.decodeIfPresent(Date.self, forKey: .reviewAt)
+        stage = try container.decodeIfPresent(IdeaStage.self, forKey: .stage) ?? .seed
+        entries = try container.decodeIfPresent([IdeaEntry].self, forKey: .entries) ?? []
+        linkedTaskIDs = try container.decodeIfPresent([UUID].self, forKey: .linkedTaskIDs) ?? []
+        nextQuestion = try container.decodeIfPresent(String.self, forKey: .nextQuestion)
+        nextQuestionUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .nextQuestionUpdatedAt)
     }
 }
 
@@ -222,6 +295,22 @@ public struct ParallelRunSession: Identifiable, Codable, Hashable {
     }
 }
 
+/// A completed smallest next action, independent of the parent task's lifecycle.
+public struct CompletedStep: Identifiable, Codable, Hashable {
+    public var id: UUID
+    public var text: String
+    public var completedAt: Date
+    public var definitionOfDone: String?
+
+    public init(id: UUID = UUID(), text: String, completedAt: Date,
+                definitionOfDone: String? = nil) {
+        self.id = id
+        self.text = text
+        self.completedAt = completedAt
+        self.definitionOfDone = definitionOfDone
+    }
+}
+
 /// A task that lives in a quadrant, optionally flagged as part of "today".
 public struct TaskItem: Identifiable, Codable, Hashable {
     public var id: UUID
@@ -252,6 +341,8 @@ public struct TaskItem: Identifiable, Codable, Hashable {
     /// somewhere to hold thought, a concrete next action and a real deadline.
     public var note: String?
     public var nextAction: String?
+    /// Optional so pre-history task snapshots continue to decode unchanged.
+    public var completedSteps: [CompletedStep]?
     public var dueAt: Date?
     /// Recurrence applies to `remindAt`, never implicitly to `dueAt`.
     public var recurrence: RecurrenceRule?
@@ -301,7 +392,8 @@ public struct TaskItem: Identifiable, Codable, Hashable {
                 lastImplementationTriggeredAt: Date? = nil,
                 progressSessions: [ProgressSession]? = nil,
                 parallelRunSessions: [ParallelRunSession]? = nil,
-                blockerEntries: [BlockerEntry]? = nil) {
+                blockerEntries: [BlockerEntry]? = nil,
+                completedSteps: [CompletedStep]? = nil) {
         self.id = id
         self.text = text
         self.quadrant = quadrant
@@ -315,6 +407,7 @@ public struct TaskItem: Identifiable, Codable, Hashable {
         self.lastProgressAt = lastProgressAt
         self.note = note
         self.nextAction = nextAction
+        self.completedSteps = completedSteps
         self.dueAt = dueAt
         self.recurrence = recurrence
         self.todayOrder = todayOrder

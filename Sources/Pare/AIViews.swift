@@ -3,11 +3,13 @@ import PareCore
 
 struct AIConfigurationView: View {
     @ObservedObject private var service = AIService.shared
+    @ObservedObject private var requestHistory = AIRequestHistoryController.shared
     @State private var config = AIService.shared.configuration
     @State private var key = ""
     @State private var message: String?
     @State private var test: Task<Void, Never>?
     @State private var showAdvanced = false
+    @State private var lastTestHistoryID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -49,6 +51,13 @@ struct AIConfigurationView: View {
             Button("用示例测试连接（发送一条请求）") { testConnection() }
                 .buttonStyle(SecondaryActionStyle())
                 .disabled(!config.enabled)
+            HStack {
+                AIRequestHistoryEntry()
+                if let id = lastTestHistoryID {
+                    AIRequestHistoryEntry(selectedID: id, title: "本次测试详情")
+                }
+            }
+            if let issue = requestHistory.persistenceIssue { FeedbackBanner(text: issue, kind: .warning) }
             if let message { Text(message).font(Theme.font(11)).foregroundColor(Theme.amber) }
             Text("今日尝试 \(service.requestCount) 次。失败或取消的请求也计数；这个次数上限不等于服务商账单上限。")
                 .font(Theme.font(10)).foregroundColor(Theme.textDim)
@@ -77,10 +86,11 @@ struct AIConfigurationView: View {
         message = "正在发送虚构示例，没有发送你的任务…"
         let example = TaskItem(text: "写一份报告提纲", quadrant: .importantNotUrgent)
         let input = AIRequest(workflow: .nextStep, inputs: [AIInput(task: example)])
+        let historyID = UUID(); lastTestHistoryID = historyID
         test = Task { @MainActor in
             defer { test = nil }
             do {
-                _ = try await service.generate(input)
+                _ = try await service.generate(input, historyID: historyID)
                 try Task.checkCancellation()
                 message = "连接成功，已收到并验证模型回答。"
             } catch {
@@ -97,6 +107,7 @@ struct AIAssistantView: View {
     var onAdoptNextStep: ((AISuggestion) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var service = AIService.shared
+    @ObservedObject private var requestHistory = AIRequestHistoryController.shared
     @State private var tasks: [TaskItem]
     @State private var inbox: [InboxItem]
     @State private var inputIDs: Set<UUID>
@@ -254,6 +265,8 @@ struct AIAssistantView: View {
                     }
                 }.padding(.trailing, 4).padding(.vertical, 2)
             }
+            if let runID { AIRequestHistoryEntry(selectedID: runID, title: "本次请求详情").disabled(work != nil) }
+            if let issue = requestHistory.persistenceIssue { FeedbackBanner(text: issue, kind: .warning) }
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.circle")
                     .font(Theme.font(12)).foregroundColor(Theme.qUrgent)

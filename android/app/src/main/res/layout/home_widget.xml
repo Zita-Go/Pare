@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="6dp" android:background="@drawable/widget_background">
+    <LinearLayout android:id="@+id/widget_body" android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical" android:contentDescription="打开 Step 今日规划">
+        <TextView android:id="@+id/widget_heading" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Step · 今日" android:textSize="11sp" android:textColor="@color/widget_primary" android:includeFontPadding="false" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp"
+            android:text="从一件小事开始" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/widget_text" android:includeFontPadding="false" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/widget_next_step" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp"
+            android:text="添加后显示你的下一步" android:textSize="12sp" android:textColor="@color/widget_secondary" android:includeFontPadding="false" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/widget_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textSize="12sp" android:textColor="@color/widget_primary" android:visibility="gone" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="2dp" android:orientation="horizontal">
+        <Button android:id="@+id/widget_capture" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1"
+            android:background="@drawable/widget_secondary_button" android:backgroundTint="@null" android:text="记下" android:textSize="13sp"
+            android:textColor="@color/widget_text" android:textAllCaps="false" android:maxLines="1" android:ellipsize="end" android:paddingHorizontal="2dp" android:minWidth="0dp" />
+        <Button android:id="@+id/widget_focus" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:layout_marginStart="2dp"
+            android:background="@drawable/widget_primary_button" android:backgroundTint="@null" android:text="打开" android:textSize="13sp"
+            android:textColor="@color/widget_on_primary" android:textAllCaps="false" android:maxLines="1" android:ellipsize="end" android:paddingHorizontal="2dp" android:minWidth="0dp" />
+    </LinearLayout>
+</LinearLayout>

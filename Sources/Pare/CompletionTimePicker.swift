@@ -37,7 +37,7 @@ struct CompletionTimeChips: View {
                                 .background(Capsule().fill(Theme.amberSoft))
                                 .overlay(Capsule().stroke(Theme.amber.opacity(0.35), lineWidth: 1))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(CompactPillStyle(tint: Theme.amber))
                         .accessibilityLabel("实际用了 \(DurationLabel.short(m))")
                     }
                 }
@@ -45,12 +45,9 @@ struct CompletionTimeChips: View {
             }
             Button(action: onSkip) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(Theme.textFaint)
-                    .padding(3)
-                    .contentShape(Rectangle())
+                    .font(.system(size: 10, weight: .medium))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(IconActionStyle(size: 24))
             .help("跳过（不记录用时）")
             .accessibilityLabel("跳过记录实际用时")
         }
@@ -66,32 +63,39 @@ struct CompletionTimeChips: View {
 struct ActualTimePill: View {
     let minutes: Int
     let onSelect: (Int?) -> Void
+    @State private var pickerPresented = false
 
     var body: some View {
-        Menu {
-            ForEach(DurationPill.presets, id: \.self) { m in
-                Button(DurationLabel.short(m)) { onSelect(m) }
-            }
-            Divider()
-            Button("清除实际用时", role: .destructive) { onSelect(nil) }
-        } label: {
+        Button { pickerPresented = true } label: {
             HStack(spacing: 3) {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 10))
                 Text(DurationLabel.short(minutes))
                     .font(Theme.font(11, weight: .medium)).lineLimit(1)
             }
-            .foregroundColor(Theme.amber)
+            .foregroundColor(Theme.success)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.amberSoft))
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Theme.amber.opacity(0.45), lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).fill(Theme.success.opacity(0.10)))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).stroke(Theme.success.opacity(0.45), lineWidth: 1))
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(CompactPillStyle(tint: Theme.success))
         .fixedSize()
         .help("实际用时")
         .accessibilityLabel("实际用时")
         .accessibilityValue(DurationLabel.short(minutes))
+        .popover(isPresented: $pickerPresented) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("实际用时").font(Theme.font(13, weight: .medium))
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(DurationPill.presets, id: \.self) { m in
+                        Button(DurationLabel.short(m)) { onSelect(m); pickerPresented = false }
+                            .buttonStyle(SecondaryActionStyle())
+                    }
+                }
+                Button("清除实际用时") { onSelect(nil); pickerPresented = false }
+                    .buttonStyle(TertiaryActionStyle(tint: Theme.error))
+            }.padding(12).frame(width: 224).foregroundColor(Theme.text).background(Theme.bg, in: RoundedRectangle(cornerRadius: Theme.Radius.popover, style: .continuous))
+        }
     }
 }
 
@@ -109,9 +113,9 @@ struct RecordActualButton: View {
             .foregroundColor(Theme.textDim)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Theme.border, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).stroke(Theme.border, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CompactPillStyle())
         .help("记录实际用时")
         .accessibilityLabel("记录实际用时")
     }

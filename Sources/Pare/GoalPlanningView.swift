@@ -10,7 +10,7 @@ struct GoalPlanningView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                PageHeading(title: "目标与偏好", subtitle: "把长期目标落到下一步。AI 仅在你发起时使用获准的内容。")
+                PageHeading(title: "长期目标", subtitle: "明确想达成的结果，再关联具体行动。探索中的念头留在想法与项目中。")
                 HStack {
                     TextField("写下一个长期目标", text: $title).textFieldStyle(.roundedBorder)
                         .onSubmit(addGoal)
@@ -23,10 +23,6 @@ struct GoalPlanningView: View {
                     Text("例如：这个月完成报告；每周留出时间阅读。先添加一个，再关联下一步任务。")
                         .font(Theme.font(12)).foregroundColor(Theme.textDim)
                 }
-                DisclosureGroup("我的规划偏好") { AgentPreferencesView(store: store).padding(.top, 10) }
-                    .padding(14).panel()
-                DisclosureGroup("长期背景与 AI 反馈") { AIHistorySettingsView(store: store).padding(.top, 10) }
-                    .padding(14).panel()
                 DisclosureGroup("最近分析状态（最多 20 次）") {
                     ForEach(store.planningRuns) { run in
                         VStack(alignment: .leading, spacing: 4) {

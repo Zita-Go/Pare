@@ -13,7 +13,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 430),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered, defer: false)
-        window.title = "欢迎使用 Pare"
+        window.title = "欢迎使用 Step"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isOpaque = false
@@ -69,12 +69,12 @@ private struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("把脑子里的事，先放下来")
                     .font(Theme.font(25, weight: .semibold)).foregroundColor(Theme.text)
-                Text("Pare 常驻菜单栏，整理注意力，不制造新的负担。")
+                Text("Step 陪你把任务和目标，向前推进一小步。")
                     .font(Theme.font(13)).foregroundColor(Theme.textDim)
             }
 
             VStack(spacing: 12) {
-                step("bolt.fill", "随时记", "点击菜单栏清单，或按默认快捷键 ⌥Space；组合可在设置中修改。")
+                step("bolt.fill", "随时记", "点击菜单栏 Step 图标，或按默认快捷键 ⌥Space；组合可在设置中修改。")
                 step("square.grid.2x2", "每天整理", "把任务放进四象限，再按真实容量排入今日计划。")
                 step("bell.badge.fill", "克制提醒", "早晚节奏、单项提醒和每周回顾都可随时关闭。")
             }

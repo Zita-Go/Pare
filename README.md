@@ -1,32 +1,35 @@
 <p align="center">
-  <img src="docs/images/app-icon.png" width="112" alt="Pare 图标">
+  <img src="docs/images/app-icon.png" width="112" alt="Step 图标">
 </p>
 
-<h1 align="center">Pare</h1>
+<h1 align="center">Step</h1>
 
-<p align="center"><strong>把脑中的事放下来，选出今天的一件事。没动力时，先做 5 分钟。</strong></p>
+<p align="center"><strong>从想法，到下一步。分清轻重，选出今天，先开始一点。</strong></p>
 
 <p align="center">
-  macOS 13+ · Apple Silicon · 本地优先 · 无需账号 · AI 可选
+  macOS 13+ · Android 8.0+ · 本地优先 · 同步与 AI 可选
 </p>
 
 <p align="center">
-  <a href="https://github.com/Zita-Go/Pare/releases/download/v2.7.1/Pare-2.7.1-macos-arm64.zip"><strong>下载 Pare 2.7.1（预发布）</strong></a>
+  <a href="https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-2.16.0-macos-arm64.zip"><strong>下载 Mac 2.16.0</strong></a>
+  · <a href="https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-0.15.0-android-debug.apk"><strong>下载 Android 0.15.0</strong></a>
   · <a href="#一分钟开始使用">开始使用</a>
   · <a href="docs/guide.md">完整指南</a>
 </p>
 
-Pare 是一个常驻 macOS 菜单栏的个人规划工具。念头出现时先记下，需要行动时再分清轻重、挑出今天真正要推进的事，并把它缩小成一个可以立刻开始的动作。
+Step（原 Pare）是一个支持 macOS 菜单栏和 Android 的个人规划工具。念头出现时先记下，需要行动时再分清轻重、挑出今天真正要推进的事，并把它缩小成一个可以立刻开始的动作。
 
 ![今日计划：选出完成报告提纲作为今日重点，并提供开始五分钟、拆小一步和我卡住了三个入口](docs/images/today.png)
 
-<p align="center"><em>截图来自 2.7.0 原生界面，内容均为隔离的虚构演示任务。</em></p>
+<p align="center"><em>功能截图保留自 Pare 历史版本，内容均为隔离的虚构演示任务；当前开发版名称与图标已更新为 Step。</em></p>
 
 > 不必先整理完人生。先选一件，开始一点。
 
-## Pare 能帮你什么
+**当前为开发预发布版：Mac 2.16.0 / Android 0.15.0。** 包含新的 Step 名称与图标、跨端同步，以及可单独完成并记录历史的下一步。[查看安装步骤、验证范围和已知限制](docs/releases/step-2.16.0-preview.md)。
 
-| 当你遇到…… | Pare 提供…… |
+## Step 能帮你什么
+
+| 当你遇到…… | Step 提供…… |
 | --- | --- |
 | 脑中事情太多，怕忘又不想被打断 | 用 `⌥Space` 唤出随手记，回车保存 |
 | 清单很长，不知道先做什么 | 用四象限分清重要与紧急，只挑少量任务进入今天 |
@@ -37,13 +40,45 @@ Pare 是一个常驻 macOS 菜单栏的个人规划工具。念头出现时先�
 
 ## 一分钟开始使用
 
-1. **记下来：** 点击菜单栏 Pare 图标，或按 `⌥Space`，输入一句话并回车。
+1. **记下来：** 点击菜单栏 Step 图标，或按 `⌥Space`，输入一句话并回车。
 2. **分清轻重：** 打开「整理」，把待整理内容拖进四象限。
 3. **选择今天：** 点任务旁的太阳，在「今日计划」里选出“今天只赢一件”。
-4. **降低门槛：** 写一个 5–15 分钟能完成的下一步，然后点「开始 5 分钟」。
+4. **逐步推进：** 写一个具体的下一步，做完点「完成这一步」，再写下一步；主任务保留，历史可回看。
 5. **需要时再排时间：** 在今日计划切到「时间轴」，拖入任务或单击选择开始时间。
 
-不需要每天使用所有功能。只用“随手记 → 今日重点 → 开始五分钟”，Pare 就已经能发挥作用。
+不需要每天使用所有功能。只用“随手记 → 今日重点 → 开始五分钟”，Step 就已经能发挥作用。
+
+当前源码开发版包含「想法与项目」、情境 AI 助手和本地请求历史，并采用深绿暖金界面。先看到下一步，再采纳；建议下方可查看对应输入与原始回复，参考范围和反馈按需展开，采纳可撤销。本地轻提示只在你主动生成后才请求模型。[查看当前预发布说明](docs/releases/step-2.16.0-preview.md)。
+
+### Android 与跨端同步（开发预览）
+
+当前开发分支提供 Step Android 0.15.0（Android 8.0+）和 Mac 2.16.0 开发版。新版采用白底、绿色折面 S 和金色目标圆球，表达阶梯与持续向目标推进。原有资料库和同步账号沿用，无需重新建立。手机可以接住想法、安排时间、开始一小步，再把行动连接到长期目标；任务、想法和计划可选择自动同步到 Mac。当前安装包用于开发验收。 下一步现在可以单独完成并保留历史，再继续写下一步；整个任务保持未完成。
+
+两端使用同一个 **Step 同步账号**：Mac 打开「设置 → 同步」，Android 打开右上角「更多 → 账号与同步」。首次登录先查看合并预览，确认后再上传；离线修改保留在本机，重连后继续同步。有冲突时先比较两个版本，再决定保留哪一个。
+
+API 密钥、AI 原始请求历史、计时控制和系统设置留在各自设备。运行状态共享有独立开关，默认关闭：开启后可看到其他设备最近报告的专注或等待状态，过期会注明，不能远程接管计时。仅本机使用不需要账号。开发者可查看 [Android 构建与验收](android/README.md) 和 [同步部署说明](backend/supabase/README.md)。当前预发布包包含跨端同步；托管服务仍用于开发体验，正式邮件发送与服务容量不作生产承诺。
+
+[查看同步测试包的安装步骤与已知限制](docs/releases/v2.13.0-preview.md)。
+
+Android 0.6.0 从任务菜单开始专注、记录外部推进或设置提醒；顶部「AI助手」先预览再生成，确认后才更新下一步。「回看」使用本地真实记录，轻提示不后台调用模型。模型密钥在手机单独配置并加密保存。查看[当前用法与验收范围](docs/releases/android-v0.6.0.md)。
+
+Android 0.7.0 进一步统一了布局、字体、配色和圆角，突出任务、专注时间与 AI 建议；标准字号保持六任务首屏密度，并验证真实大字体弹窗。[查看前后对比与页面截图](docs/releases/android-v0.7.0.md)。
+
+Android 0.8.0 把「今天」改为可直接添加、移动和缩放事项的时间轴；待安排任务可拖动排序或拖入日程，菜单精简为三项。「等待结果」说明手动记录AI或他人处理的等待过程。[查看用法与实际截图](docs/releases/android-v0.8.0.md)，以及[已实现与尚未移植的功能清单](docs/android-feature-coverage.md)。
+
+Android 0.9.0 继续补齐实际使用的流程：时间块跨日移动和撤销、资料库搜索与本机回收站、目标和偏好管理，以及今日/想法/归位/目标的 AI 协助。卡住时可保存小步骤并开始五分钟，回看能查看八周趋势和估时差异。[查看新入口、截图和验收范围](docs/releases/android-v0.9.0.md)。
+
+Android 0.9.1 将专注时长改为同一行的 5、15、30、60 分钟，保留自定义输入。[查看修复与截图](docs/releases/android-v0.9.1.md)。
+
+Android 0.9.2 让「今天」默认显示紧凑清单，需要排时间时再切到时间轴；保存提示自动消失，保留撤销和关闭。[查看效果与说明](docs/releases/android-v0.9.2.md)。
+
+Android 0.12.0 将任务优先级直接放在标题下方；整理页支持长按调整象限和顺序，底部导航也更紧凑。[查看操作说明与验收](docs/releases/android-v0.12.0.md) · [图标与页面细节](docs/releases/android-v0.11.0.md)。
+
+Android 0.13.0 可从整理页直接加入今天，今日空状态也能从四象限选择已有任务；今日清单明确区分个人投入、检查时间与未设投入。任务详情突出下一步和开始入口，拖动提供跟手预览与条件撤销。新增桌面组件：从「更多 → 添加桌面小组件」添加，查看今日行动、快速收集，或打开 Pare 选择专注时长、暂停和继续本机专注。[查看用法、截图与验收边界](docs/releases/android-v0.13.0.md)。
+
+0.13.3 进一步精修2×2桌面卡片：标题断行更自然，去掉重复提示，随手记入口更轻，突出开始与暂停操作。[查看实际桌面效果](docs/releases/android-v0.13.3.md)。
+
+此前更新：[自动同步](docs/releases/android-v0.2.0.md) · [视觉调整](docs/releases/android-v0.3.0.md) · [列表与快速记录](docs/releases/android-v0.4.0.md) · [想法到行动](docs/releases/android-v0.5.0.md) · [统一界面与跨页面暂停](docs/releases/android-v0.10.0.md)。产品方向遵循[Step自己的产品原则](docs/product-principles.md)。
 
 ## 念头来了，先放下来
 
@@ -67,7 +102,7 @@ Pare 是一个常驻 macOS 菜单栏的个人规划工具。念头出现时先�
 
 ![四象限：左侧是两条待整理内容，右侧按重要与紧急分为四格，任务标题与时长分行显示](docs/images/matrix.png)
 
-Pare 会在今日任务过多或估时过满时给出温和提示，但不会阻止你继续安排。每天翻篇后，完成项进入历史，未完成任务留在原象限，今天的选择重新开始。
+Step 会在今日任务过多或估时过满时给出温和提示，但不会阻止你继续安排。每天翻篇后，完成项进入历史，未完成任务留在原象限，今天的选择重新开始。
 
 ## 从清单变成今天的时间
 
@@ -79,7 +114,7 @@ Pare 会在今日任务过多或估时过满时给出温和提示，但不会阻
 
 ## 没动力时，不要求自己完成
 
-点击「我卡住了」，选择更接近此刻的原因：不知道下一步、任务太大、没有精力，或有压力与抗拒。Pare 会让你只写“现在能做的一小步”和“做到哪里就可以停”。
+点击「我卡住了」，选择更接近此刻的原因：不知道下一步、任务太大、没有精力，或有压力与抗拒。Step 会让你只写“现在能做的一小步”和“做到哪里就可以停”。
 
 <p align="center">
   <img src="docs/images/momentum.png" width="430" alt="卡点面板：选择任务太大，并写下最小下一步和最低完成版本">
@@ -102,6 +137,8 @@ AI 可以：
 - 在给定时间内安排一项重点和少量备选；
 - 在你明确允许后，参考近 7／30 天统计、长期目标、偏好和过去反馈。
 
+2.10.0 新助手还可从想法详情「接着想一想」，查看前情、关键未知和一次最小探索；按项采纳为关联行动、下一问题或带 AI 来源的探索记录。今日规划显示整天已计划的投入与未确定项；「我卡住了」提供 2–5 分钟起点。确认偏好位于「设置 → AI」，可以改写或忘记。本地轻提示不会自行请求模型。
+
 每次请求都会显示参考范围；详细内容可在「调整」中选择和预览。模型结果先通过任务对应、数量、字段和时间预算检查，**不会自动写入任务，也不会自动开始专注**。超预算或格式错误只显示原因和只读参考，需要你手动重试。
 
 这是受控的规划工作流，不是无人值守的通用 Agent：它不会执行终端命令、操作其它 App，或在后台自行反复调用 API。[查看 AI、长期目标与隐私说明](docs/guide.md#ai-辅助)。
@@ -113,7 +150,7 @@ AI 可以：
 - 可创建“如果到了某个时间／回到电脑／打开某个应用，就提醒我做某一步”的启动约定。
 - 可选检测短时间内的应用往返；浏览器增强模式只在内存中使用标题散列，不保存标题、网址或浏览历史。
 
-页面切换也可能是正常研究。Pare 的注意力提示可以忽略、暂停一小时或完全关闭；它不能判断你是否认真工作。
+页面切换也可能是正常研究。Step 的注意力提示可以忽略、暂停一小时或完全关闭；它不能判断你是否认真工作。
 
 ## 设置不需要到处找
 
@@ -130,18 +167,20 @@ AI 可以：
 
 ## 安装
 
-当前提供 **Apple Silicon（M 系列）预发布版**，需要 macOS 13 或更高版本。
+Mac 提供 **Apple Silicon（M 系列）预发布版**，需要 macOS 13 或更高版本；Android 需要 8.0 或更高版本。
 
-1. 下载 [Pare-2.7.1-macos-arm64.zip](https://github.com/Zita-Go/Pare/releases/download/v2.7.1/Pare-2.7.1-macos-arm64.zip)。
-2. 可用 [SHA256SUMS.txt](https://github.com/Zita-Go/Pare/releases/download/v2.7.1/SHA256SUMS.txt) 核对文件。
-3. 解压后，把 `Pare.app` 拖入「应用程序」文件夹，再从那里启动。
+1. 下载 [Step-2.16.0-macos-arm64.zip](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-2.16.0-macos-arm64.zip)。
+2. 可用 [Step-SHA256SUMS.txt](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-SHA256SUMS.txt) 核对文件。
+3. 解压后，把 `Step.app` 拖入「应用程序」文件夹，再从那里启动。
 4. 首次打开后，在「设置 → 通用」开启通知并发送测试提醒。
 
 更新前建议在「设置 → 数据」导出备份，退出旧版后再替换 App。为让通知中心稳定识别图标，请不要长期从下载目录、源码目录的 `dist` 或其它临时路径运行。
 
+Android：下载 [Step-0.15.0-android-debug.apk](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-0.15.0-android-debug.apk)，传到手机后安装。这是测试签名包，尚未完成物理手机验收；不同签名的已安装版本可能无法直接覆盖，先保留数据备份。
+
 ### macOS 拦截打开时
 
-当前安装包尚未使用 Developer ID 签名和 Apple 公证。请确认文件来自本仓库并核对 SHA-256，然后在 Finder 中右键 Pare，选择「打开」。[查看 2.7.1 版本说明](docs/releases/v2.7.1.md)。
+当前安装包尚未使用 Developer ID 签名和 Apple 公证。请确认文件来自本仓库并核对 SHA-256，然后在 Finder 中右键 Step，选择「打开」。[查看当前预发布说明](docs/releases/step-2.16.0-preview.md)。
 
 ## 你的内容由你控制
 
@@ -166,9 +205,9 @@ AI 可以：
 git clone https://github.com/Zita-Go/Pare.git
 cd Pare
 ./build_app.sh
-open dist/Pare.app
+open dist/Step.app
 ```
 
-长期使用时仍应把构建得到的 `Pare.app` 拖入「应用程序」。
+长期使用时仍应把构建得到的 `Step.app` 拖入「应用程序」。
 
-[完整使用指南](docs/guide.md) · [2.7.1 版本说明](docs/releases/v2.7.1.md) · [开发与截图方法](docs/development.md) · [发布验收记录](Tests/RELEASE_ACCEPTANCE.md)
+[完整使用指南](docs/guide.md) · [当前预发布说明](docs/releases/step-2.16.0-preview.md) · [开发与截图方法](docs/development.md) · [发布验收记录](Tests/RELEASE_ACCEPTANCE.md)

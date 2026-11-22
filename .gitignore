@@ -15,3 +15,12 @@ dist/
 
 # RFC 设计文档 — 按用户要求不纳入 git（本地仍由 ncoder rfc 管理）
 docs/rfcs/
+
+# Per-developer cloud connection settings; never commit account configuration
+*.local.json
+.env
+.env.*
+!.env.example
+
+# Supabase CLI local metadata
+backend/supabase/.temp/

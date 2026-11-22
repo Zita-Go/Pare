@@ -53,7 +53,8 @@ final class ProductivityTests: XCTestCase {
         let promoted = reloaded.promoteThought(reloaded.thoughts[0].id)!
         XCTAssertEqual(promoted.quadrant, .importantNotUrgent)
         XCTAssertEqual(promoted.note, "目标 / 证据 / 下一步")
-        XCTAssertTrue(reloaded.thoughts.isEmpty)
+        XCTAssertEqual(reloaded.thoughts.first?.id, thought.id)
+        XCTAssertEqual(reloaded.thoughts.first?.linkedTaskIDs, [promoted.id])
     }
 
     func testUndoDeleteAndClear() {
@@ -156,7 +157,8 @@ final class ProductivityTests: XCTestCase {
         try Data("bad-backup".utf8).write(to: url.appendingPathExtension("bak"), options: .atomic)
         let store = Store(fileURL: url, calendar: calendar())
         XCTAssertNotNil(store.persistenceIssue)
-        XCTAssertTrue(store.capture("不能覆盖旧文件"))
+        XCTAssertFalse(store.capture("不能覆盖旧文件"))
+        XCTAssertTrue(store.inbox.isEmpty)
         XCTAssertEqual(String(data: try Data(contentsOf: url), encoding: .utf8), "bad-primary")
     }
 

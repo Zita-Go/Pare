@@ -1,22 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build Pare.app — a menu-bar-only macOS app — using only the Swift toolchain.
+# Build Step.app — a menu-bar-only macOS app — using only the Swift toolchain.
 # No full Xcode required (Command Line Tools are enough).
 
 cd "$(dirname "$0")"
 
-APP_NAME="Pare"
+APP_NAME="Step"
+# Keep executable and bundle identity stable for existing data and permissions.
+EXECUTABLE_NAME="Pare"
 BUNDLE_ID="com.zitago.Pare"
-VERSION="2.7.1"
-BUILD="30"
+VERSION="2.16.0"
+BUILD="45"
 ICON_MASTER="Resources/AppIcon.png"
+STATUS_ICON="Resources/StepStatusIcon.pdf"
+
+for resource in "$ICON_MASTER" "$STATUS_ICON"; do
+  if [[ ! -f "$resource" ]]; then
+    echo "error: required app artwork not found at $resource" >&2
+    exit 1
+  fi
+done
 
 echo "==> swift build -c release"
 swift build -c release
 
 BIN_PATH="$(swift build -c release --show-bin-path 2>/dev/null)"
-EXE="$BIN_PATH/$APP_NAME"
+EXE="$BIN_PATH/$EXECUTABLE_NAME"
 if [[ ! -x "$EXE" ]]; then
   echo "error: built executable not found at $EXE" >&2
   exit 1
@@ -26,11 +36,25 @@ APP="dist/$APP_NAME.app"
 echo "==> assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$EXE" "$APP/Contents/MacOS/$APP_NAME"
+cp "$EXE" "$APP/Contents/MacOS/$EXECUTABLE_NAME"
+cp "$STATUS_ICON" "$APP/Contents/Resources/"
 
-if [[ ! -f "$ICON_MASTER" ]]; then
-  echo "error: app icon master not found at $ICON_MASTER" >&2
-  exit 1
+# Only a public client key belongs in the bundle. Local project configuration
+# stays ignored by Git; this filter never copies credentials or admin fields.
+SYNC_CONFIG="${PARE_SYNC_CONFIGURATION_FILE:-backend/supabase/project.local.json}"
+if [[ -f "$SYNC_CONFIG" ]]; then
+  python3 - "$SYNC_CONFIG" "$APP/Contents/Resources/SyncConfiguration.json" <<'PY'
+import json, pathlib, sys
+from urllib.parse import urlparse
+value = json.loads(pathlib.Path(sys.argv[1]).read_text())
+url, key = value.get('api_url', ''), value.get('publishable_key', '')
+parts = urlparse(url)
+if parts.scheme != 'https' or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment:
+    raise SystemExit('Invalid sync project URL')
+if not key.startswith('sb_publishable_'):
+    raise SystemExit('Bundle configuration requires a publishable client key')
+pathlib.Path(sys.argv[2]).write_text(json.dumps({'api_url': url, 'publishable_key': key}))
+PY
 fi
 
 echo "==> generating AppIcon.icns"
@@ -63,7 +87,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleName</key><string>${APP_NAME}</string>
     <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
     <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
-    <key>CFBundleExecutable</key><string>${APP_NAME}</string>
+    <key>CFBundleExecutable</key><string>${EXECUTABLE_NAME}</string>
     <key>CFBundleIconFile</key><string>AppIcon.icns</string>
     <key>CFBundleIconFiles</key>
     <array><string>AppIcon.icns</string></array>
@@ -75,7 +99,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
-    <key>NSHumanReadableCopyright</key><string>Pare</string>
+    <key>NSHumanReadableCopyright</key><string>Step</string>
 </dict>
 </plist>
 PLIST
@@ -88,5 +112,5 @@ codesign --force --sign - "$APP"
 
 echo ""
 echo "✅ 完成：$APP"
-echo "启动： open \"$APP\"      （或在 Finder 里双击 Pare.app）"
-echo "安装： 把 dist/Pare.app 拖进「应用程序」文件夹即可长期使用。"
+echo "启动： open \"$APP\"      （或在 Finder 里双击 Step.app）"
+echo "安装： 把 dist/Step.app 拖进「应用程序」文件夹即可长期使用。"

@@ -6,14 +6,15 @@ cd "$(dirname "$0")/.."
 swift build --target PareCore
 PARE_BIN_DIR="$(swift build --show-bin-path)"
 PARE_DEMO_DIR="$(mktemp -d /private/tmp/pare-screenshots.XXXXXX)"
-PARE_DEMO_NAME="Pare Screenshots"
+PARE_DEMO_NAME="Step Screenshots"
 PARE_DEMO_PLIST="Scripts/ReadmeDemo-Info.plist"
 if [[ "${1:-}" == "--verify-shortcuts" ]]; then
-    PARE_DEMO_NAME="Pare Shortcut Check"
+    PARE_DEMO_NAME="Step Shortcut Check"
     PARE_DEMO_PLIST="Scripts/ShortcutCheck-Info.plist"
 fi
 PARE_DEMO_APP="$PARE_DEMO_DIR/$PARE_DEMO_NAME.app"
-mkdir -p "$PARE_DEMO_APP/Contents/MacOS"
+mkdir -p "$PARE_DEMO_APP/Contents/MacOS" "$PARE_DEMO_APP/Contents/Resources"
+cp Resources/StepStatusIcon.pdf "$PARE_DEMO_APP/Contents/Resources/"
 cp "$PARE_DEMO_PLIST" "$PARE_DEMO_APP/Contents/Info.plist"
 PARE_UI_SOURCES=()
 for source in Sources/Pare/*.swift; do

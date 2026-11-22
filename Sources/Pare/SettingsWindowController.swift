@@ -21,14 +21,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let shortcutController: CaptureShortcutController
 
     init(store: Store, manager: NotificationManager, attentionDetector: AttentionDriftDetector,
-         shortcutController: CaptureShortcutController) {
+         shortcutController: CaptureShortcutController, syncCoordinator: SyncCoordinator) {
         self.shortcutController = shortcutController
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 580, height: 640),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false)
-        window.title = "Pare 设置"
+        window.title = "Step 设置"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isOpaque = false
@@ -38,7 +38,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         let hosting = NSHostingController(rootView: SettingsView(
             store: store, manager: manager, attentionDetector: attentionDetector,
-            shortcutController: shortcutController))
+            shortcutController: shortcutController, syncCoordinator: syncCoordinator))
         window.contentViewController = hosting
         window.center()
 
@@ -70,7 +70,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 // MARK: - SettingsView
 
 private enum SettingsCategory: String, CaseIterable {
-    case general = "通用", reminders = "提醒", ai = "AI", data = "数据"
+    case general = "通用", reminders = "提醒", ai = "AI", sync = "同步", data = "数据"
 }
 
 private struct SettingsView: View {
@@ -78,31 +78,27 @@ private struct SettingsView: View {
     let manager: NotificationManager
     @ObservedObject var attentionDetector: AttentionDriftDetector
     @ObservedObject var shortcutController: CaptureShortcutController
+    @ObservedObject var syncCoordinator: SyncCoordinator
     @StateObject private var loginItem = LoginItemManager()
 
     @State private var authText = "检查中…"
     @State private var testSending = false
     @State private var testMessage: String?
+    @State private var testFeedback: FeedbackKind = .info
     @State private var attentionTestSending = false
     @State private var dataMessage: String?
+    @State private var dataFeedback: FeedbackKind = .info
     @State private var attentionMessage: String?
+    @State private var attentionFeedback: FeedbackKind = .info
     @State private var category: SettingsCategory = .general
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            PageHeading(title: "Pare 设置", subtitle: "按你的习惯安排工具，不必一次设置完。")
-            HStack(spacing: 4) {
-                ForEach(SettingsCategory.allCases, id: \.self) { tab in
-                    Button { category = tab; shortcutController.cancelRecording() } label: {
-                        Text(tab.rawValue).font(Theme.font(13, weight: .medium))
-                            .frame(maxWidth: .infinity, minHeight: 34)
-                            .foregroundColor(category == tab ? Theme.bg : Theme.textDim)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(category == tab ? Theme.amber : .clear))
-                            .contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                        .accessibilityAddTraits(category == tab ? .isSelected : [])
-                }
-            }.padding(4).background(RoundedRectangle(cornerRadius: 11).fill(Theme.panel.opacity(0.45)))
+            PageHeading(title: "Step 设置", subtitle: "按你的习惯安排工具，不必一次设置完。")
+            SegmentedTabs(values: SettingsCategory.allCases, selection: Binding(
+                get: { category },
+                set: { category = $0; shortcutController.cancelRecording() }
+            ), label: { $0.rawValue })
             // Keep the panes mounted so switching categories doesn't discard
             // unsaved AI configuration, background or other local drafts.
             ZStack(alignment: .topLeading) {
@@ -153,9 +149,13 @@ private struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             case .ai:
                 settingsGroup("AI 连接（可选）") { AIConfigurationView() }
+                settingsGroup("规划偏好") { AgentPreferencesView(store: store) }
+                settingsGroup("已确认的记忆与轻提示") { IntelligencePreferencesView(store: store) }
                 settingsGroup("本地历史与背景") { AIHistorySettingsView(store: store) }
             case .data:
                 settingsGroup("启动与数据备份") { startupAndDataCard }
+            case .sync:
+                SyncSettingsView(coordinator: syncCoordinator, store: store)
             }
         }
     }
@@ -179,8 +179,7 @@ private struct SettingsView: View {
                     .font(Theme.font(11)).foregroundColor(Theme.textDim)
                 Spacer()
                 Button("恢复默认") { _ = shortcutController.apply(.default) }
-                    .buttonStyle(.plain).font(Theme.font(11, weight: .medium))
-                    .foregroundColor(Theme.amber)
+                    .buttonStyle(TertiaryActionStyle())
             }
             if let message = shortcutController.message {
                 Text(message).font(Theme.font(11)).foregroundColor(Theme.amber)
@@ -193,7 +192,7 @@ private struct SettingsView: View {
         sectionContent {
             Toggle(isOn: Binding(get: { loginItem.enabled }, set: { loginItem.setEnabled($0) })) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("登录时自动启动 Pare")
+                    Text("登录时自动启动 Step")
                         .font(Theme.font(15, weight: .medium)).foregroundColor(Theme.text)
                     Text(loginItem.statusText)
                         .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -204,10 +203,7 @@ private struct SettingsView: View {
             groupDivider
 
             if let issue = store.persistenceIssue {
-                HStack(alignment: .top, spacing: 7) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundColor(Theme.qUrgent)
-                    Text(issue).font(Theme.font(11)).foregroundColor(Theme.text)
-                }
+                FeedbackBanner(text: issue, kind: .error)
             } else {
                 Text("每次保存都会保留一份上一版本自动备份。")
                     .font(Theme.font(11)).foregroundColor(Theme.textDim)
@@ -217,11 +213,15 @@ private struct SettingsView: View {
                 actionButton("导出备份") { exportBackup() }
                 actionButton("导入备份") { importBackup() }
                 actionButton("恢复自动备份") {
-                    dataMessage = store.restoreAutomaticBackup() ? "已恢复自动备份 ✓" : "没有可恢复的自动备份"
+                    let restored = store.restoreAutomaticBackup()
+                    dataMessage = restored
+                        ? "已恢复自动备份"
+                        : (store.persistenceIssue ?? "没有可恢复的自动备份")
+                    dataFeedback = restored ? .success : .error
                 }
             }
             if let dataMessage {
-                Text(dataMessage).font(Theme.font(11)).foregroundColor(Theme.amber)
+                FeedbackBanner(text: dataMessage, kind: dataFeedback)
             }
         }
     }
@@ -245,20 +245,23 @@ private struct SettingsView: View {
                 actionButton(testSending ? "正在提交…" : "发送测试提醒") {
                     testSending = true
                     testMessage = nil
+                    testFeedback = .info
                     manager.sendTestReminder { result in
                         testSending = false
                         switch result {
                         case .success:
                             testMessage = "已提交系统，约 3 秒后提醒。是否展示还取决于系统通知与专注模式设置。"
+                            testFeedback = .success
                         case .failure(let error):
                             testMessage = "测试提醒未发送：\(error.localizedDescription)"
+                            testFeedback = .error
                         }
                         refreshAuth()
                     }
                 }.disabled(testSending)
             }
             if let testMessage {
-                Text(testMessage).font(Theme.font(11)).foregroundColor(Theme.amber)
+                FeedbackBanner(text: testMessage, kind: testFeedback)
             }
         }
     }
@@ -328,7 +331,7 @@ private struct SettingsView: View {
                     actionButton("忽略 1 小时") { attentionDetector.snooze() }
                 }
                 if let attentionMessage {
-                    Text(attentionMessage).font(Theme.font(11)).foregroundColor(Theme.amber)
+                    FeedbackBanner(text: attentionMessage, kind: attentionFeedback)
                 }
             }
         }
@@ -339,10 +342,12 @@ private struct SettingsView: View {
             ?? store.tasks.first(where: { !$0.completed })
         guard let task else {
             attentionMessage = "先添加一件未完成任务，提醒才有推荐目标。"
+            attentionFeedback = .info
             return
         }
         attentionTestSending = true
         attentionMessage = nil
+        attentionFeedback = .info
         manager.sendAttentionDriftNotice(
             task: task,
             decision: AttentionDriftDecision(switchCount: 9, uniqueContextCount: 2,
@@ -352,8 +357,10 @@ private struct SettingsView: View {
             switch result {
             case .success:
                 attentionMessage = "测试提醒已提交系统；是否展示还取决于系统通知与专注模式设置。"
+                attentionFeedback = .success
             case .failure(let error):
                 attentionMessage = "测试提醒未发送：\(error.localizedDescription)"
+                attentionFeedback = .error
             }
         }
     }
@@ -476,7 +483,7 @@ private struct SettingsView: View {
         VStack(alignment: .leading, spacing: 10) { content() }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .panel(corner: 12)
+            .panel(corner: Theme.Radius.card)
     }
 
     @ViewBuilder
@@ -490,17 +497,17 @@ private struct SettingsView: View {
                                               @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 13) {
             Text(title)
-                .font(Theme.font(14, weight: .semibold))
+                .font(Theme.Typography.section)
                 .foregroundColor(Theme.text)
             content()
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .panel(corner: 12)
+        .panel(corner: Theme.Radius.card)
     }
 
     private var groupDivider: some View {
-        Rectangle().fill(Theme.hairline).frame(height: 1)
+        Rectangle().fill(Theme.separator).frame(height: 1)
     }
 
     private func sectionToggle(_ title: String, isOn: Binding<Bool>) -> some View {
@@ -528,22 +535,24 @@ private struct SettingsView: View {
 
     private func exportBackup() {
         let panel = NSSavePanel()
-        panel.title = "导出 Pare 备份"
-        panel.nameFieldStringValue = "Pare-backup.json"
+        panel.title = "导出 Step 备份"
+        panel.nameFieldStringValue = "Step-backup.json"
         panel.allowedContentTypes = [.json]
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try store.exportData(to: url)
-            dataMessage = "备份已导出 ✓"
+            dataMessage = "备份已导出"
+            dataFeedback = .success
         } catch {
             dataMessage = error.localizedDescription
+            dataFeedback = .error
         }
     }
 
     private func importBackup() {
         let panel = NSOpenPanel()
-        panel.title = "选择 Pare 备份"
+        panel.title = "选择 Step 备份"
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -557,9 +566,11 @@ private struct SettingsView: View {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         do {
             try store.importData(from: url)
-            dataMessage = "备份已导入 ✓"
+            dataMessage = "备份已导入"
+            dataFeedback = .success
         } catch {
             dataMessage = error.localizedDescription
+            dataFeedback = .error
         }
     }
 

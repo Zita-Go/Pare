@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108"><title>Step — approved C refinement</title><defs>
+ <clipPath id="body"><path d="M12.1,84.6L19.2,72.4L43.3,72.4Q45.0,72.4 45.0,70.7L45.0,27.1Q45.0,26.4 45.8,25.7L51.3,20.7Q52.2,20.0 53.3,20.0L85.7,20.0L78.6,32.2L59.3,32.2Q57.5,32.2 57.5,34.0L57.5,77.5Q57.5,78.2 56.7,78.9L51.2,83.9Q50.4,84.6 49.3,84.6Z"/></clipPath>
+ <linearGradient id="upper" gradientUnits="userSpaceOnUse" x1="51" y1="17" x2="81" y2="40"><stop stop-color="#64C49A"/><stop offset="1" stop-color="#289A72"/></linearGradient>
+ <linearGradient id="middle" gradientUnits="userSpaceOnUse" x1="43" y1="26" x2="58" y2="82"><stop stop-color="#13AF86"/><stop offset="1" stop-color="#007F61"/></linearGradient>
+ <linearGradient id="lower" gradientUnits="userSpaceOnUse" x1="29" y1="67" x2="38" y2="89"><stop stop-color="#10876D"/><stop offset="1" stop-color="#005E4C"/></linearGradient>
+ <radialGradient id="gold" gradientUnits="userSpaceOnUse" cx="90.7" cy="23.5" r="7.76"><stop stop-color="#FFF0BC"/><stop offset="0.52" stop-color="#E8BF5F"/><stop offset="1" stop-color="#C69131"/></radialGradient>
+ <linearGradient id="tile" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#F2F5F2"/><stop offset="0.72" stop-color="white"/><stop offset="1" stop-color="white"/></linearGradient>
+ <filter id="contact" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0.1" dy="0.45" stdDeviation="0.325" flood-color="#173D30" flood-opacity="0.13"/></filter>
+</defs><path fill="url(#middle)" filter="url(#contact)" d="M12.1,84.6L19.2,72.4L43.3,72.4Q45.0,72.4 45.0,70.7L45.0,27.1Q45.0,26.4 45.8,25.7L51.3,20.7Q52.2,20.0 53.3,20.0L85.7,20.0L78.6,32.2L59.3,32.2Q57.5,32.2 57.5,34.0L57.5,77.5Q57.5,78.2 56.7,78.9L51.2,83.9Q50.4,84.6 49.3,84.6Z"/>
+<g clip-path="url(#body)"><path fill="url(#upper)" d="M0.0,0.0L108.0,0.0L108.0,68.0L57.5,34.0L45.4,26.2L0.0,26.2Z"/><path fill="url(#lower)" d="M0.0,70.7L45.0,70.7L57.5,79.0L108.0,108.0L0.0,108.0Z"/><path d="M53.2 20.17H85.35" fill="none" stroke="white" stroke-opacity="0.34" stroke-width="0.23"/><path d="M19.3 72.55H43.2" fill="none" stroke="white" stroke-opacity="0.18" stroke-width="0.18"/></g>
+<circle cx="92.6" cy="25.5" r="5" fill="url(#gold)"/></svg>

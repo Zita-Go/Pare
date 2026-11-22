@@ -1,0 +1,19 @@
+Material Symbols Rounded by Google.
+Source: https://github.com/google/material-design-icons
+Revision: 10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7
+License: Apache License, Version 2.0.
+
+Pare bundles a subset of the Android vector resources at weight 400, grade 0,
+optical size 24. Default assets use fill 0; the selected navigation variants
+use fill 1.
+
+Modifications by Pare: local resource names, explicit monochrome fill and
+Compose-owned tint. Upstream RTL auto-mirroring is preserved on arrow_back,
+chevron_left, chevron_right and flag. Original path geometry is unchanged.
+auto_awesome uses an equivalent scale group to normalize its original 24-unit
+coordinates into the shared 960-unit viewport.
+
+The upstream repository contains no root NOTICE file at this revision.
+This notice records Pare's attribution and modifications.
+See README.md and manifest.json in android/third_party/material-symbols for
+pinned source URLs and checksums.

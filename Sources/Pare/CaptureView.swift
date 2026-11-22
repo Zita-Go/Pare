@@ -5,6 +5,7 @@ import PareCore
 /// Return, done. Below it: today's focus tasks with a one-tap check, and a way
 /// into 整理. Frosted-glass backdrop keeps it feeling light and present.
 struct CaptureView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: Store
     /// 由 PopoverController 注入：每次唤出面板 focusTick 递增，驱动输入框重新聚焦，
     /// 保证「打开即写」在第二次以后也成立（面板复用同一视图，onAppear 只触发一次）。
@@ -16,8 +17,10 @@ struct CaptureView: View {
     /// RFC-0001: 纯净模式 —— 收起「今日任务」列表，让弹窗回到"只管记下"的最聚焦形态。
     /// 用 @AppStorage 记住选择，跨弹窗开合与重启保持一致。
     @AppStorage("pareCapturePureMode") private var pureMode = false
-    /// 记下成功瞬间的确认脉冲：输入框描边闪一下琥珀微光再淡出，给"记进去了"的即时反馈。
+    /// 保存成功时短暂显示确认边框，保持输入区域的位置和尺寸稳定。
     @State private var justCaptured = false
+    @State private var captureMessage: String?
+    @State private var captureFailed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -34,7 +37,10 @@ struct CaptureView: View {
         .frame(width: 372)
         .background(FrostBackground(tint: 0.90))
         // 每次唤出面板都聚焦输入框：focusTick 首次订阅即发一次、之后每次 show 递增。
-        .onReceive(chrome.$focusTick) { _ in focused = true }
+        .onReceive(chrome.$focusTick) { _ in
+            focused = true
+            captureMessage = nil
+        }
         .onReceive(chrome.$suggestedDraft) { value in
             guard let value else { return }
             draft = value
@@ -48,18 +54,18 @@ struct CaptureView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Text("随手记").font(Theme.font(16, weight: .semibold)).foregroundColor(Theme.text)
+                Text("随手记").font(Theme.Typography.title).foregroundColor(Theme.text)
                 Spacer()
                 Text(PareFormat.today()).font(Theme.font(11)).foregroundColor(Theme.textDim)
             }
             Text(progressString)
-                .font(Theme.font(13, weight: .medium))
-                .foregroundColor(Theme.amber)
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.textSecondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             if store.todayTotal > 0 {
                 ProgressBar(fraction: Double(store.todayCompleted) / Double(max(1, store.todayTotal)))
-                    .animation(.easeOut(duration: 0.35), value: store.todayCompleted)
+                    .animation(Theme.motion(reduceMotion, duration: 0.24), value: store.todayCompleted)
             }
         }
     }
@@ -68,47 +74,54 @@ struct CaptureView: View {
         VStack(alignment: .leading, spacing: 6) {
             TextField("此刻在想什么？记下就好。", text: $draft)
                 .textFieldStyle(.plain)
-                .font(Theme.font(17))
+                .font(Theme.Typography.section)
                 .foregroundColor(Theme.text)
                 .tint(Theme.amber)
                 .focused($focused)
                 .onSubmit(submit)
+                .onChange(of: draft) { value in
+                    if !value.isEmpty { captureMessage = nil }
+                }
                 .padding(.horizontal, 13)
                 .padding(.vertical, 12)
-                .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Theme.panel.opacity(0.7)))
+                .inputSurface(focused: focused)
+                // Confirmation changes paint only, keeping the field and feedback row stable.
                 .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(focused ? Theme.amber.opacity(0.9) : Theme.border, lineWidth: focused ? 1.6 : 1)
+                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                        .stroke(Theme.success, lineWidth: 1.5)
+                        .opacity(justCaptured ? 1 : 0)
+                        .allowsHitTesting(false)
                 )
-                // 记下瞬间的确认脉冲：一圈琥珀描边突现，再放大淡出，只闪一次。
-                .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(Theme.amber, lineWidth: 2)
-                        .scaleEffect(justCaptured ? 1.0 : 1.03)
-                        .opacity(justCaptured ? 0.9 : 0)
-                )
-                .shadow(color: Theme.amber.opacity(focused ? 0.06 : 0), radius: 4)
-                .animation(.easeOut(duration: 0.15), value: focused)
                 .accessibilityLabel("随手记输入框")
                 .accessibilityHint("输入一句话，回车记下")
-            Text("回车记下 · 点别处关闭")
-                .font(Theme.font(11))
-                .foregroundColor(Theme.textFaint)
+            HStack(spacing: 5) {
+                Image(systemName: captureMessage == nil ? "return" :
+                      (captureFailed ? "exclamationmark.circle.fill" : "checkmark.circle.fill"))
+                Text(captureMessage ?? "回车记下 · 点别处关闭")
+                    .lineLimit(1)
+            }
+            .font(Theme.Typography.secondary)
+            .foregroundColor(captureMessage == nil ? Theme.textTertiary :
+                             (captureFailed ? Theme.error : Theme.success))
+            .frame(minHeight: 16, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            if let issue = store.persistenceIssue {
+                FeedbackBanner(text: issue, kind: .error)
+            }
         }
     }
 
     private var todaySection: some View {
         VStack(alignment: .leading, spacing: 7) {
             Button {
-                withAnimation(.easeOut(duration: 0.18)) { pureMode.toggle() }
+                withAnimation(Theme.motion(reduceMotion)) { pureMode.toggle() }
                 chrome.resizeTick += 1
             } label: {
                 HStack(spacing: 6) {
                     Text("今日任务")
-                        .font(Theme.font(11, weight: .semibold))
-                        .tracking(0.6)
+                        .font(Theme.Typography.secondary)
                     Text("\(store.todayTasks.count)")
-                        .font(Theme.font(11, weight: .semibold))
+                        .font(Theme.Typography.secondary)
                     Spacer()
                     Image(systemName: pureMode ? "chevron.down" : "chevron.up")
                         .font(.system(size: 9, weight: .bold))
@@ -129,7 +142,7 @@ struct CaptureView: View {
                     }
                 }
                 .frame(maxHeight: 240)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
     }
@@ -160,20 +173,9 @@ struct CaptureView: View {
                     Image(systemName: "square.grid.2x2")
                     Text("整理")
                 }
-                .font(Theme.font(13, weight: .medium))
-                .foregroundColor(Theme.text)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 7)
-                .background(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(Theme.panel.opacity(0.55))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .stroke(Theme.border, lineWidth: 1)
-                )
+                .font(Theme.Typography.body)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SecondaryActionStyle())
             .accessibilityLabel("打开整理窗口")
 
             Spacer()
@@ -187,13 +189,9 @@ struct CaptureView: View {
                             .font(Theme.font(12, weight: .medium))
                             .contentTransition(.numericText())
                     }
-                    .foregroundColor(Theme.amber)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(Theme.amberSoft))
-                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: store.inboxCount)
+                    .animation(Theme.motion(reduceMotion), value: store.inboxCount)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TertiaryActionStyle())
                 .help("打开整理，处理待整理")
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("待整理 \(store.inboxCount) 条")
@@ -218,13 +216,21 @@ struct CaptureView: View {
     }
 
     private func submit() {
-        if store.capture(draft) {
+        if let result = store.captureWithResult(draft) {
+            captureFailed = false
+            switch result {
+            case .inbox: captureMessage = "已记下 · 待整理"
+            case .reminder(let date): captureMessage = "已设置提醒 · \(ReminderFormat.short(date))"
+            }
             draft = ""
-            // 记下确认脉冲：先亮起，下个 runloop 再放大淡出（同 TaskCheckbox 的一次性手法）。
+            // Fade the confirmation border without shifting the field.
             justCaptured = true
             DispatchQueue.main.async {
-                withAnimation(.easeOut(duration: 0.5)) { justCaptured = false }
+                withAnimation(Theme.motion(reduceMotion, duration: 0.4)) { justCaptured = false }
             }
+        } else if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            captureFailed = true
+            captureMessage = "未保存，输入已保留"
         }
         focused = true
     }
@@ -234,6 +240,7 @@ struct CaptureView: View {
 /// set it in the 整理 window. Completing a task offers a one-tap 实际用时 record
 /// (RFC-0001 T5) so the quick popover closes the calibration loop too.
 private struct TodayRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: Store
     let task: TaskItem
     /// RFC-0001 T5: 刚完成、等待记录实际用时时展开的就地 chip 提示。
@@ -244,7 +251,7 @@ private struct TodayRow: View {
             HStack(spacing: 10) {
                 TaskCheckbox(completed: task.completed, label: task.text) { toggleComplete() }
                 Text(task.text)
-                    .font(Theme.font(14))
+                    .font(Theme.Typography.body)
                     .foregroundColor(task.completed ? Theme.textDim : Theme.text)
                     .strikethrough(task.completed, color: Theme.textDim)
                     .lineLimit(2)
@@ -257,7 +264,7 @@ private struct TodayRow: View {
                 if let minutes = task.estimatedMinutes {
                     Text(DurationLabel.short(minutes))
                         .font(Theme.font(11, weight: .medium))
-                        .foregroundColor(task.completed ? Theme.textDim : Theme.amber.opacity(0.85))
+                        .foregroundColor(Theme.textSecondary)
                 }
                 if task.completed {
                     actualControl
@@ -275,6 +282,7 @@ private struct TodayRow: View {
                     if let action = task.nextAction {
                         Text("下一步：\(action)").font(Theme.font(10)).foregroundColor(Theme.textDim).lineLimit(1)
                     }
+                    NextStepProgressButton(store: store, task: task)
                     if let due = task.dueAt { DueBadge(date: due) }
                     Spacer(minLength: 4)
                     FocusTimerButton(store: store, task: task, showsLabel: true,
@@ -290,7 +298,7 @@ private struct TodayRow: View {
                     onSkip: { showActualPrompt = false }
                 )
                 .padding(.leading, 30)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(.vertical, 5)
@@ -299,7 +307,7 @@ private struct TodayRow: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.clear)
         )
-        .animation(.easeOut(duration: 0.15), value: showActualPrompt)
+        .animation(Theme.motion(reduceMotion), value: showActualPrompt)
     }
 
     /// 完成态尾部的实际用时控件：已记录→可改/清除；未记录且提示已收起→补记入口。
@@ -307,7 +315,7 @@ private struct TodayRow: View {
         if let actual = task.actualMinutes {
             ActualTimePill(minutes: actual) { store.setActual(task.id, minutes: $0) }
         } else if !showActualPrompt {
-            RecordActualButton { withAnimation(.easeOut(duration: 0.15)) { showActualPrompt = true } }
+            RecordActualButton { withAnimation(Theme.motion(reduceMotion)) { showActualPrompt = true } }
         }
     }
 
@@ -348,11 +356,11 @@ private struct QuickParallelRunButton: View {
                 Text(isRunning ? "暂停" : "并行")
                     .font(Theme.font(11, weight: .medium))
             }
-            .foregroundColor(isRunning ? Theme.bg : Theme.qDelegate)
+            .foregroundColor(isRunning ? Theme.info : Theme.textSecondary)
             .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(isRunning ? Theme.qDelegate : Theme.qDelegate.opacity(0.12)))
-            .overlay(Capsule().stroke(Theme.qDelegate.opacity(0.55), lineWidth: 1))
+            .frame(minHeight: 28)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                .fill(isRunning ? Theme.info.opacity(0.14) : Theme.surfaceRaised))
             .contentShape(Rectangle())
         }
         .contentShape(Rectangle())

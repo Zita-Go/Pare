@@ -15,70 +15,45 @@ enum PareFormat {
     }
 }
 
-/// A round check control. When it flips to complete it plays a one-time amber
-/// ring burst — the only celebratory animation in the app, exactly once.
+/// Completion is a quiet semantic change. Keep the existing inline footprint,
+/// accessible task label and click action without a glow, burst or bounce.
 struct TaskCheckbox: View {
     let completed: Bool
-    /// RFC-0001: 让 VoiceOver 读出这个勾选控件属于哪条任务。默认空串以兼容旧调用点。
     var label: String = ""
     let onToggle: () -> Void
-
-    @State private var ringScale: CGFloat = 1
-    @State private var ringOpacity: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+    @State private var hovered = false
 
     var body: some View {
-        Button(action: fire) {
+        Button(action: onToggle) {
             ZStack {
-                Circle()
-                    .fill(completed
-                          ? AnyShapeStyle(RadialGradient(
-                                colors: [Color(hex: 0xF3D896), Theme.amber],
-                                center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 16))
-                          : AnyShapeStyle(Color.clear))
-                    .frame(width: 20, height: 20)
-                Circle()
-                    .stroke(completed ? Theme.amber : Theme.border, lineWidth: 1.5)
-                    .frame(width: 20, height: 20)
-                if completed {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Theme.bg)
-                }
+                Circle().fill(completed ? Theme.success : (hovered ? Theme.hover : .clear))
+                Circle().strokeBorder(completed ? Theme.success : outline, lineWidth: 1.5)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Theme.bg)
+                    .opacity(completed ? 1 : 0)
             }
-            .shadow(color: Theme.amber.opacity(completed ? 0.45 : 0), radius: 5)
-            .overlay(
-                Circle()
-                    .stroke(Theme.amber, lineWidth: 2)
-                    .frame(width: 20, height: 20)
-                    .scaleEffect(ringScale)
-                    .opacity(ringOpacity)
-            )
+            .frame(width: 20, height: 20)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: completed)
+        .onHover { hovered = $0 }
+        .animation(Theme.motion(reduceMotion), value: completed)
+        .animation(Theme.motion(reduceMotion), value: hovered)
         .accessibilityLabel(a11yLabel)
         .accessibilityAddTraits(completed ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint(completed ? "连按取消完成" : "连按标记完成")
     }
 
+    private var outline: Color {
+        contrast == .increased || hovered ? Theme.textTertiary : Theme.border
+    }
+
     private var a11yLabel: String {
         let state = completed ? "已完成" : "未完成"
         return label.isEmpty ? state : "\(state)：\(label)"
-    }
-
-    private func fire() {
-        if !completed {
-            ringScale = 0.3
-            ringOpacity = 0.9
-            DispatchQueue.main.async {
-                withAnimation(.easeOut(duration: 0.55)) {
-                    ringScale = 2.0
-                    ringOpacity = 0.0
-                }
-            }
-        }
-        onToggle()
     }
 }
 
@@ -86,25 +61,19 @@ struct TaskCheckbox: View {
 /// Editable form is used in the 整理 window; a read-only variant lives inline in
 /// the capture popover.
 struct DurationPill: View {
+    @Environment(\.colorSchemeContrast) private var contrast
     let minutes: Int?
     var emptyLabel: String? = nil
     let onSelect: (Int?) -> Void
+    @State private var pickerPresented = false
 
-    /// Common planning durations (single source of truth, reused by menus).
+    /// Common planning durations (single source of truth, reused by pickers).
     static let presets: [Int] = [5, 10, 15, 25, 30, 45, 60, 90, 120]
 
     private var showsEmptyPrompt: Bool { minutes == nil && emptyLabel != nil }
 
     var body: some View {
-        Menu {
-            ForEach(Self.presets, id: \.self) { m in
-                Button(DurationLabel.short(m)) { onSelect(m) }
-            }
-            if minutes != nil {
-                Divider()
-                Button("清除时长", role: .destructive) { onSelect(nil) }
-            }
-        } label: {
+        Button { pickerPresented = true } label: {
             HStack(spacing: 3) {
                 Image(systemName: "clock").font(.system(size: 10))
                 if let m = minutes {
@@ -113,29 +82,53 @@ struct DurationPill: View {
                     Text(emptyLabel).font(Theme.font(11, weight: .medium)).lineLimit(1)
                 }
             }
-            .foregroundColor(minutes == nil
-                             ? (showsEmptyPrompt ? Theme.amber.opacity(0.88) : Theme.textDim)
-                             : Theme.amber)
+            .foregroundColor(Theme.textSecondary)
             .padding(.horizontal, minutes == nil && emptyLabel == nil ? 4 : 6)
-            .padding(.vertical, 2)
+            .padding(.vertical, 4)
+            .frame(minHeight: 24)
+            .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(minutes == nil ? (showsEmptyPrompt ? Theme.amberSoft.opacity(0.55) : Color.clear)
-                                         : Theme.amberSoft)
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .fill(minutes == nil && !showsEmptyPrompt ? Color.clear : Theme.surfaceRaised.opacity(0.35))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(minutes == nil
-                            ? (showsEmptyPrompt ? Theme.amber.opacity(0.38) : Theme.border)
-                            : Theme.amber.opacity(0.35), lineWidth: 1)
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .strokeBorder(contrast == .increased ? Theme.textTertiary.opacity(0.8)
+                                  : Theme.border.opacity(showsEmptyPrompt ? 0.45 : 0.25), lineWidth: 1)
+                    .allowsHitTesting(false)
             )
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(CompactPillStyle())
         .fixedSize()
         .help("预估时长")
         .accessibilityLabel("预估时长")
         .accessibilityValue(minutes.map { DurationLabel.short($0) } ?? "未设置")
+        .popover(isPresented: $pickerPresented, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("预估时长")
+                    .font(Theme.font(13, weight: .medium))
+                    .foregroundColor(Theme.text)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(Self.presets, id: \.self) { m in
+                        Button(DurationLabel.short(m)) { select(m) }
+                            .buttonStyle(SecondaryActionStyle())
+                    }
+                }
+                if minutes != nil {
+                    Divider().overlay(Theme.hairline)
+                    Button("清除时长") { select(nil) }
+                        .buttonStyle(TertiaryActionStyle(tint: Theme.error))
+                }
+            }
+            .padding(12)
+            .frame(width: 224)
+            .background(Theme.bg, in: RoundedRectangle(cornerRadius: Theme.Radius.popover, style: .continuous))
+        }
+    }
+
+    private func select(_ value: Int?) {
+        onSelect(value)
+        pickerPresented = false
     }
 }
 
@@ -186,17 +179,10 @@ enum ReminderPresets {
 struct ReminderPill: View {
     let date: Date?
     let onSelect: (Date?) -> Void
+    @State private var pickerPresented = false
 
     var body: some View {
-        Menu {
-            ForEach(ReminderPresets.all(), id: \.label) { preset in
-                Button(preset.label) { onSelect(preset.date) }
-            }
-            if date != nil {
-                Divider()
-                Button("清除提醒", role: .destructive) { onSelect(nil) }
-            }
-        } label: {
+        Button { pickerPresented = true } label: {
             HStack(spacing: 3) {
                 Image(systemName: date == nil ? "bell" : "bell.fill").font(.system(size: 10))
                 if let d = date {
@@ -207,20 +193,32 @@ struct ReminderPill: View {
             .padding(.horizontal, date == nil ? 4 : 6)
             .padding(.vertical, 2)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(date == nil ? Color.clear : Theme.amberSoft)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .stroke(date == nil ? Theme.border : Theme.amber.opacity(0.35), lineWidth: 1)
             )
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(CompactPillStyle())
         .fixedSize()
         .help("提醒时间")
         .accessibilityLabel("提醒时间")
         .accessibilityValue(date.map { ReminderFormat.short($0) } ?? "未设置")
+        .popover(isPresented: $pickerPresented) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("提醒时间").font(Theme.font(13, weight: .medium))
+                ForEach(ReminderPresets.all(), id: \.label) { preset in
+                    Button(preset.label) { onSelect(preset.date); pickerPresented = false }
+                        .buttonStyle(SecondaryActionStyle())
+                }
+                if date != nil {
+                    Button("清除提醒") { onSelect(nil); pickerPresented = false }
+                        .buttonStyle(TertiaryActionStyle(tint: Theme.error))
+                }
+            }.padding(12).foregroundColor(Theme.text).background(Theme.bg, in: RoundedRectangle(cornerRadius: Theme.Radius.popover, style: .continuous))
+        }
     }
 }
 

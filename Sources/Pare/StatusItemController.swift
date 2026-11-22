@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import PareCore
 
-/// Owns the menu bar `NSStatusItem`. Shows a task glyph plus a badge with the
+/// Owns the menu bar `NSStatusItem`. Shows the Step mark plus a badge with the
 /// number of tasks still to do today ("今天还有 N 件事"). Left-click toggles the
 /// capture popover; right-click opens a small menu.
 final class StatusItemController {
@@ -99,12 +99,14 @@ final class StatusItemController {
 
     /// The menu-bar glyph, optionally carrying a small corner status dot.
     /// RFC-0001: 状态点作为模板图的一部分绘制，随菜单栏明暗自动着色；点周围挖掉一圈
-    /// 让它从清单线条里"跳出来"、读作独立标记而非清单的一部分。
+    /// 让它从图标笔画里"跳出来"、读作独立标记而非品牌图标的一部分。
     private static func glyph(attention: Bool) -> NSImage? {
-        guard #available(macOS 11.0, *),
-              let base = NSImage(systemSymbolName: "checklist", accessibilityDescription: "Pare") else {
-            return nil
-        }
+        let bundledMark = Bundle.main.url(forResource: "StepStatusIcon", withExtension: "pdf")
+            .flatMap { NSImage(contentsOf: $0) }
+        guard let base = bundledMark
+            ?? NSImage(systemSymbolName: "checklist", accessibilityDescription: "Step") else { return nil }
+        base.size = NSSize(width: 18, height: 18)
+        base.accessibilityDescription = "Step"
         base.isTemplate = true
         guard attention else { return base }
 
@@ -114,8 +116,9 @@ final class StatusItemController {
         base.draw(in: NSRect(origin: .zero, size: size))
         if let ctx = NSGraphicsContext.current {
             let dot = max(3.0, size.height * 0.30)
-            let dotRect = NSRect(x: size.width - dot, y: size.height - dot, width: dot, height: dot)
-            // 1. 先在点四周清出一圈透明（模板图里 alpha=0 即"无墨"），与清单笔画分离。
+            // The step ends at upper-right; keep the attention badge in its empty upper-left.
+            let dotRect = NSRect(x: 0, y: size.height - dot, width: dot, height: dot)
+            // 1. 先在点四周清出一圈透明（模板图里 alpha=0 即"无墨"），与图标笔画分离。
             ctx.compositingOperation = .clear
             NSBezierPath(ovalIn: dotRect.insetBy(dx: -dot * 0.45, dy: -dot * 0.45)).fill()
             // 2. 再画实心点（模板图只看 alpha，用任意不透明色即可）。
@@ -130,7 +133,7 @@ final class StatusItemController {
 
     /// RFC-0001: 让 VoiceOver 读出菜单栏图标的状态（今日剩余 + 是否有待看信号）。
     private static func accessibilityLabel(remaining: Int, running: Int, attention: Bool) -> String {
-        var parts = ["Pare 随手记"]
+        var parts = ["Step 随手记"]
         if remaining > 0 { parts.append("今天还有 \(remaining) 件未完成") }
         if running > 0 { parts.append("\(running) 件任务正在同时进行") }
         if attention { parts.append("有待整理或停滞的事，抽空看一下") }
@@ -179,7 +182,7 @@ final class StatusItemController {
 
         menu.addItem(.separator())
 
-        let quit = NSMenuItem(title: "退出 Pare", action: #selector(menuQuit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "退出 Step", action: #selector(menuQuit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 

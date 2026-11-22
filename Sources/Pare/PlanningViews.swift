@@ -11,31 +11,32 @@ struct TaskDetailsButton: View {
     @ObservedObject var store: Store
     let task: TaskItem
     var showsLabel = false
+    var allowsIdeaNavigation = true
     @State private var presented = false
 
     var body: some View {
         Button { presented = true } label: {
             if showsLabel {
                 Label("检查", systemImage: "doc.text.magnifyingglass")
-                    .font(Theme.font(11, weight: .medium)).foregroundColor(Theme.text)
-                    .padding(.horizontal, 9).padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel.opacity(0.55)))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border.opacity(0.55)))
+                    .font(Theme.Typography.secondary).foregroundColor(Theme.textSecondary)
+                    .padding(.horizontal, 9).frame(minHeight: 28)
+                    .background(RoundedRectangle(cornerRadius: Theme.Radius.control).fill(Theme.surfaceRaised))
             } else {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Theme.textFaint)
+                    .foregroundColor(Theme.textSecondary)
                     .frame(width: 36, height: 32)
                     .contentShape(Rectangle())
             }
         }
         .contentShape(Rectangle())
-        .buttonStyle(.plain)
+        .buttonStyle(CompactPillStyle())
         .help("编辑任务详情")
         .accessibilityLabel("编辑任务详情")
         .accessibilityHint("打开任务详情")
         .popover(isPresented: $presented, arrowEdge: .trailing) {
-            TaskDetailView(store: store, task: task, isPresented: $presented)
+            TaskDetailView(store: store, task: task, isPresented: $presented,
+                           allowsIdeaNavigation: allowsIdeaNavigation)
         }
     }
 }
@@ -44,6 +45,7 @@ private struct TaskDetailView: View {
     @ObservedObject var store: Store
     let task: TaskItem
     @Binding var isPresented: Bool
+    let allowsIdeaNavigation: Bool
 
     @State private var title: String
     @State private var nextAction: String
@@ -68,11 +70,17 @@ private struct TaskDetailView: View {
     @State private var applicationBundleID: String
     @State private var applicationName: String
     @State private var showScheduling: Bool
+    @State private var sourceIdea: ThoughtItem?
+    @State private var stepBaseline: NextStepDraftBaseline
+    @State private var stepError: String?
+    @FocusState private var focusedField: String?
 
-    init(store: Store, task: TaskItem, isPresented: Binding<Bool>) {
+    init(store: Store, task: TaskItem, isPresented: Binding<Bool>, allowsIdeaNavigation: Bool = true) {
         self.store = store
         self.task = task
         self._isPresented = isPresented
+        self.allowsIdeaNavigation = allowsIdeaNavigation
+        _stepBaseline = State(initialValue: NextStepDraftBaseline(task))
         _title = State(initialValue: task.text)
         _nextAction = State(initialValue: task.nextAction ?? "")
         _definitionOfDone = State(initialValue: task.definitionOfDone ?? "")
@@ -113,20 +121,39 @@ private struct TaskDetailView: View {
             Divider().overlay(Theme.hairline)
             ScrollView {
             VStack(alignment: .leading, spacing: 13) {
+                if allowsIdeaNavigation, !store.ideas(for: task.id).isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("关联想法与项目").font(Theme.font(11)).foregroundColor(Theme.textDim)
+                        ForEach(store.ideas(for: task.id)) { idea in
+                            Button { sourceIdea = idea } label: {
+                                Label(idea.text, systemImage: "lightbulb")
+                                    .font(Theme.font(12)).foregroundColor(Theme.amber)
+                                    .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 4).contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityLabel("打开来源想法：\(idea.text)")
+                        }
+                    }
+                }
                 field("任务", text: $title, prompt: "要完成什么？")
                 field("下一步", text: $nextAction, prompt: "最小、具体的下一步动作")
                 field("完成标准", text: $definitionOfDone, prompt: "做到什么程度就可以结束？")
+                NextStepCompletionControls(store: store, taskID: task.id, nextAction: $nextAction, definitionOfDone: $definitionOfDone, expectedCompletedStepID: stepBaseline.lastCompletedID) {
+                    if let current = store.tasks.first(where: { $0.id == task.id }) { stepBaseline = NextStepDraftBaseline(current) }
+                    stepError = nil; focusedField = "下一步"
+                }
+                if let stepError { Text(stepError).font(Theme.Typography.secondary).foregroundColor(Theme.qUrgent) }
+
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("思考与备注").font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
                     TextEditor(text: $note)
-                        .font(Theme.font(13))
+                        .font(Theme.Typography.body)
                         .foregroundColor(Theme.text)
+                        .focused($focusedField, equals: "思考与备注")
                         .scrollContentBackground(.hidden)
                         .padding(7)
                         .frame(height: 82)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.18)))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
+                        .inputSurface(focused: focusedField == "思考与备注")
                 }
 
                 HStack {
@@ -174,10 +201,9 @@ private struct TaskDetailView: View {
                         isPresented = false
                         store.deleteTask(task.id)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundColor(Theme.qUrgent)
+                    .buttonStyle(TertiaryActionStyle(tint: Theme.error))
                     Spacer()
-                    Button("取消") { isPresented = false }.buttonStyle(SecondaryActionStyle())
+                    Button("取消") { isPresented = false }.buttonStyle(TertiaryActionStyle())
                     Button("保存") { save() }
                         .buttonStyle(AIPrimaryButtonStyle())
                         .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -186,6 +212,9 @@ private struct TaskDetailView: View {
         }
         .frame(width: 420, height: 620)
         .background(Theme.bg)
+        .sheet(item: $sourceIdea) { idea in
+            IdeaDetailView(store: store, ideaID: idea.id, sourceTaskID: task.id)
+        }
     }
 
     private var dateSection: some View {
@@ -297,14 +326,17 @@ private struct TaskDetailView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(label).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
             TextField(prompt, text: text)
-                .textFieldStyle(.plain).font(Theme.font(13)).foregroundColor(Theme.text)
+                .textFieldStyle(.plain).font(Theme.Typography.body).foregroundColor(Theme.text)
+                .focused($focusedField, equals: label)
                 .padding(.horizontal, 9).padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.18)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
+                .inputSurface(focused: focusedField == label)
         }
     }
 
     private func save() {
+        guard let current = store.tasks.first(where: { $0.id == task.id }), stepBaseline.matches(current) else {
+            stepError = "下一步已在其他位置更新，草稿已保留。请重新打开任务查看最新内容。"; return
+        }
         let comps = Calendar.current.dateComponents([.hour, .minute], from: cueTime)
         let plan: ImplementationPlan? = hasImplementationPlan
             ? ImplementationPlan(kind: implementationKind,
@@ -314,13 +346,15 @@ private struct TaskDetailView: View {
                                  applicationBundleID: implementationKind == .openApplication ? applicationBundleID : nil,
                                  applicationName: implementationKind == .openApplication ? applicationName : nil)
             : nil
-        store.updateTaskDetails(task.id, text: title, note: note, nextAction: nextAction,
+        guard store.updateTaskDetails(task.id, text: title, note: note, nextAction: nextAction,
                                 dueAt: hasDue ? dueAt : nil,
                                 remindAt: hasReminder ? remindAt : nil,
                                 recurrence: hasReminder ? recurrence : nil,
                                 definitionOfDone: definitionOfDone,
                                 implementationPlan: plan,
-                                isDailyWin: isDailyWin)
+                                isDailyWin: isDailyWin) else {
+            stepError = store.persistenceIssue ?? "未能保存任务，草稿已保留。"; return
+        }
         if quadrant != task.quadrant { store.changeQuadrant(task.id, to: quadrant) }
         if estimate != task.estimatedMinutes { store.setEstimate(task.id, minutes: estimate) }
         if isParallelTask {
@@ -376,10 +410,8 @@ struct FocusTimerButton: View {
             if isActive, showsLabel {
                 Button { store.cancelTimer() } label: {
                     Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Theme.textDim).frame(width: 18, height: 18)
-                        .background(Circle().fill(Theme.panelHi))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconActionStyle(size: 24))
                 .help("放弃本次计时，不记录用时")
                 .accessibilityLabel("放弃本次专注计时")
             }
@@ -397,10 +429,11 @@ struct FocusTimerButton: View {
                 Text("这件事完成了吗？").font(Theme.font(12)).foregroundColor(Theme.textDim)
                 HStack {
                     Button("还没") { askComplete = false }
+                        .buttonStyle(TertiaryActionStyle())
                     Spacer()
                     Button("完成") { store.setCompleted(task.id, true); askComplete = false }
+                        .buttonStyle(AIPrimaryButtonStyle())
                 }
-                .buttonStyle(.plain).foregroundColor(Theme.amber)
             }
             .padding(14).frame(width: 230).background(Theme.bg)
         }
@@ -418,10 +451,10 @@ struct FocusTimerButton: View {
                         .font(Theme.font(11, weight: .medium))
                 }
             }
-            .foregroundColor(isActive ? Theme.bg : Theme.amber)
-            .padding(.horizontal, showsLabel ? 8 : 6).padding(.vertical, 4)
-            .background(Capsule().fill(isActive ? Theme.amber : Theme.amberSoft))
-            .overlay(Capsule().stroke(Theme.amber.opacity(0.45), lineWidth: 1))
+            .foregroundColor(isActive ? Theme.bg : Theme.textSecondary)
+            .padding(.horizontal, showsLabel ? 8 : 7).frame(minHeight: 28)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                .fill(isActive ? Theme.amber : Theme.surfaceRaised))
         }
         .buttonStyle(.plain)
         .disabled(task.completed || isParallel)
@@ -450,63 +483,111 @@ struct ParallelRunButton: View {
     @ObservedObject var store: Store
     let task: TaskItem
     var showsLabel = false
+    @State private var presented = false
 
     private var run: ParallelTaskRun? { store.parallelRuns.first { $0.taskID == task.id } }
     private var focusActive: Bool { store.activeTimer?.taskID == task.id }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            Menu {
-                if run == nil {
-                    Button("直接标记为进行中") { start(after: nil) }
-                    Divider()
-                    Text("提醒我检查")
-                    ForEach([15, 30, 60, 120], id: \.self) { minutes in
-                        Button("\(DurationLabel.short(minutes)) 后") { start(after: minutes) }
-                    }
-                } else {
-                    Text("已进行 \(DurationLabel.short(max(1, store.parallelElapsedMinutes(task.id, now: context.date))))")
-                    if let check = run?.nextCheckAt {
-                        Text(check <= context.date ? "现在可以检查" : "下次检查：\(ReminderFormat.short(check, now: context.date))")
-                    }
-                    Divider()
-                    Menu("调整检查时间") {
-                        Button("不提醒") { store.setParallelCheck(task.id, at: nil) }
-                        ForEach([15, 30, 60, 120], id: \.self) { minutes in
-                            Button("\(DurationLabel.short(minutes)) 后") {
-                                store.setParallelCheck(task.id,
-                                    at: context.date.addingTimeInterval(Double(minutes) * 60), now: context.date)
-                            }
-                        }
-                    }
-                    Button("暂停进行") { _ = store.pauseParallelRun(task.id, now: context.date) }
-                    Button("标记完成") { _ = store.completeParallelRun(task.id, now: context.date) }
+        Group {
+            if run != nil {
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    runButton(now: context.date)
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 9, weight: .bold))
-                    if showsLabel {
-                        Text(run == nil ? "进行" : DurationLabel.short(max(1, store.parallelElapsedMinutes(task.id, now: context.date))))
-                            .font(Theme.font(11, weight: .medium))
-                    }
-                }
-                .foregroundColor(run == nil ? Theme.qDelegate : Theme.bg)
-                .padding(.horizontal, showsLabel ? 8 : 6).padding(.vertical, 4)
-                .background(Capsule().fill(run == nil ? Theme.qDelegate.opacity(0.12) : Theme.qDelegate))
-                .overlay(Capsule().stroke(Theme.qDelegate.opacity(0.55), lineWidth: 1))
+            } else {
+                runButton(now: Date())
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .disabled(task.completed || focusActive)
-            .help(focusActive ? "这件事正在由你专注处理" :
-                  (run == nil ? "标记为进行中；可与其它任务同时运行" : "管理进行状态和检查提醒"))
-            .accessibilityLabel(run == nil ? "标记任务为进行中" : "管理进行中的任务")
+        }
+        .popover(isPresented: $presented, arrowEdge: .bottom) {
+            runControls
+        }
+    }
+
+    private func runButton(now: Date) -> some View {
+        Button { presented = true } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 9, weight: .bold))
+                if showsLabel {
+                    Text(run == nil ? "进行" : DurationLabel.short(max(1, store.parallelElapsedMinutes(task.id, now: now))))
+                        .font(Theme.font(11, weight: .medium))
+                }
+            }
+            .foregroundColor(run == nil ? Theme.textSecondary : Theme.info)
+            .padding(.horizontal, showsLabel ? 8 : 7).frame(minHeight: 28)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                .fill(run == nil ? Theme.surfaceRaised : Theme.info.opacity(0.14)))
+        }
+        .buttonStyle(.plain).fixedSize()
+        .disabled(task.completed || focusActive)
+        .help(focusActive ? "这件事正在由你专注处理" :
+              (run == nil ? "标记为进行中；可与其它任务同时运行" : "管理进行状态和检查提醒"))
+        .accessibilityLabel(run == nil ? "标记任务为进行中" : "管理进行中的任务")
+    }
+
+    private var runControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(task.text).font(Theme.font(13, weight: .medium)).foregroundColor(Theme.text).lineLimit(2)
+            if let run {
+                Text("已进行 \(DurationLabel.short(max(1, store.parallelElapsedMinutes(task.id))))")
+                    .font(Theme.font(11)).foregroundColor(Theme.qDelegate)
+                if let check = run.nextCheckAt {
+                    Text(check <= Date() ? "现在可以检查" : "下次检查：\(ReminderFormat.short(check))")
+                        .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                }
+                Text("调整检查时间").font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
+                checkTimeButtons
+                if run.nextCheckAt != nil {
+                    Button("取消检查提醒") {
+                        presented = false
+                        store.setParallelCheck(task.id, at: nil)
+                    }
+                    .buttonStyle(.plain).font(Theme.font(11)).foregroundColor(Theme.textDim)
+                }
+                Divider().overlay(Theme.hairline)
+                HStack {
+                    Button("暂停进行") {
+                        presented = false
+                        _ = store.pauseParallelRun(task.id)
+                    }.buttonStyle(SecondaryActionStyle())
+                    Spacer()
+                    Button("标记完成") {
+                        presented = false
+                        _ = store.completeParallelRun(task.id)
+                    }.buttonStyle(AIPrimaryButtonStyle())
+                }
+            } else {
+                Text("让它在别处推进，不计入个人专注时长。")
+                    .font(Theme.font(11)).foregroundColor(Theme.textDim)
+                Button("直接标记为进行中") { start(after: nil) }
+                    .buttonStyle(SecondaryActionStyle())
+                Text("开始并提醒我检查").font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
+                checkTimeButtons
+            }
+        }
+        .padding(14).frame(width: 286).background(Theme.bg)
+    }
+
+    private var checkTimeButtons: some View {
+        HStack(spacing: 6) {
+            ForEach([15, 30, 60, 120], id: \.self) { minutes in
+                Button("\(DurationLabel.short(minutes)) 后") {
+                    if run == nil {
+                        start(after: minutes)
+                    } else {
+                        presented = false
+                        store.setParallelCheck(task.id, at: Date().addingTimeInterval(Double(minutes) * 60))
+                    }
+                }
+                .buttonStyle(TertiaryActionStyle(tint: Theme.info))
+            }
         }
     }
 
     private func start(after minutes: Int?) {
         let now = Date()
         let check = minutes.map { now.addingTimeInterval(Double($0) * 60) }
+        presented = false
         _ = store.startParallelRun(task.id, now: now, nextCheckAt: check)
     }
 }
@@ -524,36 +605,41 @@ struct TodayPlannerView: View {
     @State private var rescueTaskID: UUID?
     @State private var rescuePreset: BlockerReason?
     @State private var mode: TodayPlannerMode = .list
+    @State private var parallelExpanded = false
+    @State private var showIntelligence = false
+    @State private var intelligenceIntent: IntelligenceIntent = .today
+    @State private var intelligenceSubjectID: UUID?
+    @FocusState private var quickAddFocused: Bool
 
     private var runningIDs: Set<UUID> { Set(store.parallelRuns.map(\.taskID)) }
     private var running: [TaskItem] { store.parallelRunningTasks }
     private var incomplete: [TaskItem] { store.todayTasks.filter { !$0.completed && !runningIDs.contains($0.id) } }
     private var completed: [TaskItem] { store.todayTasks.filter(\.completed) }
     private var keyTask: TaskItem? {
-        store.dailyWinTask ?? incomplete.first
+        store.activeTimerTask ?? store.dailyWinTask ?? incomplete.first
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 9) {
             modeSwitcher
+            IntelligenceHintCard(store: store) { intent, id in
+                intelligenceIntent = intent; intelligenceSubjectID = id; showIntelligence = true
+            }
             if mode == .timeline {
                 DayTimelineView(store: store)
             } else {
                 plannerHeader
-                if store.todayTasks.isEmpty && running.isEmpty {
+                if store.todayTasks.isEmpty && running.isEmpty && keyTask == nil {
                     emptyState
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 7) {
-                            if !running.isEmpty {
-                                parallelSection
-                            }
-                            if !running.isEmpty && !incomplete.isEmpty {
-                                sectionLabel("我来推进")
-                            }
                             ForEach(Array(incomplete.enumerated()), id: \.element.id) { index, task in
                                 TodayPlannerRow(store: store, task: task, index: index)
                                     .id("today-\(task.id.uuidString)")
+                            }
+                            if !running.isEmpty {
+                                parallelSection
                             }
                             if !completed.isEmpty {
                                 sectionLabel("已完成 · \(completed.count)")
@@ -576,17 +662,17 @@ struct TodayPlannerView: View {
                                    isPresented: rescuePresented)
             }
         }
+        .sheet(isPresented: $showIntelligence) {
+            IntelligentAssistantView(store: store, intent: intelligenceIntent, subjectID: intelligenceSubjectID)
+        }
     }
 
     private var modeSwitcher: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(mode == .list ? "今天做什么" : "今天什么时候做")
-                    .font(Theme.font(12, weight: .semibold)).foregroundColor(Theme.text)
-                Text(mode == .list ? "选择重点并推进" : "把任务拖到时间轴；底边可调整时长")
-                    .font(Theme.font(10)).foregroundColor(Theme.textDim)
-            }
-            Spacer()
+            Text("个人 \(incomplete.count) · 并行 \(running.count) · 完成 \(completed.count)")
+                .font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
+                .help("今日待推进的个人任务、所有并行任务，以及今日清单中已完成的任务")
+            Spacer(minLength: 8)
             SegmentedTabs(values: TodayPlannerMode.allCases, selection: $mode, label: { $0.rawValue })
                 .frame(width: 164)
         }
@@ -599,60 +685,68 @@ struct TodayPlannerView: View {
     }
 
     private var plannerHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 18) {
-                VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 5) {
-                        Image(systemName: store.dailyWinTask == nil ? "star" : "star.fill")
-                        Text("今天只赢一件")
+                        Image(systemName: store.activeTimerTask != nil ? "play.fill" : "star.fill")
+                        Text(store.activeTimerTask != nil ? "正在专注" : "今天只赢一件")
                     }
-                    .font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.amber)
+                    .font(Theme.Typography.secondary)
+                    .foregroundColor(keyTask == nil ? Theme.textDim : Theme.amber)
                     Text(keyTask?.text ?? headerEmptyTitle)
-                    .font(Theme.font(18, weight: .semibold))
-                    .foregroundColor(keyTask == nil ? Theme.textDim : Theme.text)
-                    .lineLimit(2)
-                    if let task = keyTask, let action = task.nextAction {
-                        Text("下一步：\(action)").font(Theme.font(12)).foregroundColor(Theme.textDim)
+                        .font(Theme.font(keyTask == nil ? 14 : 17, weight: .medium))
+                        .foregroundColor(keyTask == nil ? Theme.textDim : Theme.text)
+                        .lineLimit(2).help(keyTask?.text ?? headerEmptyTitle)
+                    if let action = keyTask?.nextAction, !action.isEmpty {
+                        Text("下一步：\(action)").font(Theme.font(11)).foregroundColor(Theme.textDim)
+                            .lineLimit(1).help(action)
                     }
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(remainingText)
-                        .font(Theme.font(13, weight: .medium)).foregroundColor(Theme.amber)
-                    Text("容量 \(DurationLabel.short(store.settings.todayCapacityMinutes))")
-                        .font(Theme.font(11)).foregroundColor(Theme.textDim)
-                }
+                Spacer(minLength: 0)
+                Text(remainingText)
+                    .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                    .multilineTextAlignment(.trailing).lineLimit(2)
+                    .frame(maxWidth: 180, alignment: .trailing)
+                    .help("当日计划投入与整项任务估时独立；时间块优先，不重复计入")
             }
             if let task = keyTask, !task.completed {
                 if runningIDs.contains(task.id) {
                     HStack(spacing: 8) {
-                        InfoBadge(text: "正在进行", symbol: "arrow.triangle.2.circlepath",
-                                  accent: Theme.qDelegate)
+                        InfoBadge(text: "正在并行", symbol: "arrow.triangle.2.circlepath", accent: Theme.qDelegate)
                         ParallelRunButton(store: store, task: task, showsLabel: true)
                         TaskDetailsButton(store: store, task: task, showsLabel: true)
                     }
                 } else {
                     HStack(spacing: 8) {
-                        momentumButton("开始 5 分钟", icon: "play.fill") {
-                            store.setDailyWin(task.id)
-                            _ = store.startTimer(task.id, targetMinutes: 5)
+                        if store.activeTimer?.taskID == task.id {
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                momentumButton("暂停 · \(elapsedLabel(now: context.date))", icon: "pause.fill", primary: true) {
+                                    _ = store.stopTimer()
+                                }
+                            }
+                        } else {
+                            momentumButton("开始 5 分钟", icon: "play.fill", primary: true) {
+                                store.setDailyWin(task.id)
+                                _ = store.startTimer(task.id, targetMinutes: 5)
+                            }
                         }
-                        momentumButton("拆小一步", icon: "arrow.down.right.and.arrow.up.left") {
-                            rescuePreset = .tooLarge; rescueTaskID = task.id
-                        }
-                        momentumButton("我卡住了", icon: "questionmark.bubble") {
+                        momentumButton("需要帮助", icon: "questionmark.bubble") {
                             rescuePreset = nil; rescueTaskID = task.id
                         }
-                        if store.dailyWinTask == nil {
-                            Button("设为今日关键") { store.setDailyWin(task.id) }
-                                .buttonStyle(.plain).font(Theme.font(11, weight: .medium))
-                                .foregroundColor(Theme.textDim)
-                        }
+                        Spacer(minLength: 0)
+                        TaskDetailsButton(store: store, task: task)
                     }
                 }
             }
         }
-        .padding(16).panel(corner: 14, accent: Theme.amber)
+        .padding(14).warmPanel(emphasized: keyTask != nil)
+    }
+
+    private func elapsedLabel(now: Date) -> String {
+        guard let timer = store.activeTimer else { return "0:00" }
+        let seconds = max(0, Int(now.timeIntervalSince(timer.startedAt)))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
     private var headerEmptyTitle: String {
@@ -662,49 +756,51 @@ struct TodayPlannerView: View {
     }
 
     private var parallelSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
+        DisclosureGroup(isExpanded: $parallelExpanded) {
+            VStack(spacing: 8) {
+                Text("可同时运行 · 不计入个人专注时长")
+                    .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                ForEach(Array(running.enumerated()), id: \.element.id) { offset, task in
+                    if offset > 0 { Divider().overlay(Theme.hairline) }
+                    ParallelRunRow(store: store, task: task)
+                        .id("parallel-\(task.id.uuidString)")
+                }
+            }.padding(.top, 8)
+        } label: {
+            HStack(spacing: 8) {
                 Label("正在进行", systemImage: "arrow.triangle.2.circlepath")
-                    .font(Theme.font(13, weight: .semibold)).foregroundColor(Theme.qDelegate)
-                Text("\(running.count) 件可同时运行 · 不计入个人专注时长")
+                    .font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.qDelegate)
+                Text("\(running.count) 件并行任务")
                     .font(Theme.font(10)).foregroundColor(Theme.textDim)
                 Spacer()
-            }
-            ForEach(Array(running.enumerated()), id: \.element.id) { offset, task in
-                if offset > 0 { Divider().overlay(Theme.hairline) }
-                ParallelRunRow(store: store, task: task)
-                    .id("parallel-\(task.id.uuidString)")
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    let due = store.parallelRuns.filter { ($0.nextCheckAt ?? .distantFuture) <= context.date }.count
+                    if due > 0 {
+                        Text("\(due) 件待检查")
+                            .font(Theme.font(10, weight: .medium)).foregroundColor(Theme.amber)
+                    }
+                }
             }
         }
-        .padding(14).panel(corner: 12, accent: Theme.qDelegate)
+        .tint(Theme.qDelegate)
+        .padding(12).panel(corner: Theme.Radius.card)
     }
 
-    private func momentumButton(_ title: String, icon: String,
+    @ViewBuilder private func momentumButton(_ title: String, icon: String, primary: Bool = false,
                                 action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        let button = Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 10, weight: .semibold))
-                Text(title).font(Theme.font(11, weight: .semibold))
+                Image(systemName: icon).font(.system(size: 11, weight: .medium))
+                Text(title).font(Theme.Typography.body)
             }
-            .foregroundColor(Theme.amber)
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(Capsule().fill(Theme.amberSoft))
-            .overlay(Capsule().stroke(Theme.amber.opacity(0.4), lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        if primary { button.buttonStyle(AIPrimaryButtonStyle()) }
+        else { button.buttonStyle(TertiaryActionStyle()) }
     }
 
     private var remainingText: String {
-        if incomplete.isEmpty {
-            return running.isEmpty ? "剩余 0 件" : "进行中 \(running.count) 件"
-        }
-        let minutes = incomplete.reduce(0) { $0 + ($1.estimatedMinutes ?? 0) }
-        let unestimated = incomplete.filter { $0.estimatedMinutes == nil }.count
-        if minutes > 0, unestimated > 0 {
-            return "剩余 \(incomplete.count) 件 · 约 \(DurationLabel.short(minutes)) + \(unestimated) 件未估时"
-        }
-        if minutes > 0 { return "剩余 \(incomplete.count) 件 · 约 \(DurationLabel.short(minutes))" }
-        return "剩余 \(incomplete.count) 件 · \(unestimated) 件未估时"
+        store.dailyLoad().label + " · 容量 " + DurationLabel.short(store.settings.todayCapacityMinutes)
     }
 
     private var emptyState: some View {
@@ -722,14 +818,14 @@ struct TodayPlannerView: View {
             Image(systemName: "plus").foregroundColor(Theme.amber)
             TextField("直接加入今天（默认：重要 · 不紧急）", text: $quickTask)
                 .textFieldStyle(.plain).font(Theme.font(13)).foregroundColor(Theme.text)
+                .focused($quickAddFocused)
                 .onSubmit {
                     _ = store.addTask(quickTask, to: .importantNotUrgent, addToToday: true)
                     quickTask = ""
                 }
         }
         .padding(.horizontal, 11).padding(.vertical, 9)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.18)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border, lineWidth: 1))
+        .inputSurface(focused: quickAddFocused)
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -747,13 +843,29 @@ private struct ParallelCheckItem: Identifiable {
 /// A focused day planner rather than a second full calendar. Personal work
 /// occupies time; tasks progressing elsewhere appear as lightweight check
 /// points, so the two kinds of commitment never look interchangeable.
+private enum TimelineZoom: String, CaseIterable {
+    case compact = "紧凑"
+    case standard = "标准"
+    case detailed = "详细"
+
+    // Every position, drop target and resize step uses the same quarter-hour scale.
+    var slotHeight: CGFloat {
+        switch self {
+        case .compact: return 15
+        case .standard: return 24
+        case .detailed: return 36
+        }
+    }
+}
+
 private struct DayTimelineView: View {
     @ObservedObject var store: Store
 
-    private let startHour = 6
+    @State private var zoom: TimelineZoom = .compact
+    private let startHour = 0
     private let endHour = 24
     private let minutesPerSlot = 15
-    private let slotHeight: CGFloat = 24
+    private var slotHeight: CGFloat { zoom.slotHeight }
     private let gutterWidth: CGFloat = 50
 
     private var calendar: Calendar { Calendar.current }
@@ -806,10 +918,10 @@ private struct DayTimelineView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            timelineSummary
-            unscheduledShelf
-            ScrollViewReader { proxy in
+        ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: 8) {
+                timelineSummary(proxy: proxy)
+                unscheduledShelf
                 ScrollView(.vertical) {
                     ZStack(alignment: .topLeading) {
                         timeGrid
@@ -841,44 +953,54 @@ private struct DayTimelineView: View {
                         scheduleDropped(values, at: location.y)
                     }
                 }
-                .onAppear {
-                    let nowMinutes = calendar.component(.hour, from: Date()) * 60
-                        + calendar.component(.minute, from: Date())
-                    let slot = min(slotCount - 1, max(0, (nowMinutes - startHour * 60) / minutesPerSlot - 3))
-                    DispatchQueue.main.async { proxy.scrollTo(slot, anchor: .top) }
-                }
+                .onAppear { scrollToNow(proxy: proxy) }
+                .onChange(of: zoom) { _ in scrollToNow(proxy: proxy) }
+                .panel(corner: Theme.Radius.card)
             }
-            .panel(corner: 11)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private var timelineSummary: some View {
+    private func scrollToNow(proxy: ScrollViewProxy) {
+        let nowMinutes = calendar.component(.hour, from: Date()) * 60
+            + calendar.component(.minute, from: Date())
+        let slot = min(slotCount - 1, max(0, (nowMinutes - startHour * 60) / minutesPerSlot - 2))
+        DispatchQueue.main.async { proxy.scrollTo(slot, anchor: .top) }
+    }
+
+    private func timelineSummary(proxy: ScrollViewProxy) -> some View {
         HStack(spacing: 8) {
-            InfoBadge(text: "时间块 \(scheduledTasks.count)", symbol: "calendar.day.timeline.left", accent: Theme.amber)
-            if !parallelChecks.isEmpty {
-                InfoBadge(text: "检查点 \(parallelChecks.count)", symbol: "arrow.triangle.2.circlepath", accent: Theme.qDelegate)
-            }
-            if conflictedCount > 0 {
-                InfoBadge(text: "\(conflictedCount) 项有冲突", symbol: "exclamationmark.triangle", accent: Theme.qUrgent)
-            }
-            Spacer()
-            Text("06:00—24:00 · 15 分钟刻度")
+            Text("\(scheduledTasks.count) 个时间块 · \(parallelChecks.count) 个检查点")
                 .font(Theme.font(10)).foregroundColor(Theme.textDim)
+            if conflictedCount > 0 {
+                InfoBadge(text: "\(conflictedCount) 项冲突", symbol: "exclamationmark.triangle", accent: Theme.qUrgent)
+            }
+            Spacer(minLength: 0)
+            Picker("缩放", selection: $zoom) {
+                ForEach(TimelineZoom.allCases, id: \.self) { level in
+                    Text(level.rawValue).tag(level)
+                }
+            }
+            .labelsHidden().pickerStyle(.menu).fixedSize()
+            .help("缩放时间轴；每格始终为 15 分钟，不会改变任务安排")
+            .accessibilityLabel("时间轴缩放")
+            Button { scrollToNow(proxy: proxy) } label: {
+                Label("现在", systemImage: "location")
+                    .font(Theme.font(11, weight: .medium)).foregroundColor(Theme.amber)
+            }
+            .buttonStyle(TertiaryActionStyle()).help("回到现在").accessibilityLabel("回到现在")
         }
     }
 
     private var unscheduledShelf: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("待安排").font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.text)
-                Text("拖到下方时间轴").font(Theme.font(10)).foregroundColor(Theme.textDim)
-                Spacer()
-            }
+        HStack(spacing: 9) {
+            Text("待安排 \(unscheduledTasks.count)")
+                .font(Theme.font(10, weight: .semibold)).foregroundColor(Theme.textDim)
+                .fixedSize()
             if unscheduledTasks.isEmpty {
-                Text("今天的任务都已有位置；拖回这里可取消安排。")
-                    .font(Theme.font(11)).foregroundColor(Theme.textDim)
-                    .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+                Text("拖回这里可取消安排")
+                    .font(Theme.font(10)).foregroundColor(Theme.textDim)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 7) {
@@ -887,12 +1009,11 @@ private struct DayTimelineView: View {
                         }
                     }
                 }
-                .frame(minHeight: 34)
             }
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel.opacity(0.38)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border.opacity(0.7)))
+        .frame(height: 30)
+        .padding(.horizontal, 9).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.surface))
         .contentShape(Rectangle())
         .dropDestination(for: String.self) { values, _ in
             return returnToShelf(values)
@@ -1004,14 +1125,14 @@ private struct TimelineTaskChip: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(isParallel ? Theme.qDelegate : Theme.accent(for: task.quadrant))
                 Text(task.text).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.text).lineLimit(1)
+                    .frame(maxWidth: 220)
                 if !isParallel, let minutes = task.estimatedMinutes {
                     Text(DurationLabel.short(minutes)).font(Theme.font(10)).foregroundColor(Theme.textDim)
                 }
                 Image(systemName: "clock").font(.system(size: 9)).foregroundColor(Theme.textDim)
             }
             .padding(.horizontal, 9).padding(.vertical, 7)
-            .background(Capsule().fill(Theme.panelHi.opacity(0.8)))
-            .overlay(Capsule().stroke((isParallel ? Theme.qDelegate : Theme.accent(for: task.quadrant)).opacity(0.45)))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.control).fill(Theme.surfaceRaised))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1065,7 +1186,7 @@ private struct TimelineTaskBlock: View {
     private var baseMinutes: Int { task.scheduledMinutes ?? task.estimatedMinutes ?? 30 }
     private var effectiveMinutes: Int { resizedMinutes ?? baseMinutes }
     private var blockHeight: CGFloat {
-        max(23, CGFloat(effectiveMinutes) / 15 * slotHeight - 2)
+        max(10, CGFloat(effectiveMinutes) / 15 * slotHeight - 2)
     }
     private var accent: Color {
         store.scheduleConflicts(for: task.id).isEmpty ? Theme.accent(for: task.quadrant) : Theme.qUrgent
@@ -1074,12 +1195,14 @@ private struct TimelineTaskBlock: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            TaskCheckbox(completed: task.completed, label: task.text) { store.toggleComplete(task.id) }
-                .scaleEffect(0.78)
-                .frame(width: 17, height: 17)
+            if blockHeight >= 24 {
+                TaskCheckbox(completed: task.completed, label: task.text) { store.toggleComplete(task.id) }
+                    .scaleEffect(0.78)
+                    .frame(width: 17, height: 17)
+            }
             Text(task.text)
-                .font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.text)
-                .lineLimit(effectiveMinutes >= 45 ? 2 : 1)
+                .font(Theme.font(blockHeight < 24 ? 9 : 11, weight: .medium)).foregroundColor(Theme.text)
+                .lineLimit(blockHeight >= 40 ? 2 : 1)
             Spacer(minLength: 2)
             if isActive {
                 Image(systemName: "play.fill").font(.system(size: 8)).foregroundColor(Theme.amber)
@@ -1090,12 +1213,15 @@ private struct TimelineTaskBlock: View {
             Text(DurationLabel.short(effectiveMinutes))
                 .font(Theme.font(9, weight: .medium)).foregroundColor(Theme.textDim)
         }
-        .padding(.horizontal, 7).padding(.vertical, 4)
-        .frame(maxWidth: .infinity, minHeight: blockHeight, maxHeight: blockHeight, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 7).fill(accent.opacity(0.16)))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(accent.opacity(0.72), lineWidth: 1))
-        .overlay(alignment: .bottom) {
-            Capsule().fill(accent.opacity(0.75)).frame(width: 30, height: 4).padding(.bottom, 2)
+        .padding(.horizontal, 7).padding(.vertical, blockHeight < 24 ? 0 : 3)
+        .frame(maxWidth: .infinity, minHeight: blockHeight, maxHeight: blockHeight,
+               alignment: blockHeight < 24 ? .leading : .topLeading)
+        .clipped()
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.control).fill(accent.opacity(0.13)))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control).stroke(accent.opacity(0.42), lineWidth: 1))
+        .overlay(alignment: .bottomTrailing) {
+            Capsule().fill(accent.opacity(0.75)).frame(width: 24, height: 3)
+                .padding(.trailing, 5).padding(.bottom, 1)
                 .contentShape(Rectangle().inset(by: -5))
                 .gesture(DragGesture(minimumDistance: 2)
                     .onChanged { value in
@@ -1111,7 +1237,11 @@ private struct TimelineTaskBlock: View {
         .contentShape(Rectangle())
         .draggable(task.id.uuidString)
         .contextMenu {
-            Button("开始专注") { _ = store.startTimer(task.id, targetMinutes: effectiveMinutes) }
+            if isActive {
+                Button("暂停专注") { _ = store.stopTimer() }
+            } else {
+                Button("开始专注") { _ = store.startTimer(task.id, targetMinutes: effectiveMinutes) }
+            }
             Button("编辑详情") { showDetails = true }
             Menu("开始提醒") {
                 Button("关闭") { store.setScheduleReminder(task.id, leadMinutes: nil) }
@@ -1126,6 +1256,7 @@ private struct TimelineTaskBlock: View {
             TaskDetailView(store: store, task: task, isPresented: $showDetails)
         }
         .accessibilityElement(children: .combine)
+        .help("\(task.text) · \(DurationLabel.short(effectiveMinutes))；右键编辑或开始专注")
         .accessibilityLabel("时间块：\(task.text)，\(DurationLabel.short(effectiveMinutes))")
         .accessibilityHint("拖动可改时间；拖动底边可改时长；右键可开始或取消安排")
     }
@@ -1189,11 +1320,12 @@ private struct ParallelRunRow: View {
                     }
                 }
                 Spacer(minLength: 8)
+                DailyAllocationPill(store: store, task: task)
                 ParallelRunButton(store: store, task: task, showsLabel: true)
                 Button("暂停") { _ = store.pauseParallelRun(task.id, now: context.date) }
-                    .buttonStyle(SecondaryActionStyle())
+                    .buttonStyle(TertiaryActionStyle())
                 Button("完成") { _ = store.completeParallelRun(task.id, now: context.date) }
-                    .buttonStyle(AIPrimaryButtonStyle())
+                    .buttonStyle(SecondaryActionStyle())
                 TaskDetailsButton(store: store, task: task, showsLabel: true)
             }
         }
@@ -1220,12 +1352,12 @@ private struct TodayPlannerRow: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(task.isDailyWin == true ? Theme.amber : Theme.textFaint)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconActionStyle(tint: task.isDailyWin == true ? Theme.amber : Theme.textFaint, size: 24))
                 .help(task.isDailyWin == true ? "取消今日关键任务" : "设为今日关键任务")
                 .accessibilityLabel(task.isDailyWin == true ? "取消今日关键任务" : "设为今日关键任务")
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(task.text).font(Theme.font(14, weight: .medium))
+                Text(task.text).font(Theme.Typography.body)
                     .foregroundColor(task.completed ? Theme.textDim : Theme.text)
                     .strikethrough(task.completed).lineLimit(2)
                 HStack(spacing: 7) {
@@ -1243,18 +1375,17 @@ private struct TodayPlannerRow: View {
             }
             Spacer(minLength: 6)
             if !task.completed {
-                DurationPill(minutes: task.estimatedMinutes, emptyLabel: "估时") {
-                    store.setEstimate(task.id, minutes: $0)
-                }
+                DailyAllocationPill(store: store, task: task)
             } else if let minutes = task.estimatedMinutes {
                 Text(DurationLabel.short(minutes)).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.textDim)
             }
             if !task.completed { FocusTimerButton(store: store, task: task, showsLabel: true) }
             if !task.completed { ParallelRunButton(store: store, task: task, showsLabel: true) }
+            if !task.completed { NextStepProgressButton(store: store, task: task) }
             TaskDetailsButton(store: store, task: task)
         }
         .padding(.horizontal, 11).padding(.vertical, 9)
-        .panel(corner: 11, accent: task.isToday ? Theme.amber : nil)
+        .panel(corner: Theme.Radius.card)
         .onDrag { NSItemProvider(object: task.id.uuidString as NSString) }
         .onDrop(of: [UTType.text], isTargeted: nil) { providers in
             guard let destination = index, let provider = providers.first else { return false }
@@ -1276,9 +1407,13 @@ private struct MomentumRescueView: View {
     @State private var nextAction: String
     @State private var definitionOfDone: String
     @State private var showAI = false
+    @State private var stepBaseline: NextStepDraftBaseline
+    @State private var stepError: String?
+    @FocusState private var focusedField: String?
 
     init(store: Store, task: TaskItem, preset: BlockerReason?, isPresented: Binding<Bool>) {
         self.store = store; self.task = task; self.preset = preset; self._isPresented = isPresented
+        _stepBaseline = State(initialValue: NextStepDraftBaseline(task))
         _reason = State(initialValue: preset)
         _nextAction = State(initialValue: task.nextAction ?? "")
         _definitionOfDone = State(initialValue: task.definitionOfDone ?? "")
@@ -1289,17 +1424,19 @@ private struct MomentumRescueView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(preset == .tooLarge ? "拆小一步" : "现在为什么不想推进？")
-                .font(Theme.font(18, weight: .semibold)).foregroundColor(Theme.text)
-            Text(task.text).font(Theme.font(13)).foregroundColor(Theme.amber).lineLimit(2)
+                .font(Theme.Typography.title).foregroundColor(Theme.text)
+            Text(task.text).font(Theme.Typography.body).foregroundColor(Theme.textSecondary).lineLimit(2)
 
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(BlockerReason.allCases, id: \.self) { item in
                     Button { choose(item) } label: {
                         Text(item.title).font(Theme.font(12, weight: .medium))
-                            .foregroundColor(reason == item ? Theme.bg : Theme.text)
+                            .foregroundColor(Theme.text)
                             .frame(maxWidth: .infinity).padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 8)
-                                .fill(reason == item ? Theme.amber : Theme.panel))
+                            .background(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                                .fill(reason == item ? Theme.surfaceRaised : Theme.field))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                                .stroke(reason == item ? Theme.focus : Color.clear, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -1314,12 +1451,20 @@ private struct MomentumRescueView: View {
                          prompt: "一个 5–15 分钟内能直接做的动作")
             compactField("最低完成版本", text: $definitionOfDone,
                          prompt: "做到什么程度，今天就算有进展？")
+            NextStepCompletionControls(store: store, taskID: task.id, nextAction: $nextAction, definitionOfDone: $definitionOfDone, expectedCompletedStepID: stepBaseline.lastCompletedID) {
+                if let current = store.tasks.first(where: { $0.id == task.id }) { stepBaseline = NextStepDraftBaseline(current) }
+                stepError = nil; focusedField = "最小下一步"
+            }
+            if let stepError { Text(stepError).font(Theme.Typography.secondary).foregroundColor(Theme.qUrgent) }
 
-            Button("✦ 帮我想一个起点") { showAI = true }
-                .buttonStyle(.plain).font(Theme.font(12, weight: .medium)).foregroundColor(Theme.amber)
+
+            Button { showAI = true } label: {
+                Label("帮我想一个起点", systemImage: "sparkles")
+            }
+                .buttonStyle(TertiaryActionStyle())
                 .sheet(isPresented: $showAI) {
-                    AIAssistantView(store: store, workflow: .nextStep, task: task,
-                                    blocker: reason?.title ?? "") { item in
+                    IntelligentAssistantView(store: store, intent: .unblock, subjectID: task.id,
+                                    initialInstruction: reason?.title ?? "") { item in
                         nextAction = item.nextAction
                         definitionOfDone = item.definitionOfDone
                     }
@@ -1336,14 +1481,12 @@ private struct MomentumRescueView: View {
 
             HStack {
                 Button("取消") { isPresented = false }
-                    .buttonStyle(.plain).foregroundColor(Theme.textDim)
+                    .buttonStyle(TertiaryActionStyle())
                 Spacer()
                 Button("只保存") { save(start: false) }
-                    .buttonStyle(.plain).foregroundColor(Theme.text)
+                    .buttonStyle(SecondaryActionStyle())
                 Button("保存并开始 5 分钟") { save(start: true) }
-                    .buttonStyle(.plain).foregroundColor(Theme.bg)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 9).fill(Theme.amber))
+                    .buttonStyle(AIPrimaryButtonStyle())
             }
         }
         .padding(18).frame(width: 430).background(Theme.bg)
@@ -1352,11 +1495,11 @@ private struct MomentumRescueView: View {
 
     private func compactField(_ label: String, text: Binding<String>, prompt: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(Theme.font(11, weight: .semibold)).foregroundColor(Theme.textDim)
+            Text(label).font(Theme.Typography.secondary).foregroundColor(Theme.textDim)
             TextField(prompt, text: text).textFieldStyle(.plain).font(Theme.font(13))
+                .focused($focusedField, equals: label)
                 .foregroundColor(Theme.text).padding(.horizontal, 9).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.panel.opacity(0.55)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border.opacity(0.6)))
+                .inputSurface(focused: focusedField == label)
         }
     }
 
@@ -1392,7 +1535,10 @@ private struct MomentumRescueView: View {
     }
 
     private func save(start: Bool) {
-        store.setMomentumDetails(task.id, nextAction: nextAction, definitionOfDone: definitionOfDone)
+        guard store.updateNextAction(task.id, nextAction: nextAction, definitionOfDone: definitionOfDone,
+            expectedNextAction: stepBaseline.action, expectedDefinitionOfDone: stepBaseline.criterion, expectedCompletedStepID: stepBaseline.lastCompletedID) else {
+            stepError = store.persistenceIssue ?? "下一步已在其他位置更新，草稿已保留。"; return
+        }
         if let reason { store.recordBlocker(task.id, reason: reason) }
         store.setDailyWin(task.id)
         if start { _ = store.startTimer(task.id, targetMinutes: 5) }
@@ -1425,76 +1571,189 @@ struct DueBadge: View {
 // MARK: - Search, ideas and history
 
 enum LibraryScope: String, CaseIterable {
-    case thoughts = "想法"
-    case deadlines = "截止"
+    case all = "全部"
+    case inbox = "待整理"
     case tasks = "任务"
+    case thoughts = "想法"
     case history = "历史"
+    case deadlines = "截止"
 }
 
 struct LibraryView: View {
     @ObservedObject var store: Store
+    var searchFocusRequest: Int = 0
+    var onShowInbox: () -> Void = {}
     @State private var query = ""
-    @State private var scope: LibraryScope = .thoughts
+    @State private var scope: LibraryScope = .all
+    @State private var selectedIdea: ThoughtItem?
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            PageHeading(title: "想法与历史", subtitle: "留住想法，也看见已经推进的事情。")
-            HStack(spacing: 10) {
-                HStack(spacing: 7) {
-                    Image(systemName: "magnifyingglass").foregroundColor(Theme.textDim)
-                    TextField("搜索想法、任务和历史", text: $query)
-                        .textFieldStyle(.plain).font(Theme.font(13)).foregroundColor(Theme.text)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundColor(Theme.textDim)
+                TextField("搜索待整理、任务、想法和历史", text: $query)
+                    .textFieldStyle(.plain).font(Theme.font(13)).foregroundColor(Theme.text)
+                    .focused($searchFocused)
+                    .accessibilityLabel("搜索待整理、任务、想法和历史")
+                if !query.isEmpty {
+                    Button { query = ""; searchFocused = true } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundColor(Theme.textDim)
+                    }
+                    .buttonStyle(.plain).help("清除搜索").accessibilityLabel("清除搜索")
                 }
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 9).fill(Color.black.opacity(0.18)))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border, lineWidth: 1))
-                SegmentedTabs(values: LibraryScope.allCases, selection: $scope, label: { $0.rawValue })
-                    .frame(width: 240)
             }
-
+            .padding(.horizontal, 10).padding(.vertical, 9)
+            .inputSurface(focused: searchFocused)
+            HStack {
+                SegmentedTabs(values: LibraryScope.allCases, selection: $scope, label: { $0.rawValue })
+                    .frame(width: 348)
+                Spacer(minLength: 8)
+                Text("\(resultCount) 条\(searchTerm.isEmpty ? "记录" : "匹配")")
+                    .font(Theme.font(11)).foregroundColor(Theme.textDim)
+            }
             ScrollView {
                 LazyVStack(spacing: 8) {
-                    switch scope {
-                    case .thoughts:
-                        if filteredThoughts.isEmpty { empty("还没有想法。待整理内容可以点灯泡保留在这里。") }
-                        ForEach(filteredThoughts) { ThoughtRow(store: store, thought: $0) }
-                    case .deadlines:
-                        DeadlineList(store: store, tasks: filteredDeadlines)
-                    case .tasks:
-                        if filteredTasks.isEmpty { empty("没有匹配的进行中任务。") }
-                        ForEach(filteredTasks) { SearchTaskRow(store: store, task: $0) }
-                    case .history:
-                        if filteredArchive.isEmpty { empty("完成任务后，历史会出现在这里。") }
-                        ForEach(filteredArchive) { ArchiveRow(store: store, task: $0) }
+                    if resultCount == 0 {
+                        empty(emptyMessage)
+                    } else {
+                        switch scope {
+                        case .all:
+                            if !filteredInbox.isEmpty {
+                                groupHeading("待整理", count: filteredInbox.count)
+                                ForEach(filteredInbox) { inboxRow($0) }
+                            }
+                            if !filteredTasks.isEmpty {
+                                groupHeading("任务", count: filteredTasks.count)
+                                ForEach(filteredTasks) { SearchTaskRow(store: store, task: $0) }
+                            }
+                            if !filteredThoughts.isEmpty {
+                                groupHeading("想法", count: filteredThoughts.count)
+                                ForEach(filteredThoughts) { idea in
+                                    ThoughtRow(thought: idea, onOpen: { selectedIdea = idea })
+                                }
+                            }
+                            if !filteredArchive.isEmpty {
+                                groupHeading("历史", count: filteredArchive.count)
+                                ForEach(filteredArchive) { ArchiveRow(store: store, task: $0) }
+                            }
+                        case .inbox:
+                            ForEach(filteredInbox) { inboxRow($0) }
+                        case .thoughts:
+                            ForEach(filteredThoughts) { idea in
+                                ThoughtRow(thought: idea, onOpen: { selectedIdea = idea })
+                            }
+                        case .deadlines:
+                            DeadlineList(store: store, tasks: filteredDeadlines)
+                        case .tasks:
+                            ForEach(filteredTasks) { SearchTaskRow(store: store, task: $0) }
+                        case .history:
+                            ForEach(filteredArchive) { ArchiveRow(store: store, task: $0) }
+                        }
                     }
                 }
                 .padding(.vertical, 2)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onAppear { if searchFocusRequest > 0 { activateSearch() } }
+        .onChange(of: searchFocusRequest) { _ in activateSearch() }
+        .sheet(item: $selectedIdea) { idea in
+            IdeaDetailView(store: store, ideaID: idea.id)
+        }
     }
 
+    private func activateSearch() {
+        scope = .all
+        // Workspace switching mounts this TextField in the same update that
+        // delivers Cmd-F. Wait until AppKit has attached its field editor;
+        // a synchronous onAppear focus request can be lost on macOS 13.
+        searchFocused = false
+        DispatchQueue.main.async { searchFocused = true }
+    }
+
+    private var searchTerm: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var filteredInbox: [InboxItem] {
+        store.inbox.filter { matches($0.text) }
+    }
     private var filteredThoughts: [ThoughtItem] {
-        store.thoughts.filter { matches($0.text + " " + ($0.notes ?? "")) }
+        store.thoughts.filter {
+            matches([$0.text, $0.notes ?? "", $0.nextQuestion ?? "",
+                     $0.entries.map(\.text).joined(separator: " ")].joined(separator: " "))
+        }
     }
     private var filteredTasks: [TaskItem] {
-        store.tasks.filter { matches($0.text + " " + ($0.note ?? "") + " " + ($0.nextAction ?? "")) }
+        store.tasks.filter { !$0.completed && matches(searchableText($0)) }
     }
     private var filteredDeadlines: [TaskItem] {
-        store.tasks.filter { !$0.completed && $0.dueAt != nil
-            && matches($0.text + " " + ($0.note ?? "") + " " + ($0.nextAction ?? "")) }
+        filteredTasks.filter { $0.dueAt != nil }
             .sorted { ($0.dueAt ?? .distantFuture) < ($1.dueAt ?? .distantFuture) }
     }
     private var filteredArchive: [TaskItem] {
-        store.archive.reversed().filter { matches($0.text + " " + ($0.note ?? "")) }
+        var seen = Set<UUID>()
+        return (store.tasks.filter(\.completed) + store.archive)
+            .filter { seen.insert($0.id).inserted && matches(searchableText($0)) }
+            .sorted { ($0.completedAt ?? $0.createdAt) > ($1.completedAt ?? $1.createdAt) }
+    }
+    private var resultCount: Int {
+        switch scope {
+        case .all: return filteredInbox.count + filteredTasks.count + filteredThoughts.count + filteredArchive.count
+        case .inbox: return filteredInbox.count
+        case .tasks: return filteredTasks.count
+        case .thoughts: return filteredThoughts.count
+        case .history: return filteredArchive.count
+        case .deadlines: return filteredDeadlines.count
+        }
+    }
+    private var emptyMessage: String {
+        if !searchTerm.isEmpty {
+            return scope == .all
+                ? "没有找到“\(searchTerm)”相关的待整理、任务、想法或历史。"
+                : "“\(scope.rawValue)”中没有与“\(searchTerm)”匹配的记录。"
+        }
+        switch scope {
+        case .all: return "还没有记录。随手记下一件事，从这里找回。"
+        case .inbox: return "没有待整理的内容。随手记下的内容会出现在这里。"
+        case .tasks: return "没有进行中的任务。"
+        case .thoughts: return "还没有想法。待整理内容可以点灯泡保留在这里。"
+        case .history: return "完成任务后，历史会出现在这里。"
+        case .deadlines: return "还没有设置截止日期的任务。"
+        }
+    }
+    private func searchableText(_ task: TaskItem) -> String {
+        [task.text, task.note, task.nextAction, task.definitionOfDone].compactMap { $0 }.joined(separator: " ")
     }
     private func matches(_ value: String) -> Bool {
-        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || value.localizedCaseInsensitiveContains(query)
+        searchTerm.isEmpty || value.localizedStandardContains(searchTerm)
+    }
+    private func inboxRow(_ item: InboxItem) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: "tray").foregroundColor(Theme.textDim)
+            Text(item.text).font(Theme.font(13)).foregroundColor(Theme.text).lineLimit(2)
+            Spacer(minLength: 8)
+            Button("去归位", action: onShowInbox)
+                .buttonStyle(.plain).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.amber)
+                .help("到四象限的待整理栏归位")
+                .accessibilityLabel("前往待整理，归位\(item.text)")
+        }
+        .padding(11).panel(corner: Theme.Radius.card)
+    }
+
+    private func groupHeading(_ title: String, count: Int) -> some View {
+        Text("\(title) · \(count)")
+            .font(Theme.Typography.secondary).foregroundColor(Theme.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 5)
     }
     private func empty(_ message: String) -> some View {
-        Text(message).font(Theme.font(13)).foregroundColor(Theme.textDim)
-            .frame(maxWidth: .infinity, minHeight: 180, alignment: .center)
+        VStack(spacing: 10) {
+            Text(message).font(Theme.font(13)).foregroundColor(Theme.textDim)
+                .multilineTextAlignment(.center)
+            if !searchTerm.isEmpty && scope != .all {
+                Button("搜索全部分类") { scope = .all }
+                    .buttonStyle(.plain).font(Theme.font(12, weight: .medium)).foregroundColor(Theme.amber)
+            }
+        }
+        .padding(20).frame(maxWidth: .infinity, minHeight: 180, alignment: .center)
     }
 }
 
@@ -1549,7 +1808,7 @@ private struct SearchTaskRow: View {
             if let due = task.dueAt { DueBadge(date: due) }
             TaskDetailsButton(store: store, task: task)
         }
-        .padding(11).panel(corner: 10)
+        .padding(11).panel(corner: Theme.Radius.card)
     }
 }
 
@@ -1558,17 +1817,23 @@ private struct ArchiveRow: View {
     let task: TaskItem
     var body: some View {
         HStack(spacing: 9) {
-            Image(systemName: "checkmark.circle.fill").foregroundColor(Theme.amber)
+            Image(systemName: "checkmark.circle.fill").foregroundColor(Theme.success)
             VStack(alignment: .leading, spacing: 3) {
                 Text(task.text).font(Theme.font(13)).foregroundColor(Theme.text).lineLimit(2)
                 Text(task.completedAt.map { Self.formatter.string(from: $0) } ?? "已完成")
                     .font(Theme.font(10)).foregroundColor(Theme.textDim)
             }
             Spacer()
-            Button("恢复") { store.restoreArchived(task.id) }
-                .buttonStyle(.plain).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.amber)
+            Button("恢复") {
+                if store.archive.contains(where: { $0.id == task.id }) {
+                    store.restoreArchived(task.id)
+                } else {
+                    store.setCompleted(task.id, false)
+                }
+            }
+            .buttonStyle(.plain).font(Theme.font(11, weight: .medium)).foregroundColor(Theme.amber)
         }
-        .padding(11).panel(corner: 10)
+        .padding(11).panel(corner: Theme.Radius.card)
     }
     private static let formatter: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN"); f.dateFormat = "yyyy/M/d HH:mm"; return f
@@ -1576,97 +1841,33 @@ private struct ArchiveRow: View {
 }
 
 private struct ThoughtRow: View {
-    @ObservedObject var store: Store
     let thought: ThoughtItem
-    @State private var presented = false
+    let onOpen: () -> Void
     var body: some View {
-        Button { presented = true } label: {
+        Button(action: onOpen) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "lightbulb.fill").foregroundColor(Theme.amber)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(thought.text).font(Theme.font(13, weight: .medium)).foregroundColor(Theme.text)
+                    Text(thought.stage.title).font(Theme.font(10)).foregroundColor(Theme.textDim)
                     if let notes = thought.notes {
                         Text(notes).font(Theme.font(11)).foregroundColor(Theme.textDim).lineLimit(2)
                     }
-                    if let reviewAt = thought.reviewAt {
+                    if thought.stage != .archived, let reviewAt = thought.reviewAt {
                         HStack(spacing: 3) {
                             Image(systemName: reviewAt <= Date() ? "bell.fill" : "calendar.badge.clock")
-                            Text("回看 \(DueBadge.shortDate(reviewAt))")
+                            Text(reviewAt <= Date() ? "可以回看" : "回看 \(DueBadge.shortDate(reviewAt))")
                         }
                         .font(Theme.font(10, weight: .medium))
-                        .foregroundColor(reviewAt <= Date() ? Theme.qUrgent : Theme.amber)
+                        .foregroundColor(Theme.textDim)
                     }
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 10)).foregroundColor(Theme.textFaint)
             }
-            .padding(11).contentShape(Rectangle()).panel(corner: 10)
+            .padding(11).contentShape(Rectangle()).panel(corner: Theme.Radius.card)
         }
         .buttonStyle(.plain)
-        .popover(isPresented: $presented, arrowEdge: .trailing) {
-            ThoughtEditor(store: store, thought: thought, isPresented: $presented)
-        }
-    }
-}
-
-private struct ThoughtEditor: View {
-    @ObservedObject var store: Store
-    let thought: ThoughtItem
-    @Binding var isPresented: Bool
-    @State private var title: String
-    @State private var notes: String
-    @State private var hasReview: Bool
-    @State private var reviewAt: Date
-
-    init(store: Store, thought: ThoughtItem, isPresented: Binding<Bool>) {
-        self.store = store; self.thought = thought; self._isPresented = isPresented
-        _title = State(initialValue: thought.text)
-        _notes = State(initialValue: thought.notes ?? "")
-        _hasReview = State(initialValue: thought.reviewAt != nil)
-        _reviewAt = State(initialValue: thought.reviewAt ?? Date().addingTimeInterval(86_400))
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            Text("继续想").font(Theme.font(16, weight: .semibold)).foregroundColor(Theme.text)
-            TextField("这个想法是什么？", text: $title)
-                .textFieldStyle(.plain).font(Theme.font(14)).foregroundColor(Theme.text)
-                .padding(9).overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border))
-            Text("可以写：我想达成什么？为什么重要？还缺什么证据？下一次何时再看？")
-                .font(Theme.font(11)).foregroundColor(Theme.textDim)
-            TextEditor(text: $notes)
-                .font(Theme.font(13)).foregroundColor(Theme.text).scrollContentBackground(.hidden)
-                .padding(7).frame(height: 150)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.18)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border))
-            Toggle("安排下次回看", isOn: $hasReview)
-                .toggleStyle(.switch).tint(Theme.amber).font(Theme.font(12))
-            if hasReview {
-                DatePicker("", selection: $reviewAt, displayedComponents: [.date, .hourAndMinute])
-                    .labelsHidden().datePickerStyle(.field)
-            }
-            HStack {
-                Button("删除", role: .destructive) { store.deleteThought(thought.id); isPresented = false }
-                    .buttonStyle(.plain).foregroundColor(Theme.qUrgent)
-                Button("转为任务") {
-                    store.updateThought(thought.id, text: title, notes: notes,
-                                        reviewAt: hasReview ? reviewAt : nil)
-                    _ = store.promoteThought(thought.id)
-                    isPresented = false
-                }
-                .buttonStyle(.plain).foregroundColor(Theme.amber)
-                Spacer()
-                Button("保存") {
-                    store.updateThought(thought.id, text: title, notes: notes,
-                                        reviewAt: hasReview ? reviewAt : nil)
-                    isPresented = false
-                }
-                .buttonStyle(.plain).foregroundColor(Theme.bg)
-                .padding(.horizontal, 14).padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.amber))
-            }
-        }
-        .padding(16).frame(width: 400).background(Theme.bg)
     }
 }
 
@@ -1677,19 +1878,21 @@ struct UndoToast: View {
     var body: some View {
         if let message = store.undoMessage {
             HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill").foregroundColor(Theme.success)
                 Text(message).font(Theme.font(12)).foregroundColor(Theme.text)
                 Button("撤销") { store.undoLastDeletion() }
-                    .buttonStyle(.plain).font(Theme.font(12, weight: .semibold)).foregroundColor(Theme.amber)
+                    .buttonStyle(TertiaryActionStyle(tint: Theme.amber))
                 Button { store.clearUndo() } label: {
                     Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundColor(Theme.textDim)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconActionStyle(size: 24))
+                .accessibilityLabel("关闭撤销提示")
             }
             .padding(.horizontal, 13).padding(.vertical, 9)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panelHi))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.amber.opacity(0.4)))
-            .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.surfaceRaised))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).stroke(Theme.border))
+            .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+            .transition(.opacity)
         }
     }
 }
