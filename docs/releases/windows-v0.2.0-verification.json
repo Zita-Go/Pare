@@ -46,5 +46,14 @@
     "DPI/display changes",
     "actual toast clicks and lock-screen delivery"
   ],
-  "release_published": false
+  "release_published": false,
+  "final_caption_build": {
+    "source_commit": "71deb0d98cad2fd706fb8ffc8dab8a1056ba4d4e",
+    "run": "https://github.com/Zita-Go/Pare/actions/runs/45035586093",
+    "all_steps_passed": true,
+    "installer_artifact_id": 14759747938,
+    "installer_artifact_sha256_from_github": "950daac5823e6be38d9c750d0570aa45f232306dd3c794c956c24ab02039727e",
+    "native_receipts_confirmed_in_job_log": true,
+    "change": "Align task-reminder caption with opt-in reminders after exit; same tests and native checks rerun successfully"
+  }
 }

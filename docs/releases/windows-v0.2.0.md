@@ -39,15 +39,15 @@
 
 ## 验证状态
 
-[最终 Windows 验收](https://github.com/Zita-Go/Pare/actions/runs/45032978273)全部通过：共享核心295项、桌面99项测试；0.1.0升级到0.2.0保留任务、步骤历史及原始资料文件；已安装程序启动自测；系统自启/通知/计划任务注册、重复注册和清理。Mac360项、Android389项回归通过。安装包对应源代码 `d5d4143`。
+[最终 Windows 验收](https://github.com/Zita-Go/Pare/actions/runs/45035586093)全部通过：共享核心295项、桌面99项测试；0.1.0升级到0.2.0保留任务、步骤历史及原始资料文件；已安装程序启动自测；系统自启/通知/计划任务注册、重复注册和清理。Mac360项、Android389项回归通过。安装包对应源代码 `71deb0d`。
 
-[下载 Windows x64 预览构建](https://github.com/Zita-Go/Pare/actions/runs/45032978273/artifacts/14758742929)（GitHub登录后下载，包含EXE、MSI、免安装ZIP及SHA256SUMS）。它是构建产物，尚未创建正式Release。
+[下载 Windows x64 预览构建](https://github.com/Zita-Go/Pare/actions/runs/45035586093/artifacts/14759747938)（GitHub登录后下载，包含EXE、MSI、免安装ZIP及SHA256SUMS）。它是构建产物，尚未创建正式Release。
 
 中文输入法、个人电脑的缩放切换、多显示器、真实通知点击和锁屏交付仍需要Windows实机验收。当前版本未正式发布。
 
 ## 界面预览
 
-以下为Windows测试环境中真实组件的2倍像素密度离屏渲染，使用虚构任务，不是物理桌面截图。图片来自上述最终验收构建，原图未经插值放大。
+以下为Windows测试环境中真实组件的2倍像素密度离屏渲染，使用虚构任务，不是物理桌面截图。图片来自0.2的Windows验收构建，原图未经插值放大。
 
 ![今日清单](../images/windows/v0.2/dark-1280-2x-today.png)
 
