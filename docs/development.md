@@ -8,10 +8,10 @@
 
 ```bash
 ./build_app.sh
-open dist/Pare.app
+open dist/Step.app
 ```
 
-脚本使用 release 编译，组装 `dist/Pare.app`、生成图标并进行本地 ad-hoc 签名；不包含 Developer ID 公证或发布上传步骤。
+脚本使用 release 编译，组装 `dist/Step.app`、生成图标并进行本地 ad-hoc 签名；不包含 Developer ID 公证或发布上传步骤。
 
 ```bash
 swift test
@@ -25,7 +25,7 @@ swift test
 bash Scripts/screenshot-demo.sh
 ```
 
-脚本会启动一个独立的 **Pare Screenshots** 应用，直接编译并使用 `Sources/Pare` 中的真实界面组件，入口是 `Scripts/ReadmeDemo.swift`。它不构造正式的 `AppDelegate`，不启动通知调度、全局快捷键或注意力监测。
+脚本会启动一个独立的 **Step Screenshots** 应用，直接编译并使用 `Sources/Pare` 中的真实界面组件，入口是 `Scripts/ReadmeDemo.swift`。它不构造正式的 `AppDelegate`，不启动通知调度、全局快捷键或注意力监测。
 
 每次启动都在系统临时目录创建独立演示数据，并使用独立的应用标识 `com.zitago.Pare.ReadmeDemo`。正式 Pare 的任务和偏好不受影响。截图后按 `⌘Q` 退出演示程序即可。
 
@@ -39,7 +39,7 @@ bash Scripts/screenshot-demo.sh
 
 演示包括「完成报告提纲」「整理周末旅行计划」等虚构内容。文档图片保存到 `docs/images`，保留原生界面文字与布局。整理窗口统一为 1060 × 660 pt；可截取内容区域避免录屏状态标记进入图片，小浮窗按真实尺寸展示。
 
-仓库提供窗口专用截图工具，按窗口编号捕获，因此不会把挡在前面的其他应用截进去。它仅接受 **Pare Screenshots** 演示程序的窗口；系统可能要求允许录屏。
+仓库提供窗口专用截图工具，按窗口编号捕获，因此不会把挡在前面的其他应用截进去。它仅接受 **Step Screenshots** 演示程序的窗口；系统可能要求允许录屏。
 
 ```bash
 # Apple Silicon；只需编译一次
@@ -54,7 +54,7 @@ xcrun swiftc -target arm64-apple-macosx13.0 Scripts/capture-window.swift -o /tmp
 
 最后的 `42` 表示拍摄时略过标题栏顶部 42 pt；浮窗和卡点面板无需这个参数。工具使用原生窗口捕获 API 和 `.bestResolution` 生成 Retina 2× PNG，不重绘界面、插值放大或替换文字。README 为每张图片提供用途说明和替代文字；提交前必须检查像素尺寸，1060pt 的整理窗截图应为 2120px 宽。
 
-需要验证原生快捷键控件时，可显式运行 `bash Scripts/screenshot-demo.sh --verify-shortcuts`，启动独立标识的 **Pare Shortcut Check**，再从「演示 → 验证快捷键设置」进入。这个模式会注册真实全局快捷键，但仍使用验收应用自己的偏好；验证默认组合前先退出正式 Pare，避免两者争用 `⌥Space`。退出验收会释放快捷键，再启动正式 Pare 即可。普通截图模式不注册快捷键。
+需要验证原生快捷键控件时，可显式运行 `bash Scripts/screenshot-demo.sh --verify-shortcuts`，启动独立标识的 **Step Shortcut Check**，再从「演示 → 验证快捷键设置」进入。这个模式会注册真实全局快捷键，但仍使用验收应用自己的偏好；验证默认组合前先退出正式 Pare，避免两者争用 `⌥Space`。退出验收会释放快捷键，再启动正式 Pare 即可。普通截图模式不注册快捷键。
 
 验收系统通知与真实浏览器事件时，使用 `bash Scripts/screenshot-demo.sh --verify-shortcuts --verify-integrations`，再打开同一设置入口。这个显式模式会连接真实通知调度与事件监听；示例数据中的注意力检测仍默认关闭，需在测试 App 中手动开启，并单独授予所需系统权限。它不会读取正式 Pare 的任务或 AI 配置。普通截图和仅快捷键模式不启动这些集成。通知“已提交系统”不等于横幅已实际展示，必须另行检查通知中心或横幅。
 
