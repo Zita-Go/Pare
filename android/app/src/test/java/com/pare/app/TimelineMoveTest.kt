@@ -71,18 +71,6 @@ class TimelineMoveTest {
         val normal=TimelineTime.onDate(Instant.parse("2026-03-07T14:00:00Z"),TimelineDay(LocalDate.parse("2026-03-08"),zone))
         assertEquals(Instant.parse("2026-03-08T13:00:00Z"),normal)
     }
-    @Test fun dateFormRetainsNewTaskIdAndCapturesExistingTargetWhenSelected() {
-        val s=state();val model=TimelineScheduleModel()
-        model.initialize(s,TimelineDay.fromPlanId(day),null,now)
-        val id=model.taskId;model.title="Fictional new task"
-        model.selectDate(s,LocalDate.parse("2099-05-23"))
-        assertEquals(id,model.taskId);assertEquals("2099-05-23@UTC",model.expected!!.planId);assertNull(model.moveExpected)
-        assertEquals(Instant.parse("2099-05-23T09:00:00Z"),model.startInstant())
-        model.clear();model.initialize(s,TimelineDay.fromPlanId(day),s.items["task:$taskId"])
-        model.selectDate(s,LocalDate.parse("2099-05-21"))
-        assertEquals(day,model.expected!!.planId);assertEquals(target,model.moveExpected!!.targetPlanId)
-        model.selectDate(s,LocalDate.parse("2099-05-20"));assertNull(model.moveExpected)
-    }
     @Test fun removingSourceDoesNotAffectIndependentCanonicalOccurrence() {
         val s=state();val independent="2099-05-24@UTC";val independentPlan=plan(independent,taskId,now.plusSeconds(86400L*4))
         val multiple=s.copy(items=s.items+(independentPlan.key to independentPlan))

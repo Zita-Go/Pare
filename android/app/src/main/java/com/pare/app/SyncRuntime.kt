@@ -22,7 +22,7 @@ class SyncRuntime private constructor(context:Context) {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val repo=PareRepository(context)
     private val widgetContext=context.applicationContext
-    val engine=SyncEngine(repo,SessionVault(context),HttpSyncRemote(),SyncScheduler(WorkManager.getInstance(context)))
+    val engine=SyncEngine(repo,SessionVault(context),HttpSyncRemote(SupabaseApi(BuildConfig.SUPABASE_URL,BuildConfig.SUPABASE_PUBLIC_KEY)),SyncScheduler(WorkManager.getInstance(context)))
     val execution=ExecutionController(engine,ExecutionFilePersistence(context),AndroidExecutionClock(context))
     val executionReady=MutableStateFlow(false)
     private val presencePreferences=DevicePresenceSharingStore(context)
@@ -119,16 +119,4 @@ class SyncRuntime private constructor(context:Context) {
     }
     fun requestSync(manual:Boolean=false,networkReturned:Boolean=false)=requests.request(manual,networkReturned)
 
-}
-
-/** Blocking HTTPS has connect/read timeouts; cancellation is checked at every engine boundary. */
-private class HttpSyncRemote:SyncRemote {
-    private val api=SupabaseApi()
-    private suspend fun <T> io(block:()->T):T=runInterruptible(Dispatchers.IO,block)
-    override suspend fun login(email:String,password:String,signup:Boolean)=io {api.login(email,password,signup)}
-    override suspend fun refresh(session:Session)=io {api.refresh(session)}
-    override suspend fun pull(session:Session,cursor:Long)=io {api.pull(session,cursor)}
-    override suspend fun push(session:Session,request:Push)=io {api.push(session,request)}
-    override suspend fun logout(session:Session)=io {api.logout(session)}
-    override suspend fun presence(session:Session,request:DevicePresenceRequest)=io {api.presence(session,request)}
 }

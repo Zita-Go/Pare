@@ -29,15 +29,15 @@ fun parseSession(json:JsonObject, now:Long):Session? {
 }
 
 class ApiFailure(val code:Int):Exception(when(code) {401 -> "登录已失效，请重新登录"; 400,422 -> "请检查邮箱、密码或邮件验证状态"; 429 -> "请求较多，请稍后重试"; else -> "云端暂不可用（$code）"})
-class SupabaseApi {
+class SupabaseApi(private val baseUrl:String,private val publicKey:String) {
     fun post(path:String, body:JsonObject, token:String?=null):JsonObject {
         val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(60)
-        val base=BuildConfig.SUPABASE_URL.trimEnd('/')
-        require(base.startsWith("https://") && BuildConfig.SUPABASE_PUBLIC_KEY.isNotBlank()) {"此构建尚未配置同步服务"}
+        val base=baseUrl.trimEnd('/')
+        require(base.startsWith("https://") && publicKey.isNotBlank()) {"此构建尚未配置同步服务"}
         val conn=java.net.URL("$base/$path").openConnection() as javax.net.ssl.HttpsURLConnection
         conn.requestMethod="POST";conn.connectTimeout=15000;conn.readTimeout=20000;conn.doOutput=true;conn.instanceFollowRedirects=false
         conn.setRequestProperty("Content-Type","application/json")
-        conn.setRequestProperty("apikey",BuildConfig.SUPABASE_PUBLIC_KEY)
+        conn.setRequestProperty("apikey",publicKey)
         token?.let { conn.setRequestProperty("Authorization","Bearer $it") }
         try {
             conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }

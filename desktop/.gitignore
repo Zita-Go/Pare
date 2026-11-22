@@ -1,0 +1,9 @@
+.gradle/
+.gradle-home/
+**/build/
+app/src/main/resources/step-sync-config.json
+*.local.json
+
+artifacts/
+.toolchain/
+.kotlin/

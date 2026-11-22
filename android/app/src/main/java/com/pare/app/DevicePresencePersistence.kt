@@ -5,12 +5,6 @@ import android.util.AtomicFile
 import java.io.File
 import kotlinx.serialization.Serializable
 
-interface DevicePresenceSequenceStore {
-    /** Must commit durably before returning; a lost response never permits sequence reuse. */
-    fun next(owner: String, device: String): Long
-    fun advance(owner: String, device: String, accepted: Long)
-}
-
 @Serializable
 private data class DevicePresenceSequences(val version: Int = 1, val values: Map<String, Long> = emptyMap())
 

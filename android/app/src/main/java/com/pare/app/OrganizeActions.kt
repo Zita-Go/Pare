@@ -4,7 +4,7 @@ import java.time.Instant
 import kotlinx.serialization.json.*
 
 /** Pure state transition; the engine persists this complete group in a single local edit. */
-internal fun organizeInbox(state: SyncState, expected: Entity, quadrant: Int, addToToday: Boolean,
+fun organizeInbox(state: SyncState, expected: Entity, quadrant: Int, addToToday: Boolean,
     taskId: String, now: Instant): SyncState {
     require(quadrant in 0..3) { "请选择象限" }
     val current = state.items[expected.key]

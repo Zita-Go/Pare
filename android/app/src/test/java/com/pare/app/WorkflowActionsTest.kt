@@ -176,7 +176,7 @@ class WorkflowActionsTest {
             assertEquals(changed,DayPlanActions.allocate(changed,taskId,d,now))
             if(!isCurrentDay) {
                 PayloadValidation.validate(plan.kind,plan.id,changed.items.getValue(plan.key).payload!!)
-                java.io.File("/private/tmp/pare-workflow-future-calendar-wire.json").writeText(JsonObject(mapOf(plan.key to changed.items.getValue(plan.key).payload!!)).toString())
+                java.io.File(System.getProperty("pare.fixture.outputDir", "/private/tmp"), "pare-workflow-future-calendar-wire.json").writeText(JsonObject(mapOf(plan.key to changed.items.getValue(plan.key).payload!!)).toString())
             }
         }
     }
@@ -186,7 +186,7 @@ class WorkflowActionsTest {
         state=linked(state)
         state=SmallStepActions.save(state,taskId,"Draw one line","One line",SmallStepBaseline.from(state.items.getValue("task:$taskId")),draft(state,5,"check"),"tooLarge",allocationId,now)
         state.items.values.forEach {PayloadValidation.validate(it.kind,it.id,it.payload!!)}
-        java.io.File("/private/tmp/pare-workflow-wire.json").writeText(JsonObject(state.items.mapValues {it.value.payload!!}).toString())
+        java.io.File(System.getProperty("pare.fixture.outputDir", "/private/tmp"), "pare-workflow-wire.json").writeText(JsonObject(state.items.mapValues {it.value.payload!!}).toString())
     }
     @Test fun projectionsRetainCompletedArchivedAndMissingLinks() {
         val s=linked();val task=s.items.getValue("task:$taskId")

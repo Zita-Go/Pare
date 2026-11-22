@@ -53,6 +53,6 @@ class Workflow09CompatibilityTest {
         assertEquals(8, payloads.size)
         assertFalse(payloads.toString().contains("localTrash")); assertFalse(payloads.toString().contains("accessToken"))
         assertFalse(payloads.toString().contains("refreshToken")); assertFalse(payloads.toString().contains("p_runs"))
-        File("/private/tmp/pare-09-workflow-wire.json").writeText(payloads.toString(), Charsets.UTF_8)
+        java.io.File(System.getProperty("pare.fixture.outputDir", "/private/tmp"), "pare-09-workflow-wire.json").writeText(payloads.toString(), Charsets.UTF_8)
     }
 }

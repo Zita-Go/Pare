@@ -1,0 +1,76 @@
+name: Windows desktop preview
+on:
+  push:
+    branches: [main, codex/windows-preview]
+    paths: ['desktop/**', 'android/app/src/**', '.github/workflows/windows-desktop.yml']
+  pull_request:
+    paths: ['desktop/**', 'android/app/src/**', '.github/workflows/windows-desktop.yml']
+  workflow_dispatch:
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      STEP_SYNC_URL: ${{ vars.STEP_SYNC_URL }}
+      STEP_SYNC_PUBLIC_KEY: ${{ vars.STEP_SYNC_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare public client configuration
+        run: python desktop/configure.py --required
+      - name: Locate WiX packaging tools
+        shell: pwsh
+        run: |
+          $candidate = Get-ChildItem 'C:\Program Files (x86)' -Directory -Filter 'WiX Toolset*' | Select-Object -First 1
+          if ($candidate) { Join-Path $candidate.FullName 'bin' | Out-File -FilePath $env:GITHUB_PATH -Append }
+          elseif (!(Get-Command candle.exe -ErrorAction SilentlyContinue)) { choco install wixtoolset --version=3.14.1 --yes --no-progress }
+      - name: Test and build native Windows installers
+        shell: pwsh
+        run: .\android\gradlew.bat -p desktop --no-daemon :core:test :app:test :app:packageExe :app:packageMsi
+      - name: Verify installed executable with isolated data
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem desktop/app/build/compose/binaries/main/msi/*.msi | Select-Object -First 1
+          if (!$msi) { throw 'MSI was not produced' }
+          $installation = Start-Process msiexec.exe -ArgumentList @('/i', $msi.FullName, '/qn', '/norestart', '/l*v', "$env:RUNNER_TEMP\step-install.log") -Wait -PassThru
+          if ($installation.ExitCode -notin @(0,3010)) { throw "Install failed: $($installation.ExitCode)" }
+          try {
+            $exe = @("$env:LOCALAPPDATA\Step\Step.exe", "$env:LOCALAPPDATA\Programs\Step\Step.exe", "$env:ProgramFiles\Step\Step.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if (!$exe) { throw 'Installed Step.exe not found' }
+            $data = Join-Path $env:RUNNER_TEMP 'step-packaged-smoke'
+            $smoke = Start-Process $exe -ArgumentList @('--self-test','--data-dir',"`"$data`"") -Wait -PassThru
+            if ($smoke.ExitCode -ne 0 -or !(Test-Path "$data\smoke-result.json")) { throw 'Installed executable smoke test failed' }
+            Get-Content "$data\smoke-result.json"
+          } finally { Start-Process msiexec.exe -ArgumentList @('/x', $msi.FullName, '/qn', '/norestart') -Wait }
+      - name: Prepare portable build and checksums
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force desktop/artifacts | Out-Null
+          Copy-Item desktop/app/build/compose/binaries/main/exe/*.exe desktop/artifacts/
+          Copy-Item desktop/app/build/compose/binaries/main/msi/*.msi desktop/artifacts/
+          Compress-Archive -Path desktop/app/build/compose/binaries/main/app/Step -DestinationPath desktop/artifacts/Step-0.1.0-windows-x64-portable.zip
+          Get-ChildItem desktop/artifacts -File | ForEach-Object { $h=Get-FileHash $_.FullName -Algorithm SHA256; "$($h.Hash.ToLower())  $($_.Name)" } | Set-Content desktop/artifacts/SHA256SUMS.txt -Encoding ascii
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Step-0.1.0-windows-x64
+          path: desktop/artifacts/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-verification
+          path: |
+            desktop/core/build/reports/tests/
+            desktop/app/build/reports/tests/
+            desktop/app/build/test-results/
+            desktop/app/build/test-screenshots/
+            ${{ runner.temp }}/step-install.log
+            ${{ runner.temp }}/step-packaged-smoke/smoke-result.json

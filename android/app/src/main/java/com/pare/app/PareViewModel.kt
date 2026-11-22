@@ -5,11 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import java.time.Instant
-
-@Serializable data class Session(val owner:String,val email:String,val accessToken:String,val refreshToken:String,val expiresAt:Long)
 
 class PareViewModel(app:Application):AndroidViewModel(app) {
     private val runtime=SyncRuntime.get(app)
@@ -126,26 +123,16 @@ class PareViewModel(app:Application):AndroidViewModel(app) {
         change(content)
         return StateMachine.edit(s,"day_plan",id,JsonObject((old?.payload ?: JsonObject(emptyMap())).toMutableMap().apply {put("content",JsonObject(content))}))
     }
-    fun toggleToday(e:Entity) = edit {s -> editPlan(s) {content ->
-        val ids=content.getValue("ordered_task_ids").jsonArray.map {it.jsonPrimitive.content}.toMutableList()
-        if(e.id in ids) {ids.remove(e.id);if(content["daily_win_task_id"]?.jsonPrimitive?.contentOrNull==e.id)content.remove("daily_win_task_id");content["task_plans"]?.jsonArray?.let {plans -> content["task_plans"]=JsonArray(plans.map {entry ->
-            if(entry.jsonObject["task_id"]?.jsonPrimitive?.content==e.id) {
-                val planned=entry.jsonObject
-                val at=planned["scheduled_at"]?.jsonPrimitive?.contentOrNull?.let {runCatching {Instant.parse(it)}.getOrNull()}
-                val day=TimelineDay.today(s,Instant.now())
-                if(at!=null && at.atZone(day.zone).toLocalDate()!=day.date)entry
-                else JsonObject(planned.filterKeys {it !in setOf("allocation","scheduled_at","scheduled_minutes","schedule_reminder_lead_minutes")})
-            } else entry
-        })}}
-        else ids.add(e.id)
-        content["ordered_task_ids"]=JsonArray(ids.map {JsonPrimitive(it)})
-    }}
-    fun setWin(e:Entity) = edit {s -> editPlan(s) {c ->
-        val ids=c.getValue("ordered_task_ids").jsonArray.map {it.jsonPrimitive.content}.toMutableList()
-        if(e.id !in ids) ids.add(e.id)
-        c["ordered_task_ids"]=JsonArray(ids.map {JsonPrimitive(it)})
-        if(c["daily_win_task_id"]?.jsonPrimitive?.contentOrNull==e.id)c.remove("daily_win_task_id") else c["daily_win_task_id"]=JsonPrimitive(e.id)
-    }}
+    fun toggleToday(e:Entity) = edit {s ->
+        val now=Instant.now();val planId=ContentActions.planId(s,now)
+        val included=(s.items["day_plan:$planId"]?.content()?.get("ordered_task_ids") as? JsonArray).orEmpty().any {it.jsonPrimitive.content==e.id}
+        DayTaskActions.setIncluded(s,e.id,!included,planId,now)
+    }
+    fun setWin(e:Entity) = edit {s ->
+        val now=Instant.now();val planId=ContentActions.planId(s,now)
+        val selected=s.items["day_plan:$planId"]?.content()?.get("daily_win_task_id")?.jsonPrimitive?.contentOrNull==e.id
+        DayTaskActions.setWin(s,e.id,!selected,planId,now)
+    }
     private fun action(block:suspend ()->Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             try {block()}
