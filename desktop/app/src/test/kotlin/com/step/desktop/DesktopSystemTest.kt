@@ -54,14 +54,42 @@ class DesktopSystemTest {
         org.junit.Assume.assumeTrue(System.getProperty("os.name").startsWith("Windows",true))
         val home=Files.createTempDirectory("step-policy-test")
         val script=home.resolve("policy.ps1");val input=home.resolve("input.json");val output=home.resolve("policy.txt")
-        Files.writeString(script,"param([string]\u0024InputFile)\r\nGet-ExecutionPolicy\r\n")
+        Files.writeString(script,"param([string]\u0024InputFile)\r\n\u0024ErrorActionPreference = 'Stop'\r\nGet-ExecutionPolicy\r\n")
         Files.writeString(input,"{}")
         val builder=desktopPowerShellProcess(script,input).redirectErrorStream(true).redirectOutput(output.toFile())
         builder.environment()["PSExecutionPolicyPreference"]="Restricted"
         val process=builder.start()
         try {
             assertTrue(process.waitFor(15,java.util.concurrent.TimeUnit.SECONDS))
-            assertEquals("Local script should execute under the child-process policy",0,process.exitValue())
+            assertEquals("Local script should execute under the child-process policy: ${Files.readString(output)}",0,process.exitValue())
+            assertEquals("RemoteSigned",Files.readString(output).trim())
+        } finally {if(process.isAlive)process.destroyForcibly()}
+    }
+    @Test fun windowsScriptIgnoresPowerShellSevenModulesInheritedThroughJava() {
+        org.junit.Assume.assumeTrue(System.getProperty("os.name").startsWith("Windows",true))
+        val home=Files.createTempDirectory("step-module-environment-test")
+        val script=home.resolve("policy.ps1");val input=home.resolve("input.json")
+        val output=home.resolve("policy.txt");val probeOutput=home.resolve("probe.txt")
+        Files.writeString(script,"param([string]\u0024InputFile)\r\n\u0024ErrorActionPreference = 'Stop'\r\nGet-ExecutionPolicy\r\n")
+        Files.writeString(input,"{}")
+        val inherited=home.resolve("inherited-pwsh7-modules")
+        val incompatible=inherited.resolve("Microsoft.PowerShell.Security")
+        Files.createDirectories(incompatible)
+        Files.writeString(incompatible.resolve("Microsoft.PowerShell.Security.psd1"),
+            "@{ RootModule='incompatible.psm1'; ModuleVersion='99.0'; PowerShellVersion='7.0'; FunctionsToExport=@('Get-ExecutionPolicy') }")
+        Files.writeString(incompatible.resolve("incompatible.psm1"),"throw 'The inherited fixture module must not load'")
+        val classpath=listOf(DesktopPowerShellEnvironmentProbe::class.java,Class.forName("com.step.desktop.DesktopWindowsKt"),Unit::class.java)
+            .map {java.nio.file.Path.of(it.protectionDomain.codeSource.location.toURI()).toString()}.distinct().joinToString(java.io.File.pathSeparator)
+        val javaExecutable=java.nio.file.Path.of(System.getProperty("java.home"),"bin","java.exe")
+        val builder=ProcessBuilder(javaExecutable.toString(),"-cp",classpath,"com.step.desktop.DesktopPowerShellEnvironmentProbe",script.toString(),input.toString(),output.toString())
+            .redirectErrorStream(true).redirectOutput(probeOutput.toFile())
+        // Poison the intermediate Java process, not the already-sanitized PowerShell builder.
+        builder.environment()["PSModulePath"]=inherited.toString()
+        val process=builder.start()
+        try {
+            assertTrue(process.waitFor(30,java.util.concurrent.TimeUnit.SECONDS))
+            val details=Files.readString(probeOutput)+if(Files.exists(output))Files.readString(output)else""
+            assertEquals("Windows PowerShell must load its own built-in modules: $details",0,process.exitValue())
             assertEquals("RemoteSigned",Files.readString(output).trim())
         } finally {if(process.isAlive)process.destroyForcibly()}
     }
@@ -127,5 +155,18 @@ class DesktopSystemTest {
         for(i in 0..9)assertNull(detector.observe(610_000+i*3_000L,0,7,false,"digest-${i%2}",true,0))
         detector.clearSignals()
         for(i in 0..4)assertNull(detector.observe(650_000+i*3_000L,0,7,false,"digest-${i%2}",true,0))
+    }
+}
+
+/** Test-only intermediate JVM reproduces pwsh7 -> Java -> Windows PowerShell environment inheritance. */
+internal object DesktopPowerShellEnvironmentProbe {
+    @JvmStatic fun main(args:Array<String>) {
+        val builder=desktopPowerShellProcess(java.nio.file.Path.of(args[0]),java.nio.file.Path.of(args[1]))
+            .redirectErrorStream(true).redirectOutput(java.nio.file.Path.of(args[2]).toFile())
+        builder.environment()["PSExecutionPolicyPreference"]="Restricted"
+        val process=builder.start()
+        val exit=try {if(process.waitFor(15,java.util.concurrent.TimeUnit.SECONDS))process.exitValue() else 124}
+            finally {if(process.isAlive)process.destroyForcibly()}
+        kotlin.system.exitProcess(exit)
     }
 }

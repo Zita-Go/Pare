@@ -19,7 +19,14 @@ internal fun desktopPowerShellProcess(script:Path,input:Path):ProcessBuilder {
     val powershell=Path.of(System.getenv("SystemRoot") ?: "C:\\Windows","System32","WindowsPowerShell","v1.0","powershell.exe")
     // Process-only policy for our locally extracted script. Group Policy still takes precedence;
     // this does not change CurrentUser/LocalMachine policy or permit unsigned downloaded scripts.
-    return ProcessBuilder(powershell.toString(),"-NoProfile","-NonInteractive","-ExecutionPolicy","RemoteSigned","-File",script.toString(),"-InputFile",input.toString())
+    return ProcessBuilder(powershell.toString(),"-NoProfile","-NonInteractive","-ExecutionPolicy","RemoteSigned","-File",script.toString(),"-InputFile",input.toString()).apply {
+        // pwsh7 only cleans module paths when it launches powershell.exe directly. A Java
+        // intermediary otherwise forwards incompatible PS7 modules. Our helper needs only
+        // the Windows PowerShell built-ins; modify this child environment, never user/machine state.
+        val childEnvironment=environment()
+        childEnvironment.keys.filter {it.equals("PSModulePath",ignoreCase=true)}.forEach(childEnvironment::remove)
+        childEnvironment["PSModulePath"]=powershell.parent.resolve("Modules").toString()
+    }
 }
 
 /** Windows API adapter. Operations touch only this user's profile-specific registrations. */
