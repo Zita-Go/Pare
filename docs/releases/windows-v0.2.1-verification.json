@@ -1,0 +1,110 @@
+{
+  "version": "0.2.1",
+  "source_commit": "f09b99da73938873a855adceaa65ceffa0be4b9b",
+  "build_run": "https://github.com/Zita-Go/Pare/actions/runs/45057502473",
+  "tests": {
+    "core": {
+      "tests": 295,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "desktop": {
+      "tests": 115,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "installer_artifact": {
+    "id": 14767814259,
+    "sha256": "1c6160d1341fc658b77c7878e0e170b6e5b2efc50c9c3c320e2ae51fba831d05"
+  },
+  "verification_artifact": {
+    "id": 14768227529,
+    "sha256": "a4c8760f21c6354a588938678ecd53a26338af0f1b02a69dfc5447dae0a66f4c"
+  },
+  "build_checks": {
+    "upgrade_from_0_1_preserves_store_and_steps": true,
+    "packaged_launch": true,
+    "chinese_weekday": true,
+    "native_registration_duplicate_safe_and_cleanup": true
+  },
+  "ui_scale_tests": {
+    "scales_percent": [
+      125,
+      150,
+      175,
+      200
+    ],
+    "scope": "Compose edit/select/save/reopen and same-scene density changes; not physical monitor switching"
+  },
+  "native_acceptance": {
+    "run": "https://github.com/Zita-Go/Pare/actions/runs/45061568941",
+    "harness_source": "5391de3460078ea353163ac5426c873df5191f2f",
+    "artifact_id": 14769875569,
+    "artifact_sha256": "31c43b3ea07eb907709643b2ebb132063bd802128a7f82b462ebb60edfb63fb0",
+    "environment": "Windows Server 2022, disposable GitHub-hosted interactive desktop, one 1024x768 display at 96 DPI",
+    "fixture_only": true,
+    "overall": "incomplete",
+    "checks": {
+      "interactive_desktop": "pass",
+      "input_method_inventory": "pass",
+      "notification_platform": "unsupported",
+      "pinyin_profile_configuration": "pass",
+      "window_open": "pass",
+      "main_window_fit_in_workarea": "pass",
+      "window_fit_in_workarea": "pass",
+      "actual_window_dpi": "pass",
+      "multi_monitor_scaling": "unsupported",
+      "quick_capture_hotkey": "pass",
+      "editor_ready_for_unicode": "pass",
+      "capture_window_fit_in_workarea": "pass",
+      "unicode_initial_input": "pass",
+      "unicode_select_all_replace": "pass",
+      "unicode_save_persistence": "pass",
+      "unicode_edit_save": "pass",
+      "fictional_clipboard_cleanup": "pass",
+      "editor_ready_for_paste": "pass",
+      "clipboard_paste_initial": "pass",
+      "clipboard_paste_replace": "pass",
+      "clipboard_paste_edit_save": "pass",
+      "ime_draft_reset": "pass",
+      "pinyin_activation": "pass",
+      "ime_candidate_screenshot": "pass",
+      "microsoft_pinyin": "pass",
+      "ime_candidate_layout": "unsupported",
+      "input_languages_restored": "pass",
+      "notification_registration": "pass",
+      "notification_show_api": "pass",
+      "notification_history": "pass",
+      "notification_visible": "unsupported",
+      "normal_exit_before_reminder": "pass",
+      "scheduled_reminder_processing": "pass",
+      "scheduled_delivery": "pass",
+      "normal_exit_before_locked_reminder": "pass",
+      "workstation_locked": "pass",
+      "locked_reminder_processing": "pass",
+      "lock_screen_delivery": "pass",
+      "lock_screen_visible": "unsupported",
+      "cleanup": "pass"
+    },
+    "all_launch_stderr_empty": true,
+    "ime": "Microsoft Pinyin: Latin nihao + Space -> exactly 你好 persisted",
+    "paste": "Clipboard source plus separately typed x/y, owner PID and stable sequence acknowledgement, exact persisted result",
+    "reminders": "Normal quit with zero exit code; actual time trigger after quit and WTS-confirmed lock; matching OS notification history, not lock-screen pixels"
+  },
+  "remaining_physical_checks": [
+    "multi-monitor system DPI changes",
+    "IME candidate-window geometry and additional composition interactions",
+    "visible lock-screen notification card",
+    "notification action button clicks"
+  ],
+  "release_published": false,
+  "package_sha256": {
+    "Step-0.2.1.exe": "445a9141e2134b10b14d39965f4b5286180e7bb95cf72e67411b97c6dc8457c0",
+    "Step-0.2.1.msi": "a72944bcf73f8780ece3a93a152db7823701d90c97dc5318c6cf35c4e2daf93d",
+    "Step-0.2.1-windows-x64-portable.zip": "7e83994b624e3d5bf91f202f0f385c572f6358d742adfd219a8440d47cff9a08",
+    "SHA256SUMS.txt": "2704b3159cc249b8b27417c8e5e15771f512594efa71f7bbe82d490af237adf2"
+  }
+}
