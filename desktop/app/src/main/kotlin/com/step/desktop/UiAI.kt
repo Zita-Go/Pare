@@ -27,7 +27,7 @@ internal data class AiTarget(val kind:PlanningAIKind?,val subjectId:String?,val 
     fun invalidate(){nextInput=null;planInput=null;nextProposal=null;planProposal=null;selectedActions=emptySet()}
     val adopted=nextUndo!=null||planUndo!=null
     UiModal(target.kind?.title?:"找到最小下一步",onClose,work,width=880,dirty=serviceDraft.dirty || (!adopted&&(nextProposal!=null || planProposal!=null || extra!=MobileAIOptions() || selectedTasks!=initialTasks || capacity!="30" || energy!="一般"))) {
-        Row(verticalAlignment=Alignment.CenterVertically){Text("选择参考 → 预览发送内容 → 审阅建议 → 确认采纳",modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,color=StepMuted);TextButton({configure=!configure},enabled=!work.busy){Text(if(configure)"收起设置"else"AI 服务设置")}}
+        Row(verticalAlignment=Alignment.CenterVertically){Text("选择参考 → 预览发送内容 → 审阅建议 → 确认采纳",modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,color=StepMuted);StepTextButton({configure=!configure},enabled=!work.busy){Text(if(configure)"收起设置"else"AI 服务设置")}}
         if(configure || !settings.hasKey) {AISettingsPanel(runtime,work,serviceDraft);HorizontalDivider()}
         if(!adopted && nextProposal==null && planProposal==null) {
             SectionLabel("本次允许参考的内容","当前对象是必要上下文；以下额外参考默认关闭。")
@@ -44,7 +44,7 @@ internal data class AiTarget(val kind:PlanningAIKind?,val subjectId:String?,val 
                     candidates.forEach {task->Row(verticalAlignment=Alignment.CenterVertically){Checkbox(task.id in selectedTasks,{yes->selectedTasks=if(yes)(selectedTasks+task.id).distinct()else selectedTasks-task.id;invalidate()},enabled=!work.busy&&(task.id in selectedTasks||selectedTasks.size<8));Text(task.title(),modifier=Modifier.weight(1f))}}
                 }
             }
-            Button({
+            StepButton({
                 if(target.kind==null) {var prepared:MobileAIRequest?=null;val options=extra;work.run({nextInput=prepared}){runCatching {prepared=MobileAIContext.prepare(runtime.engine.state.value,requireNotNull(target.subjectId),options,runtime.aiHistory.value);Unit}}}
                 else {var prepared:PlanningAIRequest?=null;val tasks=selectedTasks;val amount=capacity;val e=energy;val options=extra;work.run({planInput=prepared}){runCatching {prepared=PlanningAIContext.prepare(runtime.engine.state.value,target.kind,target.subjectId,target.planId,PlanningAIOptions(tasks,amount.toIntOrNull()?:error("请输入 5–480 分钟"),e,options),runtime.aiHistory.value);Unit}}}
             },enabled=!work.busy){Text("预览将发送的内容")}
@@ -53,7 +53,7 @@ internal data class AiTarget(val kind:PlanningAIKind?,val subjectId:String?,val 
         if(preview!=null&&!adopted) {
             HorizontalDivider();SectionLabel("发送内容预览","确认后仅发送以下内容到你配置的模型服务。此步骤尚未发送。")
             SelectionContainer {Text(preview,style=MaterialTheme.typography.bodySmall,modifier=Modifier.fillMaxWidth())}
-            if(nextProposal==null&&planProposal==null)Button({
+            if(nextProposal==null&&planProposal==null)StepButton({
                 val ni=nextInput;val pi=planInput
                 if(ni!=null) {var proposal:MobileAIProposal?=null;work.run({nextProposal=proposal;work.message="建议已生成，尚未修改任务"}){runtime.generateAI(ni).map {proposal=it;Unit}}}
                 else if(pi!=null) {var proposal:PlanningAIProposal?=null;work.run({planProposal=proposal;selectedActions=proposal?.actions?.map {it.id}?.toSet().orEmpty();work.message="勾选要采纳的建议，确认后才修改资料"}){runtime.generatePlan(pi).map {proposal=it;Unit}}}
@@ -62,7 +62,7 @@ internal data class AiTarget(val kind:PlanningAIKind?,val subjectId:String?,val 
         nextProposal?.let {p->
             HorizontalDivider();SectionLabel("建议的下一步","${p.minutes} 分钟的起点")
             Text(p.nextAction,style=MaterialTheme.typography.titleLarge);Text("做到这里就停：${p.stopCriterion}");Text("依据：${p.reason}",color=StepMuted)
-            if(!adopted)Button({val input=nextInput!!;val at=Instant.now();work.edit({nextUndo=MobileAIUndo.from(input,p,at);work.message="已采纳；可以撤销本次建议"}){MobileAIActions.adopt(it,input,p,at)}},enabled=!work.busy){Text("采纳为下一步")}
+            if(!adopted)StepButton({val input=nextInput!!;val at=Instant.now();work.edit({nextUndo=MobileAIUndo.from(input,p,at);work.message="已采纳；可以撤销本次建议"}){MobileAIActions.adopt(it,input,p,at)}},enabled=!work.busy){Text("采纳为下一步")}
         }
         planProposal?.let {p->
             HorizontalDivider();SectionLabel("审阅建议",p.summary)
@@ -79,14 +79,14 @@ internal data class AiTarget(val kind:PlanningAIKind?,val subjectId:String?,val 
                     }
                 }
             }
-            if(!adopted)Button({val input=planInput!!;val selected=selectedActions;var receipt:PlanningAIUndo?=null;work.edit({planUndo=receipt;work.message="已采纳所选建议；可以撤销本次采纳"}){before->PlanningReviewActions.adopt(before,input,p,selected,Instant.now()).also {receipt=PlanningAIUndo.capture(before,it)}}},enabled=!work.busy&&selectedActions.isNotEmpty()){Text("采纳选中的 ${selectedActions.size} 项")}
+            if(!adopted)StepButton({val input=planInput!!;val selected=selectedActions;var receipt:PlanningAIUndo?=null;work.edit({planUndo=receipt;work.message="已采纳所选建议；可以撤销本次采纳"}){before->PlanningReviewActions.adopt(before,input,p,selected,Instant.now()).also {receipt=PlanningAIUndo.capture(before,it)}}},enabled=!work.busy&&selectedActions.isNotEmpty()){Text("采纳选中的 ${selectedActions.size} 项")}
         }
         if(adopted) {
             Text("采纳已保存到本机。之后的编辑会受到保护，撤销不会覆盖后续更改。",color=StepGreen)
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({val n=nextUndo;val p=planUndo;work.edit({nextUndo=null;planUndo=null;invalidate();work.message="已撤销本次采纳"}){if(n!=null)MobileAIActions.undo(it,n)else requireNotNull(p).apply(it)}},enabled=!work.busy){Text("撤销本次采纳")}
-                TextButton({nextUndo=null;planUndo=null;invalidate()},enabled=!work.busy){Text("开始新一轮")}
+                StepOutlinedButton({val n=nextUndo;val p=planUndo;work.edit({nextUndo=null;planUndo=null;invalidate();work.message="已撤销本次采纳"}){if(n!=null)MobileAIActions.undo(it,n)else requireNotNull(p).apply(it)}},enabled=!work.busy){Text("撤销本次采纳")}
+                StepTextButton({nextUndo=null;planUndo=null;invalidate()},enabled=!work.busy){Text("开始新一轮")}
             }
-        } else if(nextProposal!=null || planProposal!=null)TextButton({invalidate()},enabled=!work.busy){Text("放弃建议，重新预览")}
+        } else if(nextProposal!=null || planProposal!=null)StepTextButton({invalidate()},enabled=!work.busy){Text("放弃建议，重新预览")}
     }
 }

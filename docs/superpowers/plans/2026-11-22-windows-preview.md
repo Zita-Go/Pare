@@ -20,3 +20,7 @@ Runtime/UI contract is recorded in desktop/CONTRACT.md. Per-agent file ownership
 - Mac Homebrew JDK packaging intentionally rejected by Compose vendor guard; no guard bypass. Actual Windows packaging usesTemurin17 onwindows-2022.
 - Windows workflow/config ready; only public existing sync client parameters supplied via repository variables. Desktop generated config, toolchains, builds and local stores remain ignored.
 - Waiting for real Windows CI build/install/self-test; no Windows download claimed yet.
+
+- First WindowsCI compiled/tested, installed MSI and launched isolated packaged self-test successfully; portable step lacked createDistributable and was corrected. Second WindowsCI45007268915 passed all steps and produced exe/msi/portable. No release created.
+- User then rejected visual maturity relative toMac. Publication remains paused while UI is refined againstMac semantic palette/spacing/type, not merely recolored. Added bundledOFL NotoSansSC with explicit400/500/600 axes, dark/light appearance persistence, vector icons and denser useful layout.
+- Local refined tree: core294/app31 pass, including7 interaction tests and4 visual datasets producing20 screenshots at960/1280 in dark/light. Windows re-verification pending before presenting the final candidate.

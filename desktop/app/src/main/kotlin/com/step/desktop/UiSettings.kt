@@ -30,7 +30,7 @@ import java.nio.file.Path
                     Field(email,{email=it},"邮箱",enabled=!work.busy&&!engineBusy)
                     Field(password,{password=it},"密码",secret=true,enabled=!work.busy&&!engineBusy)
                     Row(verticalAlignment=Alignment.CenterVertically) {Checkbox(signup,{signup=it},enabled=!work.busy&&!engineBusy);Text("注册新账号")}
-                    Button({val e=email.trim();val p=password;val create=signup;work.run({if(runtime.engine.session.value!=null){password="";email=""}}) {runCatching {runtime.engine.authenticate(e,p,create)}}},enabled=email.isNotBlank()&&password.isNotBlank()&&!work.busy&&!engineBusy&&runtime.config.syncUrl.isNotBlank()&&runtime.config.syncPublicKey.isNotBlank()){Text(if(signup)"注册"else"登录并拉取预览")}
+                    StepButton({val e=email.trim();val p=password;val create=signup;work.run({if(runtime.engine.session.value!=null){password="";email=""}}) {runCatching {runtime.engine.authenticate(e,p,create)}}},enabled=email.isNotBlank()&&password.isNotBlank()&&!work.busy&&!engineBusy&&runtime.config.syncUrl.isNotBlank()&&runtime.config.syncPublicKey.isNotBlank()){Text(if(signup)"注册"else"登录并拉取预览")}
                 } else {
                     if(!state.enabled) {
                         Surface(color=MaterialTheme.colorScheme.surfaceVariant,shape=MaterialTheme.shapes.small) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -39,11 +39,11 @@ import java.nio.file.Path
                             Text(if(previewReady)"云端内容已合并到本机预览。确认开启后，本机变更会上传到此账号；发生冲突的内容等待你选定版本。"else"当前显示本机已读取的内容；完整云端预览完成前不会启用上传。",style=MaterialTheme.typography.bodySmall,color=StepMuted)
                         }}
                         if(!previewReady)Text("请等待拉取完成。若失败，可退出后重新登录获取预览。",color=StepMuted)
-                        Button({work.run {runCatching {runtime.engine.enable()}}},enabled=previewReady&&!work.busy&&!engineBusy){Text("确认合并并开启同步")}
+                        StepButton({work.run {runCatching {runtime.engine.enable()}}},enabled=previewReady&&!work.busy&&!engineBusy){Text("确认合并并开启同步")}
                     }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        if(state.enabled) {OutlinedButton({runtime.requestSync()},enabled=!engineBusy&&!work.busy){Text("立即同步")};OutlinedButton({runtime.engine.revoke();work.run {runCatching {runtime.engine.pause()}}},enabled=!work.busy){Text("暂停同步")}}
-                        TextButton({runtime.engine.revoke();work.run {runCatching {runtime.engine.signOut()}}},enabled=!work.busy){Text("退出账号")}
+                        if(state.enabled) {StepOutlinedButton({runtime.requestSync()},enabled=!engineBusy&&!work.busy){Text("立即同步")};StepOutlinedButton({runtime.engine.revoke();work.run {runCatching {runtime.engine.pause()}}},enabled=!work.busy){Text("暂停同步")}}
+                        StepTextButton({runtime.engine.revoke();work.run {runCatching {runtime.engine.signOut()}}},enabled=!work.busy){Text("退出账号")}
                     }
                     Text("退出后保留本机内容与未上传更改；资料库仍绑定原账号。",style=MaterialTheme.typography.bodySmall,color=StepMuted)
                 }
@@ -56,8 +56,8 @@ import java.nio.file.Path
                         Surface(color=MaterialTheme.colorScheme.surfaceVariant,shape=MaterialTheme.shapes.small) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                             Text(local.displayTitle(),style=MaterialTheme.typography.titleMedium)
                             Row(horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text("本机版本"+(if(local.deleted)" · 已删除"else""),style=MaterialTheme.typography.titleMedium);SelectionContainer {Text(local.content()?.toString().orEmpty(),style=MaterialTheme.typography.bodySmall)};OutlinedButton({work.edit {current->require(current.items[local.key]?.conflict==remote && current.items[local.key]?.payload==local.payload){"冲突内容已更新，请重新查看"};StateMachine.resolve(current,local.key,true)}},enabled=!work.busy&&state.pending==null){Text(if(local.conflictChoice==true)"已选本机版本"else"保留本机版本")}}
-                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text("云端版本"+(if(remote.deletedAt!=null)" · 已删除"else""),style=MaterialTheme.typography.titleMedium);SelectionContainer {Text(remoteContent?.toString().orEmpty(),style=MaterialTheme.typography.bodySmall)};OutlinedButton({work.edit {current->require(current.items[local.key]?.conflict==remote && current.items[local.key]?.payload==local.payload){"冲突内容已更新，请重新查看"};StateMachine.resolve(current,local.key,false)}},enabled=!work.busy&&state.pending==null){Text(if(local.conflictChoice==false)"已选云端版本"else"保留云端版本")}}
+                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text("本机版本"+(if(local.deleted)" · 已删除"else""),style=MaterialTheme.typography.titleMedium);SelectionContainer {Text(local.content()?.toString().orEmpty(),style=MaterialTheme.typography.bodySmall)};StepOutlinedButton({work.edit {current->require(current.items[local.key]?.conflict==remote && current.items[local.key]?.payload==local.payload){"冲突内容已更新，请重新查看"};StateMachine.resolve(current,local.key,true)}},enabled=!work.busy&&state.pending==null){Text(if(local.conflictChoice==true)"已选本机版本"else"保留本机版本")}}
+                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {Text("云端版本"+(if(remote.deletedAt!=null)" · 已删除"else""),style=MaterialTheme.typography.titleMedium);SelectionContainer {Text(remoteContent?.toString().orEmpty(),style=MaterialTheme.typography.bodySmall)};StepOutlinedButton({work.edit {current->require(current.items[local.key]?.conflict==remote && current.items[local.key]?.payload==local.payload){"冲突内容已更新，请重新查看"};StateMachine.resolve(current,local.key,false)}},enabled=!work.busy&&state.pending==null){Text(if(local.conflictChoice==false)"已选云端版本"else"保留云端版本")}}
                             }
                             if(state.pending!=null)Text("先同步待确认的请求，再选择版本。",color=StepMuted,style=MaterialTheme.typography.bodySmall)
                         }}
@@ -68,9 +68,9 @@ import java.nio.file.Path
             else -> {
                 SectionLabel("内容备份","导出任务、想法、目标与日计划；不包含账号凭据、模型密钥和 AI 原始历史。")
                 Field(backup,{backup=it},"备份文件完整路径（例如 D:\\Backups\\step-backup.json）",enabled=!work.busy)
-                Button({val destination=backup;work.run {runtime.exportBackup(Path.of(destination))}},enabled=backup.isNotBlank()&&!work.busy){Text("导出内容备份")}
+                StepButton({val destination=backup;work.run {runtime.exportBackup(Path.of(destination))}},enabled=backup.isNotBlank()&&!work.busy){Text("导出内容备份")}
                 HorizontalDivider();SectionLabel("窗口与提醒","关闭主窗口后的驻留行为由窗口设置控制；彻底退出后不会发送提醒。")
-                TextButton(onRequestClose){Text("关闭主窗口")}
+                StepTextButton(onRequestClose){Text("关闭主窗口")}
                 Text("本机计时与等待记录属于此设备；跨端同步完成历史，不接管其他设备正在运行的专注。",style=MaterialTheme.typography.bodySmall,color=StepMuted)
             }
         }
@@ -84,7 +84,7 @@ import java.nio.file.Path
     Field(draft.key,{draft.key=it},if(settings.hasKey)"替换密钥（留空保留同一服务密钥）"else"API 密钥",secret=true,enabled=!work.busy)
     Text("密钥与 AI 原始历史仅保留本机。更换服务或模型时，请重新填写密钥。",style=MaterialTheme.typography.bodySmall,color=StepMuted)
     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-        Button({val config=MobileAIConfig(draft.endpoint,draft.model);val secret=draft.key.takeIf {it.isNotEmpty()};work.run({draft.saved(config.validated())}){runtime.saveAI(config,secret)}},enabled=!work.busy&&draft.endpoint.isNotBlank()&&draft.model.isNotBlank()){Text("保存服务设置")}
-        if(settings.hasKey)TextButton({work.run({draft.key=""}){runtime.saveAI(settings.config,"")}},enabled=!work.busy){Text("移除密钥并停用 AI")}
+        StepButton({val config=MobileAIConfig(draft.endpoint,draft.model);val secret=draft.key.takeIf {it.isNotEmpty()};work.run({draft.saved(config.validated())}){runtime.saveAI(config,secret)}},enabled=!work.busy&&draft.endpoint.isNotBlank()&&draft.model.isNotBlank()){Text("保存服务设置")}
+        if(settings.hasKey)StepTextButton({work.run({draft.key=""}){runtime.saveAI(settings.config,"")}},enabled=!work.busy){Text("移除密钥并停用 AI")}
     }
 }

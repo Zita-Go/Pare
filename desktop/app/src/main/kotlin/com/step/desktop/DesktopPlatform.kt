@@ -37,11 +37,13 @@ internal class DesktopPlatform(private val home:Path,private val onCapture:()->U
     private val props=Properties().apply {if(Files.exists(file))Files.newInputStream(file).use {load(it)}}
     val shortcut=MutableStateFlow(props.getProperty("shortcut","Ctrl+Shift+Space"))
     val keepInTray=MutableStateFlow(props.getProperty("keepInTray","true").toBoolean())
+    val darkAppearance=MutableStateFlow(props.getProperty("darkAppearance","true").toBoolean())
     val status=MutableStateFlow<String?>(null)
     private val pending=ConcurrentLinkedQueue<String>()
     @Volatile private var running=true
     private val worker:Thread?
     init {
+        DesktopAppearance.dark.value=darkAppearance.value
         if(System.getProperty("os.name").startsWith("Windows",true)) {
             pending.add(shortcut.value)
             worker=Thread({loop()},"Step-global-shortcut").apply {isDaemon=true;start()}
@@ -52,8 +54,10 @@ internal class DesktopPlatform(private val home:Path,private val onCapture:()->U
         catch(e:Exception) {status.value=e.message}
     }
     fun changeTray(value:Boolean) {keepInTray.value=value;persist()}
+    fun changeAppearance(dark:Boolean) {darkAppearance.value=dark;DesktopAppearance.dark.value=dark;persist()}
     @Synchronized private fun persist() {
         props.setProperty("shortcut",shortcut.value);props.setProperty("keepInTray",keepInTray.value.toString())
+        props.setProperty("darkAppearance",darkAppearance.value.toString())
         val temp=home.resolve("window.properties.tmp")
         try {
             Files.newOutputStream(temp).use {props.store(it,"Step desktop preferences")}

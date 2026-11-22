@@ -27,14 +27,14 @@ class DesktopWorkflowUiTest {
             input("做到什么就可以停下来？").performTextReplacement("看到三个标题就停")
             onNodeWithText("保存下一步").performScrollTo().performClick()
             awaitSaved(runtime) {it.content().str("nextAction")=="列出三个示例章节标题"}
-            onNodeWithText("✓ 完成这一步").performScrollTo().performClick()
+            onNodeWithText("完成这一步").performScrollTo().performClick()
             awaitSaved(runtime) {it.content().array("completedSteps").size==1 && it.content().str("nextAction").isEmpty()}
 
             var task=runtime.engine.state.value.items.getValue("task:$TASK")
             assertFalse("Completing a step must leave its parent open",task.completed())
             assertEquals("列出三个示例章节标题",task.content().array("completedSteps").single().jsonObject.str("text"))
-            onNodeWithText("▸ 已完成的步骤 · 1").performScrollTo().performClick()
-            onNodeWithText("✓ 列出三个示例章节标题").performScrollTo().assertIsDisplayed()
+            onNodeWithText("已完成的步骤 · 1").performScrollTo().performClick()
+            onNodeWithText("列出三个示例章节标题").performScrollTo().assertIsDisplayed()
 
             input("下一步具体做什么？").performScrollTo().performTextReplacement("给第一个示例标题写一句摘要")
             input("做到什么就可以停下来？").performTextReplacement("完成一句摘要就停")
@@ -120,6 +120,27 @@ class DesktopWorkflowUiTest {
             onNodeWithTag("desktop_dialog").assertDoesNotExist()
             runOnIdle {assertFalse(DesktopDraftStatus.hasUnsavedEdits.value)}
             assertEquals("打开示例笔记",runtime.engine.state.value.items.getValue("task:$TASK").content().str("nextAction"))
+        } finally {runtime.close()}
+    }
+
+    @Test fun quickCaptureKeepsSaveVisibleWithLongDraftAndPersistenceError() = runDesktopComposeUiTest(width=460,height=400) {
+        val runtime=fixtureRuntime()
+        try {
+            setContent {QuickCaptureUi(runtime,{})}
+            val draft=(1..10).joinToString("\n") {"虚构的第${it}行待整理想法"}
+            input("此刻想到什么？").performTextReplacement(draft)
+            onNodeWithTag("quick_capture_save").assertIsDisplayed()
+            // Only this isolated fixture directory is obstructed; no real data is touched.
+            val backup=runtime.home.resolve("sync-state.json.bak")
+            Files.deleteIfExists(backup)
+            Files.createDirectory(backup)
+            Files.writeString(backup.resolve("fixture-blocker"),"fictional test obstruction")
+            onNodeWithTag("quick_capture_save").performClick()
+            waitUntil(timeoutMillis=5_000) {runtime.error.value!=null}
+            waitUntil(timeoutMillis=5_000) {onAllNodesWithTag("ui_saving").fetchSemanticsNodes().isEmpty()}
+            onNodeWithTag("quick_capture_save").assertIsDisplayed().assertIsEnabled()
+            assertEquals(draft,input("此刻想到什么？").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+            assertTrue(runtime.engine.state.value.items.values.none {it.kind=="inbox"&&!it.deleted})
         } finally {runtime.close()}
     }
 

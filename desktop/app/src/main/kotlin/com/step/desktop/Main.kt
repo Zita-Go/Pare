@@ -39,6 +39,7 @@ fun main(args:Array<String>) {
         var desktopOptions by remember {mutableStateOf(false)}
         var quitting by remember {mutableStateOf(false)}
         var confirmExit by remember {mutableStateOf(false)}
+        val darkAppearance by DesktopAppearance.dark.collectAsState()
         val notices=remember {mutableStateListOf<Pair<String,String>>()}
         var initializationError by remember {mutableStateOf<String?>(null)}
         val uiScope=rememberCoroutineScope()
@@ -77,6 +78,7 @@ fun main(args:Array<String>) {
         }
         Window(visible=visible,onCloseRequest=requestClose,title="Step",icon=painterResource("step.png"),state=rememberWindowState(width=1160.dp,height=780.dp)) {
             window.minimumSize=Dimension(960,680)
+            LaunchedEffect(window,darkAppearance,visible) {applyWindowsFrameAppearance(window,darkAppearance)}
             if(runtime!=null && initializationError==null)Box {
                 DesktopUi(runtime,{capture=true},requestClose,{desktopOptions=true})
                 notices.firstOrNull()?.let {notice -> DesktopTheme {
@@ -92,10 +94,11 @@ fun main(args:Array<String>) {
                 Text("Step 暂时无法打开资料",style=MaterialTheme.typography.headlineMedium)
                 Text(initializationError ?: "正在准备")
                 Text("原有文件不会被清空。若另一个 Step 正在运行，请使用已有窗口。")
-                Button(onClick={quit()}) {Text("关闭")}
+                Button(onClick={quit()},shape=MaterialTheme.shapes.small) {Text("关闭")}
             }}
         }
-        if(runtime!=null) Window(visible=capture,onCloseRequest={capture=false},title="Step · 随手记",alwaysOnTop=true,resizable=false,state=rememberWindowState(width=460.dp,height=350.dp)) {
+        if(runtime!=null) Window(visible=capture,onCloseRequest={capture=false},title="Step · 随手记",alwaysOnTop=true,resizable=false,state=rememberWindowState(width=460.dp,height=400.dp)) {
+            LaunchedEffect(window,darkAppearance,capture) {applyWindowsFrameAppearance(window,darkAppearance)}
             QuickCaptureUi(runtime,onClose={capture=false},visible=capture)
         }
         if(confirmExit) DialogWindow(onCloseRequest={confirmExit=false},title="退出 Step？",resizable=false,state=rememberDialogState(width=420.dp,height=220.dp)) {
@@ -103,18 +106,25 @@ fun main(args:Array<String>) {
                 Text("还有未保存的编辑",style=MaterialTheme.typography.titleLarge)
                 Text("退出会丢弃这些草稿。已保存的任务会保留，正在进行的专注会暂停。")
                 Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick={confirmExit=false;visible=true}) {Text("返回保存")}
-                    Button(onClick={confirmExit=false;finishQuit()}) {Text("放弃草稿并退出")}
+                    OutlinedButton(onClick={confirmExit=false;visible=true},shape=MaterialTheme.shapes.small) {Text("返回保存")}
+                    Button(onClick={confirmExit=false;finishQuit()},shape=MaterialTheme.shapes.small) {Text("放弃草稿并退出")}
                 }
             }}}
         }
-        if(desktopOptions && platform!=null) DialogWindow(onCloseRequest={desktopOptions=false},title="Step · 桌面选项",resizable=false,state=rememberDialogState(width=440.dp,height=350.dp)) {
+        if(desktopOptions && platform!=null) DialogWindow(onCloseRequest={desktopOptions=false},title="Step · 桌面选项",resizable=false,state=rememberDialogState(width=470.dp,height=460.dp)) {
+            LaunchedEffect(window,darkAppearance) {applyWindowsFrameAppearance(window,darkAppearance)}
             val current by platform.shortcut.collectAsState();val tray by platform.keepInTray.collectAsState();val status by platform.status.collectAsState()
             var value by remember(current) {mutableStateOf(current)}
             DesktopTheme {Surface {Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
-                Text("随手记快捷键",style=MaterialTheme.typography.titleLarge)
+                Text("外观与桌面",style=MaterialTheme.typography.titleLarge)
+                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Text("外观",style=MaterialTheme.typography.bodyMedium)
+                    FilterChip(darkAppearance,{platform.changeAppearance(true)},label={Text("深色")},shape=MaterialTheme.shapes.small)
+                    FilterChip(!darkAppearance,{platform.changeAppearance(false)},label={Text("浅色")},shape=MaterialTheme.shapes.small)
+                }
+                Text("随手记快捷键",style=MaterialTheme.typography.titleMedium)
                 OutlinedTextField(value,{value=it},label={Text("例如 Ctrl+Shift+Space")},singleLine=true,modifier=Modifier.fillMaxWidth())
-                Button(onClick={platform.changeShortcut(value)}) {Text("保存快捷键")}
+                Button(onClick={platform.changeShortcut(value)},shape=MaterialTheme.shapes.small) {Text("保存快捷键")}
                 Row {Checkbox(tray,{platform.changeTray(it)});Text("关闭主窗口后留在系统托盘")}
                 Text("Step 运行或在托盘驻留时才能同步和提醒；完全退出后不会发送提醒。",style=MaterialTheme.typography.bodySmall)
                 status?.let {Text(it,color=MaterialTheme.colorScheme.error)}

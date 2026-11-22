@@ -4,10 +4,14 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -61,7 +65,9 @@ internal class UiWork(private val scope:CoroutineScope, private val runtime:Desk
 }
 @Composable internal fun Field(value:String,onChange:(String)->Unit,label:String,modifier:Modifier=Modifier,lines:Int=1,secret:Boolean=false,enabled:Boolean=true) {
     OutlinedTextField(value,onChange,modifier.fillMaxWidth(),label={Text(label)},singleLine=lines==1,minLines=lines,maxLines=if(lines==1)1 else 8,
-        visualTransformation=if(secret) SecureVisualTransformation else VisualTransformation.None,enabled=enabled,shape=MaterialTheme.shapes.small)
+        visualTransformation=if(secret) SecureVisualTransformation else VisualTransformation.None,enabled=enabled,shape=MaterialTheme.shapes.small,
+        colors=OutlinedTextFieldDefaults.colors(unfocusedContainerColor=LocalStepPalette.current.field,focusedContainerColor=LocalStepPalette.current.field,
+            unfocusedBorderColor=MaterialTheme.colorScheme.outline.copy(alpha=.55f),focusedBorderColor=StepGold))
 }
 @Composable internal fun SectionLabel(title:String,caption:String?=null) {
     Column(verticalArrangement=Arrangement.spacedBy(3.dp)) {Text(title,style=MaterialTheme.typography.titleMedium);caption?.let {Text(it,style=MaterialTheme.typography.bodySmall,color=StepMuted)}}
@@ -73,17 +79,26 @@ internal class UiWork(private val scope:CoroutineScope, private val runtime:Desk
 }
 @Composable internal fun ChoiceRow(options:List<Pair<String,String>>, selected:String, enabled:Boolean=true, onChange:(String)->Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-        options.forEach {(key,label)->FilterChip(selected==key,{onChange(key)},label={Text(label)},enabled=enabled)}
+        options.forEach {(key,label)->FilterChip(selected==key,{onChange(key)},label={Text(label)},enabled=enabled,shape=MaterialTheme.shapes.small,
+            colors=FilterChipDefaults.filterChipColors(selectedContainerColor=LocalStepPalette.current.selection,selectedLabelColor=StepGold),
+            border=BorderStroke(1.dp,if(selected==key)StepGold.copy(alpha=.22f)else StepLine))}
     }
 }
-@Composable internal fun UiModal(title:String,onClose:()->Unit,work:UiWork?=null,width:Int=760,dirty:Boolean=false,content:@Composable ColumnScope.()->Unit) {
+@Composable internal fun UiModal(title:String,onClose:()->Unit,work:UiWork?=null,width:Int=760,dirty:Boolean=false,subtitle:String?=null,content:@Composable ColumnScope.()->Unit) {
     ReportUnsavedEdits(dirty)
     var confirmDiscard by remember {mutableStateOf(false)}
     val requestClose:()->Unit={if(work?.busy!=true){if(dirty)confirmDiscard=true else onClose()}}
     Dialog(onDismissRequest=requestClose,properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.width(width.dp).heightIn(max=680.dp).padding(16.dp).testTag("desktop_dialog"),shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.surface,shadowElevation=12.dp) {
             Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-                Row(verticalAlignment=Alignment.CenterVertically) {Text(title,style=MaterialTheme.typography.headlineMedium,modifier=Modifier.weight(1f));TextButton(requestClose,enabled=work?.busy!=true){Text("关闭")}}
+                Row(verticalAlignment=Alignment.Top,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                        if(subtitle!=null)Text(title,style=MaterialTheme.typography.labelLarge,color=StepGold)
+                        Text(subtitle?:title,style=MaterialTheme.typography.headlineMedium,maxLines=2,overflow=TextOverflow.Ellipsis)
+                    }
+                    StepTextButton(requestClose,enabled=work?.busy!=true){StepIcon(Icons.Outlined.Close);Spacer(Modifier.width(5.dp));Text("关闭")}
+                }
+                HorizontalDivider(color=StepLine)
                 Box(Modifier.weight(1f,false)) {
                     val scroll=rememberScrollState()
                     Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(end=12.dp),verticalArrangement=Arrangement.spacedBy(14.dp),content=content)
@@ -97,8 +112,8 @@ internal class UiWork(private val scope:CoroutineScope, private val runtime:Desk
         onDismissRequest={confirmDiscard=false},
         title={Text("放弃未保存的修改？")},
         text={Text("这份草稿还没有保存。继续编辑会保留当前输入，放弃后将关闭编辑器。")},
-        confirmButton={TextButton({confirmDiscard=false;onClose()}){Text("放弃修改")}},
-        dismissButton={TextButton({confirmDiscard=false}){Text("继续编辑")}}
+        confirmButton={StepTextButton({confirmDiscard=false;onClose()}){Text("放弃修改")}},
+        dismissButton={StepTextButton({confirmDiscard=false}){Text("继续编辑")}}
     )
 }
 internal fun checkedContentSave(state:SyncState,entity:Entity?,kind:String,id:String,title:String,note:String,quadrant:Int,expected:ContentEditBaseline):SyncState {
@@ -106,4 +121,23 @@ internal fun checkedContentSave(state:SyncState,entity:Entity?,kind:String,id:St
     require(current?.conflict==null && current?.conflictGroup.orEmpty().isEmpty()) {"请先处理同步冲突，草稿已保留"}
     val payload=ContentActions.save(current,kind,title,note,quadrant,id,Instant.now(),expected=expected)
     return StateMachine.edit(state,kind,id,payload)
+}
+
+@Composable internal fun StepIcon(icon:ImageVector,description:String?=null,color:Color=LocalContentColor.current) {
+    Icon(icon,description,Modifier.size(18.dp),tint=color)
+}
+@Composable internal fun IconLabel(icon:ImageVector,text:String) {
+    StepIcon(icon);Spacer(Modifier.width(7.dp));Text(text,maxLines=1)
+}
+@Composable internal fun StepButton(onClick:()->Unit,modifier:Modifier=Modifier,enabled:Boolean=true,contentPadding:PaddingValues=PaddingValues(horizontal=14.dp,vertical=9.dp),content:@Composable RowScope.()->Unit) {
+    androidx.compose.material3.Button(onClick,modifier,enabled,shape=MaterialTheme.shapes.small,contentPadding=contentPadding,content=content)
+}
+@Composable internal fun StepOutlinedButton(onClick:()->Unit,modifier:Modifier=Modifier,enabled:Boolean=true,contentPadding:PaddingValues=PaddingValues(horizontal=13.dp,vertical=9.dp),content:@Composable RowScope.()->Unit) {
+    androidx.compose.material3.OutlinedButton(onClick,modifier,enabled,shape=MaterialTheme.shapes.small,
+        colors=ButtonDefaults.outlinedButtonColors(containerColor=LocalStepPalette.current.raised,contentColor=MaterialTheme.colorScheme.onSurface),
+        border=BorderStroke(1.dp,StepLine),contentPadding=contentPadding,content=content)
+}
+@Composable internal fun StepTextButton(onClick:()->Unit,modifier:Modifier=Modifier,enabled:Boolean=true,contentPadding:PaddingValues=PaddingValues(horizontal=9.dp,vertical=7.dp),content:@Composable RowScope.()->Unit) {
+    androidx.compose.material3.TextButton(onClick,modifier,enabled,shape=MaterialTheme.shapes.small,
+        colors=ButtonDefaults.textButtonColors(contentColor=StepMuted),contentPadding=contentPadding,content=content)
 }
