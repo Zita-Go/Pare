@@ -240,7 +240,7 @@ function Focus-Step([long]$handle) {
     if (!(Wait-Until { [StepAcceptanceNative]::GetForegroundWindow().ToInt64() -eq $handle } 3)) {throw 'Step could not acquire the foreground; input was not sent.'}
 }
 function Open-Capture {
-    [StepAcceptanceNative]::Chord([ushort[]]@(0x11,0x10,0x20))
+    [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x10,0x20))
     if (!(Wait-Until { @(Get-StepWindows $uiProcess | Where-Object {$_.Title -like 'Step*随手记*'}).Count -gt 0 } 8)) {throw 'Ctrl+Shift+Space did not reveal the Step quick-capture window.'}
     return @(Get-StepWindows $uiProcess | Where-Object {$_.Title -like 'Step*随手记*'})[0]
 }
@@ -424,11 +424,11 @@ try {
             Result 'quick_capture_hotkey' $(if($capture.Foreground){'pass'}else{'fail'}) 'Sent native Ctrl+Shift+Space; checked quick-capture visibility and foreground without forcing focus.' $capture
             Focus-Step $capture.Handle
             [StepAcceptanceNative]::UnicodeText('虚构草稿：需要替换')
-            [StepAcceptanceNative]::Chord([ushort[]]@(0x11,0x41))
+            [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x41))
             $savedText='验收中文：整理想法，迈出最小一步。'
             [StepAcceptanceNative]::UnicodeText($savedText)
             try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$capture.Handle,(Join-Path $OutputDirectory 'step-chinese-text-native.png'))} catch {Result 'text_screenshot' 'unsupported' (Error-Detail $_)}
-            [StepAcceptanceNative]::Chord([ushort[]]@(0x11,0x0D))
+            [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
             $saved=Wait-Until { @(Get-Inbox | Where-Object {$_.payload.content.text -eq $savedText}).Count -eq 1 } 12
             Result 'unicode_edit_save' $(if($saved){'pass'}else{'fail'}) 'KEYEVENTF_UNICODE text, native Ctrl+A replacement and Ctrl+Enter save checked against isolated persisted inbox; this is NOT an IME test.' @{exactPersistedText=$saved}
             if ($pinyinAvailable) {
@@ -449,9 +449,9 @@ try {
                     [StepAcceptanceNative]::AsciiKeys('nihao')
                     Start-Sleep -Milliseconds 600
                     $candidate=[StepAcceptanceNative]::CandidateVisible()
-                    [StepAcceptanceNative]::Chord([ushort[]]@(0x20))
+                    [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x20))
                     Start-Sleep -Milliseconds 300
-                    [StepAcceptanceNative]::Chord([ushort[]]@(0x11,0x0D))
+                    [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
                     $converted=Wait-Until { @(Get-Inbox | Where-Object {$before -notcontains $_.id -and $_.payload.content.text -match '[\u4e00-\u9fff]'}).Count -gt 0 } 12
                     Result 'microsoft_pinyin' $(if($converted){'pass'}else{'fail'}) 'Real Microsoft Pinyin activated; only Latin virtual keys nihao and candidate commit were sent, then persisted Chinese was checked.' @{activationHresult=$activation;targetLanguageId=($targetLayout -band 0xffff);candidateWindowObserved=$candidate;chinesePersisted=$converted}
                     Result 'ime_candidate_layout' 'unsupported' 'Candidate-window observation alone cannot validate placement, clipping or all composition interactions.' @{candidateWindowObserved=$candidate}
@@ -478,9 +478,9 @@ try {
         if (!$toast.visibleTextObserved -and $interactive) {
             # Windows 11 uses Win+N; Windows 10/Server 2022 uses Win+A. Neither is evidence by itself.
             $centerKey=if([Environment]::OSVersion.Version.Build -ge 22000){0x4E}else{0x41}
-            [StepAcceptanceNative]::Chord([ushort[]]@(0x5B,$centerKey));Start-Sleep -Milliseconds 700
+            [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x5B,$centerKey));Start-Sleep -Milliseconds 700
             $toast=Get-ToastEvidence 'acceptanceprobe' $marker $true
-            [StepAcceptanceNative]::Chord([ushort[]]@(0x1B))
+            [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x1B))
         }
         Result 'notification_visible' $(if($toast.visibleTextObserved){'pass'}else{'unsupported'}) 'Pass requires the fictional title in a non-offscreen OS UI Automation element; API/history alone cannot pass.' $toast
         Stop-Step $uiProcess;$uiProcess=$null
