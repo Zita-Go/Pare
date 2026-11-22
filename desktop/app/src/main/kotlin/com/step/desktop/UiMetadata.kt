@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.pare.app.*
@@ -48,8 +50,18 @@ private val metadataFormat=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     if(calendar) {
         val initial=runCatching {LocalDateTime.parse(value,metadataFormat)}.getOrNull()
         val picker=rememberDatePickerState(initialSelectedDateMillis=(initial?.toLocalDate()?:LocalDate.now()).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+        val clipboard=LocalClipboard.current
         DatePickerDialog(onDismissRequest={calendar=false},confirmButton={StepButton({
             picker.selectedDateMillis?.let {millis->val date=Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate();onChange(date.atTime(initial?.toLocalTime()?:LocalTime.of(17,0)).format(metadataFormat))};calendar=false
-        }){Text("选择")}},dismissButton={StepTextButton({calendar=false}){Text("取消")}}){DatePicker(picker)}
+        }){Text("选择")}},dismissButton={StepTextButton({calendar=false}){Text("取消")}}){
+            CompositionLocalProvider(LocalClipboard provides clipboard) {
+                Box {
+                    DatePicker(picker)
+                    Box(Modifier.matchParentSize().padding(16.dp),contentAlignment=Alignment.BottomCenter) {
+                        DesktopClipboardFeedback()
+                    }
+                }
+            }
+        }
     }
 }

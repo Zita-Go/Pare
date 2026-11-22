@@ -132,14 +132,14 @@ fun main(args:Array<String>) {
             LaunchedEffect(window,darkAppearance,visible) {applyWindowsFrameAppearance(window,darkAppearance)}
             if(runtime!=null && initializationError==null)Box {
                 DesktopUi(runtime,{capture=true},requestClose,{desktopOptions=true},taskRequest,{runtime.requestedTask.value=null})
-                notices.firstOrNull()?.let {notice -> DesktopTheme {
+                notices.firstOrNull()?.let {notice -> DesktopTheme {Box(Modifier.fillMaxSize()) {
                     Surface(modifier=Modifier.align(Alignment.BottomEnd).padding(20.dp).widthIn(max=460.dp),shadowElevation=8.dp,shape=MaterialTheme.shapes.medium) {
                         Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Text(notice.first,style=MaterialTheme.typography.titleMedium);Text(notice.second)
                             TextButton(onClick={notices.removeAt(0)}) {Text(if(notices.size>1) "下一条（${notices.size-1}）" else "知道了")}
                         }
                     }
-                }}
+                }}}
             }
             else DesktopTheme {Column(Modifier.fillMaxSize().padding(40.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                 Text("Step 暂时无法打开资料",style=MaterialTheme.typography.headlineMedium)

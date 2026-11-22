@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.text
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -119,8 +120,13 @@ internal class UiWork(private val scope:CoroutineScope, private val runtime:Desk
     val availableHeight=nativeArea?.height?.dp?:with(density){ownerSize.height.toDp()}.coerceAtLeast(1.dp)
     val modalWidth=minOf(width.dp,availableWidth)
     val modalHeight=minOf(680.dp,availableHeight)
+    // Native Dialog scenes install their own platform locals. Re-provide the same protected
+    // clipboard inside that boundary instead of reverting to the raw AWT implementation.
+    val clipboard=LocalClipboard.current
     Dialog(onDismissRequest=requestClose,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalClipboard provides clipboard) {
         Surface(Modifier.width(modalWidth).heightIn(max=modalHeight).padding(16.dp).testTag("desktop_dialog").stepPanelSurface(radius=18.dp,elevation=8.dp),shape=MaterialTheme.shapes.large,color=Color.Transparent,contentColor=MaterialTheme.colorScheme.onSurface) {
+            Box {
             Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment=Alignment.Top,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -137,6 +143,13 @@ internal class UiWork(private val scope:CoroutineScope, private val runtime:Desk
                 }
                 if(work!=null) WorkFeedback(work)
             }
+            // A native modal covers its owner's feedback. Overlay it here without consuming
+            // body height or changing the dialog's existing scrolling/measurement behavior.
+            Box(Modifier.matchParentSize().padding(16.dp),contentAlignment=Alignment.BottomCenter) {
+                DesktopClipboardFeedback()
+            }
+            }
+        }
         }
     }
     if(confirmDiscard) AlertDialog(

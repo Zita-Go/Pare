@@ -78,7 +78,7 @@ internal val StepLine:Color @Composable get()=MaterialTheme.colorScheme.outlineV
                 labelSmall=TextStyle(fontFamily=StepFontFamily,fontSize=11.sp,fontWeight=FontWeight.Normal,lineHeight=16.sp)
             ),
             shapes=Shapes(extraSmall=RoundedCornerShape(8.dp),small=RoundedCornerShape(8.dp),medium=RoundedCornerShape(14.dp),large=RoundedCornerShape(18.dp),extraLarge=RoundedCornerShape(18.dp)),
-            content={CompositionLocalProvider(LocalContentColor provides scheme.onBackground,content=content)}
+            content={CompositionLocalProvider(LocalContentColor provides scheme.onBackground) {DesktopClipboardHost(content)}}
         )
     }
 }
