@@ -2,9 +2,9 @@ name: Windows desktop preview
 on:
   push:
     branches: [main, codex/windows-preview]
-    paths: ['desktop/**', 'android/app/src/**', '.github/workflows/windows-desktop.yml']
+    paths: ['desktop/**', 'android/app/src/**', '.github/workflows/windows-desktop.yml', '.github/scripts/windows-checks.ps1']
   pull_request:
-    paths: ['desktop/**', 'android/app/src/**', '.github/workflows/windows-desktop.yml']
+    paths: ['desktop/**', 'android/app/src/**', '.github/workflows/windows-desktop.yml', '.github/scripts/windows-checks.ps1']
   workflow_dispatch:
 concurrency:
   group: windows-${{ github.ref }}
@@ -39,7 +39,8 @@ jobs:
       - name: Test and build native Windows installers
         shell: pwsh
         run: .\android\gradlew.bat -p desktop --no-daemon :core:test :app:test :app:createDistributable :app:packageExe :app:packageMsi
-      - name: Verify installed executable with isolated data
+      - name: Build reviewed prior installer
+        timeout-minutes: 8
         shell: pwsh
         run: |
           $baseline = Join-Path $env:RUNNER_TEMP 'step-upgrade-baseline'
@@ -50,37 +51,55 @@ jobs:
           python "$baseline\desktop\configure.py" --required
           & "$baseline\android\gradlew.bat" -p "$baseline\desktop" --no-daemon :app:packageMsi
           if ($LASTEXITCODE -ne 0) { throw 'Could not build prior Windows preview' }
+      - name: Install prior version and create fictional data
+        timeout-minutes: 6
+        shell: pwsh
+        run: |
+          . .github/scripts/windows-checks.ps1
+          $baseline = Join-Path $env:RUNNER_TEMP 'step-upgrade-baseline'
           $oldMsi = Get-ChildItem "$baseline\desktop\app\build\compose\binaries\main\msi\*.msi" | Select-Object -First 1
-          $prior = Start-Process msiexec.exe -ArgumentList @('/i', $oldMsi.FullName, '/qn', '/norestart') -Wait -PassThru
-          if ($prior.ExitCode -notin @(0,3010)) { throw 'Prior version install failed' }
-          $oldExe = @("$env:LOCALAPPDATA\Step\Step.exe", "$env:LOCALAPPDATA\Programs\Step\Step.exe", "$env:ProgramFiles\Step\Step.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (!$oldExe) { throw 'Prior installed Step.exe not found' }
+          $code = Invoke-StepCheckProcess msiexec.exe @('/i', $oldMsi.FullName, '/qn', '/norestart', '/l*v', "$env:RUNNER_TEMP\step-prior-install.log") 'step-prior-install' 180
+          if ($code -notin @(0,3010)) { throw "Prior install failed: $code" }
           $upgradeData = Join-Path $env:RUNNER_TEMP 'step-upgrade-fixture'
-          $seed = Start-Process $oldExe -ArgumentList @('--self-test','--data-dir',"`"$upgradeData`"") -Wait -PassThru
-          if ($seed.ExitCode -ne 0) { throw 'Prior fixture creation failed' }
-          $before = Get-FileHash "$upgradeData\sync-state.json" -Algorithm SHA256
+          $code = Invoke-StepCheckProcess (Get-StepInstalledExecutable) @('--self-test','--data-dir',"`"$upgradeData`"") 'step-prior-fixture'
+          if ($code -ne 0) { throw "Prior fixture failed: $code" }
+          (Get-FileHash "$upgradeData\sync-state.json" -Algorithm SHA256).Hash | Set-Content "$env:RUNNER_TEMP\step-before-hash.txt"
+      - name: Upgrade and verify preserved data
+        timeout-minutes: 6
+        shell: pwsh
+        run: |
+          . .github/scripts/windows-checks.ps1
           $msi = Get-ChildItem desktop/app/build/compose/binaries/main/msi/*.msi | Select-Object -First 1
           if (!$msi) { throw 'MSI was not produced' }
-          $installation = Start-Process msiexec.exe -ArgumentList @('/i', $msi.FullName, '/qn', '/norestart', '/l*v', "$env:RUNNER_TEMP\step-install.log") -Wait -PassThru
-          if ($installation.ExitCode -notin @(0,3010)) { throw "Install failed: $($installation.ExitCode)" }
-          try {
-            $exe = @("$env:LOCALAPPDATA\Step\Step.exe", "$env:LOCALAPPDATA\Programs\Step\Step.exe", "$env:ProgramFiles\Step\Step.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
-            if (!$exe) { throw 'Installed Step.exe not found' }
-            $after = Get-FileHash "$upgradeData\sync-state.json" -Algorithm SHA256
-            if ($before.Hash -ne $after.Hash) { throw 'Installer changed existing user data' }
-            $upgrade = Start-Process $exe -ArgumentList @('--upgrade-self-test','--data-dir',"`"$upgradeData`"") -Wait -PassThru
-            if ($upgrade.ExitCode -ne 0 -or !(Test-Path "$upgradeData\upgrade-self-test.json")) { throw 'Upgrade preservation verification failed' }
-            Get-Content "$upgradeData\upgrade-self-test.json"
-            $data = Join-Path $env:RUNNER_TEMP 'step-packaged-smoke'
-            $smoke = Start-Process $exe -ArgumentList @('--self-test','--data-dir',"`"$data`"") -Wait -PassThru
-            if ($smoke.ExitCode -ne 0 -or !(Test-Path "$data\smoke-result.json")) { throw 'Installed executable smoke test failed' }
-            Get-Content "$data\smoke-result.json"
-            $systemData = Join-Path $env:RUNNER_TEMP 'step-system-fixture'
-            $system = Start-Process $exe -ArgumentList @('--system-self-test','--data-dir',"`"$systemData`"") -Wait -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\step-system-out.log" -RedirectStandardError "$env:RUNNER_TEMP\step-system-error.log"
-            Get-Content "$env:RUNNER_TEMP\step-system-error.log"
-            if ($system.ExitCode -ne 0 -or !(Test-Path "$systemData\system-self-test.json")) { throw 'Windows integration verification failed' }
-            Get-Content "$systemData\system-self-test.json"
-          } finally { Start-Process msiexec.exe -ArgumentList @('/x', $msi.FullName, '/qn', '/norestart') -Wait }
+          $code = Invoke-StepCheckProcess msiexec.exe @('/i', $msi.FullName, '/qn', '/norestart', '/l*v', "$env:RUNNER_TEMP\step-install.log") 'step-upgrade-install' 180
+          if ($code -notin @(0,3010)) { throw "Upgrade install failed: $code" }
+          $upgradeData = Join-Path $env:RUNNER_TEMP 'step-upgrade-fixture'
+          $before = (Get-Content "$env:RUNNER_TEMP\step-before-hash.txt").Trim()
+          if ($before -ne (Get-FileHash "$upgradeData\sync-state.json" -Algorithm SHA256).Hash) { throw 'Installer changed existing user data' }
+          $code = Invoke-StepCheckProcess (Get-StepInstalledExecutable) @('--upgrade-self-test','--data-dir',"`"$upgradeData`"") 'step-upgrade-fixture'
+          if ($code -ne 0 -or !(Test-Path "$upgradeData\upgrade-self-test.json")) { throw 'Upgrade preservation verification failed' }
+          Get-Content "$upgradeData\upgrade-self-test.json"
+      - name: Verify new install and native Windows registrations
+        timeout-minutes: 6
+        shell: pwsh
+        run: |
+          . .github/scripts/windows-checks.ps1
+          $data = Join-Path $env:RUNNER_TEMP 'step-packaged-smoke'
+          $code = Invoke-StepCheckProcess (Get-StepInstalledExecutable) @('--self-test','--data-dir',"`"$data`"") 'step-smoke'
+          if ($code -ne 0 -or !(Test-Path "$data\smoke-result.json")) { throw 'Installed executable smoke test failed' }
+          Get-Content "$data\smoke-result.json"
+          $systemData = Join-Path $env:RUNNER_TEMP 'step-system-fixture'
+          $code = Invoke-StepCheckProcess (Get-StepInstalledExecutable) @('--system-self-test','--data-dir',"`"$systemData`"") 'step-system' 180
+          if ($code -ne 0 -or !(Test-Path "$systemData\system-self-test.json")) { throw 'Windows integration verification failed' }
+          Get-Content "$systemData\system-self-test.json"
+      - name: Remove fixture installation
+        if: always()
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          . .github/scripts/windows-checks.ps1
+          $msi = Get-ChildItem desktop/app/build/compose/binaries/main/msi/*.msi -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($msi) { Invoke-StepCheckProcess msiexec.exe @('/x', $msi.FullName, '/qn', '/norestart') 'step-uninstall' 180 | Out-Null }
       - name: Prepare portable build and checksums
         shell: pwsh
         run: |
@@ -103,7 +122,7 @@ jobs:
             desktop/app/build/reports/tests/
             desktop/app/build/test-results/
             desktop/app/build/test-screenshots/
-            ${{ runner.temp }}/step-install.log
+            ${{ runner.temp }}/step-*.log
             ${{ runner.temp }}/step-packaged-smoke/smoke-result.json
             ${{ runner.temp }}/step-upgrade-fixture/upgrade-self-test.json
             ${{ runner.temp }}/step-system-fixture/system-self-test.json
