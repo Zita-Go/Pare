@@ -153,7 +153,7 @@ fun main(args:Array<String>) {
             }}
             }
         }
-        if(runtime!=null) Window(visible=capture,onCloseRequest={capture=false},title="Step · 随手记",alwaysOnTop=true,resizable=false,state=rememberFittedWindowState(460,400)) {
+        if(runtime!=null) Window(visible=capture,onCloseRequest={capture=false},title="Step · 随手记",icon=painterResource("step.png"),alwaysOnTop=true,resizable=false,state=rememberFittedWindowState(460,400)) {
             KeepWindowInWorkArea(window,340,260,capture)
             CompositionLocalProvider(LocalDesktopWindow provides window) {
             LaunchedEffect(window,darkAppearance,capture) {applyWindowsFrameAppearance(window,darkAppearance)}
@@ -167,7 +167,7 @@ fun main(args:Array<String>) {
             DesktopWidgetUi(runtime,{id->runtime.requestedTask.value=id;visible=true},{capture=true})
             }
         }
-        if(confirmExit) DialogWindow(onCloseRequest={confirmExit=false;runtime?.requestedInstaller?.value=null},title=if(installerRequest!=null)"安装更新前保存草稿"else"退出 Step？",resizable=false,state=rememberFittedDialogState(420,220)) {
+        if(confirmExit) DialogWindow(onCloseRequest={confirmExit=false;runtime?.requestedInstaller?.value=null},title=if(installerRequest!=null)"安装更新前保存草稿"else"退出 Step？",icon=painterResource("step.png"),resizable=false,state=rememberFittedDialogState(420,220)) {
             KeepWindowInWorkArea(window,420,220,true)
             DesktopTheme {Surface {Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
                 Text("还有未保存的编辑",style=MaterialTheme.typography.titleLarge)
@@ -178,7 +178,7 @@ fun main(args:Array<String>) {
                 }
             }}}
         }
-        if(desktopOptions && platform!=null) DialogWindow(onCloseRequest={desktopOptions=false},title="Step · 桌面选项",resizable=false,state=rememberFittedDialogState(470,570)) {
+        if(desktopOptions && platform!=null) DialogWindow(onCloseRequest={desktopOptions=false},title="Step · 桌面选项",icon=painterResource("step.png"),resizable=false,state=rememberFittedDialogState(470,570)) {
             KeepWindowInWorkArea(window,340,260,true)
             LaunchedEffect(window,darkAppearance) {applyWindowsFrameAppearance(window,darkAppearance)}
             val current by platform.shortcut.collectAsState();val tray by platform.keepInTray.collectAsState();val status by platform.status.collectAsState()
