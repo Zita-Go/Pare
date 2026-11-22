@@ -4,6 +4,8 @@ import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.*
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.pare.app.*
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
@@ -25,62 +27,81 @@ class DesktopVisualFixtureTest {
     @Test fun lightWideDemo() = renderDemo(dark=false,width=1280,height=900)
     @Test fun darkCompactDemo() = renderDemo(dark=true,width=960,height=760)
     @Test fun lightCompactDemo() = renderDemo(dark=false,width=960,height=760)
+    @Test fun darkWideHighDensityDemo() = renderDemo(dark=true,width=1280,height=900,renderDensity=2f)
+    @Test fun lightWideHighDensityDemo() = renderDemo(dark=false,width=1280,height=900,renderDensity=2f)
 
-    private fun renderDemo(dark:Boolean,width:Int,height:Int) = runDesktopComposeUiTest(width=width,height=height) {
-        val runtime=demoRuntime()
-        try {
-            DesktopAppearance.dark.value=dark
-            setContent {DesktopUi(runtime,{}, {}, {})}
-            waitForIdle()
+    private fun renderDemo(dark:Boolean,width:Int,height:Int,renderDensity:Float=1f) {
+        val sceneDensity=Density(renderDensity,fontScale=1f)
+        // Canvas dimensions are physical pixels; layout and typography still use logical dp/sp.
+        val test=DesktopComposeUiTest(
+            width=with(sceneDensity){width.dp.roundToPx()},
+            height=with(sceneDensity){height.dp.roundToPx()},
+            density=sceneDensity
+        )
+        test.runTest {
+            with(test) {
+                val runtime=demoRuntime()
+                try {
+                    DesktopAppearance.dark.value=dark
+                    setContent {DesktopUi(runtime,{}, {}, {})}
+                    waitForIdle()
 
-            // Three unfinished selections, one completion, a daily focus and two real time blocks.
-            val planId=ContentActions.planId(runtime.engine.state.value,Instant.now())
-            val day=TimelineDay.fromPlanId(planId)
-            val today=TodayOverviewProjection.project(runtime.engine.state.value,day)
-            assertEquals(3,(today.scheduled+today.unscheduled).distinctBy {it.task.id}.size)
-            assertEquals(1,today.completed.size)
-            assertEquals(2,TimelineProjection.project(runtime.engine.state.value,day).blocks.size)
-            assertTrue(planWin(runtime.engine.state.value,planId,REPORT))
-            onNodeWithTag("nav_今天").assertIsDisplayed()
-            // A container change must not turn the uncolored page title black on the dark surface.
-            val titlePixels=onNodeWithTag("workspace_title").captureToImage().toPixelMap()
-            val titleLuminance=(0 until titlePixels.height).flatMap {y->(0 until titlePixels.width).map {x->titlePixels[x,y].luminance()}}
-            assertTrue("Page title must remain readable in the selected appearance",
-                if(dark)titleLuminance.any {it>.45f}else titleLuminance.any {it<.20f})
-            onAllNodesWithText("完成报告提纲").onFirst().assertIsDisplayed()
-            capture(dark,width,height,"today","desktop_root",fullWindow=true)
+                    // Three unfinished selections, one completion, a daily focus and two real time blocks.
+                    val planId=ContentActions.planId(runtime.engine.state.value,Instant.now())
+                    val day=TimelineDay.fromPlanId(planId)
+                    val today=TodayOverviewProjection.project(runtime.engine.state.value,day)
+                    assertEquals(3,(today.scheduled+today.unscheduled).distinctBy {it.task.id}.size)
+                    assertEquals(1,today.completed.size)
+                    assertEquals(2,TimelineProjection.project(runtime.engine.state.value,day).blocks.size)
+                    assertTrue(planWin(runtime.engine.state.value,planId,REPORT))
+                    onNodeWithTag("nav_今天").assertIsDisplayed()
+                    // A container change must not turn the uncolored page title black on the dark surface.
+                    val titlePixels=onNodeWithTag("workspace_title").captureToImage().toPixelMap()
+                    val titleLuminance=(0 until titlePixels.height).flatMap {y->(0 until titlePixels.width).map {x->titlePixels[x,y].luminance()}}
+                    assertTrue("Page title must remain readable in the selected appearance",
+                        if(dark)titleLuminance.any {it>.45f}else titleLuminance.any {it<.20f})
+                    onAllNodesWithText("完成报告提纲").onFirst().assertIsDisplayed()
+                    capture(dark,width,height,"today","desktop_root",fullWindow=true)
 
-            onNodeWithTag("nav_四象限").performClick()
-            listOf(REPORT,TRIP,REPLY,BOOKMARKS).forEach {onNodeWithTag("task_$it").assertIsDisplayed()}
-            capture(dark,width,height,"quadrants","desktop_root",fullWindow=true)
+                    onNodeWithTag("nav_四象限").performClick()
+                    listOf(REPORT,TRIP,REPLY,BOOKMARKS).forEach {onNodeWithTag("task_$it").assertIsDisplayed()}
+                    capture(dark,width,height,"quadrants","desktop_root",fullWindow=true)
 
-            onNodeWithTag("task_$REPORT").performClick()
-            onNode(hasSetTextAction() and hasText("下一步具体做什么？"))
-                .assertTextContains("打开文档，先写三个小标题")
-            onNodeWithTag("step_history_toggle").performScrollTo().performClick()
-            assertDialogContext("完成报告提纲")
-            capture(dark,width,height,"task-detail","desktop_dialog")
-            onNodeWithText("关闭").performClick()
-            onNodeWithTag("desktop_dialog").assertDoesNotExist()
+                    onNodeWithTag("task_$REPORT").performClick()
+                    onNode(hasSetTextAction() and hasText("下一步具体做什么？"))
+                        .assertTextContains("打开文档，先写三个小标题")
+                    onNodeWithTag("step_history_toggle").performScrollTo().performClick()
+                    assertDialogContext("完成报告提纲")
+                    capture(dark,width,height,"task-detail","desktop_dialog")
+                    onNodeWithText("整理已有的报告素材").performScrollTo().assertIsDisplayed()
+                    // Bring the complete history record, including its date and undo affordance, into view.
+                    onNodeWithText("撤销最近这一步").performScrollTo().assertIsDisplayed()
+                    onNodeWithText("整理已有的报告素材").assertIsDisplayed()
+                    assertDialogContext("完成报告提纲")
+                    capture(dark,width,height,"task-history","desktop_dialog")
+                    onNodeWithText("关闭").performClick()
+                    onNodeWithTag("desktop_dialog").assertDoesNotExist()
 
-            onNodeWithTag("nav_想法").performClick()
-            onNodeWithTag("idea_$RESEARCH").assertIsDisplayed().performClick()
-            assertDialogContext("探索适合自己的研究流程")
-            onNode(hasSetTextAction() and hasText("下一次想弄清的问题"))
-                .assertTextContains("什么样的记录能帮助下一次开始？")
-            capture(dark,width,height,"idea-context","desktop_dialog")
+                    onNodeWithTag("nav_想法").performClick()
+                    onNodeWithTag("idea_$RESEARCH").assertIsDisplayed().performClick()
+                    assertDialogContext("探索适合自己的研究流程")
+                    onNode(hasSetTextAction() and hasText("下一次想弄清的问题"))
+                        .assertTextContains("什么样的记录能帮助下一次开始？")
+                    capture(dark,width,height,"idea-context","desktop_dialog")
 
-            onNodeWithText("探索记录").performClick()
-            onNodeWithText(FINDING).performScrollTo().assertIsDisplayed()
-            assertDialogContext("探索适合自己的研究流程")
-            capture(dark,width,height,"idea-exploration","desktop_dialog")
-            onNodeWithText("关联行动").performScrollTo().performClick()
-            onNodeWithText("完成报告提纲").assertIsDisplayed()
-            assertEquals(listOf(REPORT),runtime.engine.state.value.items.getValue("idea:$RESEARCH")
-                .content().array("linkedTaskIDs").map {it.jsonPrimitive.content})
-        } finally {
-            runtime.close()
-            DesktopAppearance.dark.value=true
+                    onNodeWithText("探索记录").performClick()
+                    onNodeWithText(FINDING).performScrollTo().assertIsDisplayed()
+                    assertDialogContext("探索适合自己的研究流程")
+                    capture(dark,width,height,"idea-exploration","desktop_dialog")
+                    onNodeWithText("关联行动").performScrollTo().performClick()
+                    onNodeWithText("完成报告提纲").assertIsDisplayed()
+                    assertEquals(listOf(REPORT),runtime.engine.state.value.items.getValue("idea:$RESEARCH")
+                        .content().array("linkedTaskIDs").map {it.jsonPrimitive.content})
+                } finally {
+                    runtime.close()
+                    DesktopAppearance.dark.value=true
+                }
+            }
         }
     }
 
@@ -93,25 +114,32 @@ class DesktopVisualFixtureTest {
             hasText(title,substring=true) and hasAnyAncestor(hasTestTag("desktop_dialog")),
             useUnmergedTree=true
         ).fetchSemanticsNodes()
+        val headerBandPixels=with(density){130.dp.toPx()}
         assertTrue("The task or idea name must remain in the fixed modal header",matching.any {
-            it.boundsInRoot.top >= bounds.top && it.boundsInRoot.top < bounds.top+130f && it.boundsInRoot.bottom<=bounds.bottom
+            it.boundsInRoot.top >= bounds.top && it.boundsInRoot.top < bounds.top+headerBandPixels && it.boundsInRoot.bottom<=bounds.bottom
         })
     }
 
     private fun DesktopComposeUiTest.capture(dark:Boolean,width:Int,height:Int,name:String,tag:String,fullWindow:Boolean=false) {
         waitForIdle()
         val bitmap=onNodeWithTag(tag).captureToImage()
+        val pixelWidth=with(density){width.dp.roundToPx()}
+        val pixelHeight=with(density){height.dp.roundToPx()}
         if(fullWindow) {
-            assertEquals("Desktop capture width",width,bitmap.width)
-            assertEquals("Desktop capture height",height,bitmap.height)
+            assertEquals("Desktop capture pixel width",pixelWidth,bitmap.width)
+            assertEquals("Desktop capture pixel height",pixelHeight,bitmap.height)
+            onNodeWithTag(tag).assertWidthIsEqualTo(width.dp).assertHeightIsEqualTo(height.dp)
         } else {
-            assertTrue("Modal must fit inside the rendering surface",bitmap.width in 600..width && bitmap.height in 350..height)
+            val minWidth=with(density){600.dp.roundToPx()}
+            val minHeight=with(density){350.dp.roundToPx()}
+            assertTrue("Modal must fit inside the rendering surface",bitmap.width in minWidth..pixelWidth && bitmap.height in minHeight..pixelHeight)
         }
         val output=Path.of("build","test-screenshots")
         Files.createDirectories(output)
         val host=System.getProperty("os.name").lowercase().replace(Regex("[^a-z0-9]+"),"-")
         val theme=if(dark)"dark"else"light"
-        val file=output.resolve("visual-$host-$theme-$width-$name.png")
+        val densitySuffix=if(density.density==1f)""else"-${density.density.toInt()}x"
+        val file=output.resolve("visual-$host-$theme-$width$densitySuffix-$name.png")
         assertTrue("PNG writer must produce the visual evidence",ImageIO.write(bitmap.toAwtImage(),"png",file.toFile()))
         assertTrue("Visual evidence must contain a non-empty rendered image",Files.size(file)>5_000)
     }
