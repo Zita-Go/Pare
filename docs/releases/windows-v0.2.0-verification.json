@@ -1,0 +1,50 @@
+{
+  "version": "0.2.0",
+  "source_commit": "d5d41435db4389ee7c310569209f785fe8d86d39",
+  "windows_run": "https://github.com/Zita-Go/Pare/actions/runs/45032978273",
+  "verification_artifact_sha256": "d6fcb8e6c2de2d0b114846b34a791102f0ef52ba97aad7f0f178422daf115b03",
+  "tests": {
+    "core": {
+      "tests": 295,
+      "failures": 0,
+      "ignored": 0
+    },
+    "desktop": {
+      "tests": 99,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "mac": 360,
+    "android": 389
+  },
+  "native_checks": {
+    "smoke-result": {
+      "version": "0.2.0",
+      "os": "Windows Server 2022",
+      "localSave": true,
+      "stepCompletion": true,
+      "skiaLoaded": true
+    },
+    "system-self-test": {
+      "registered": true,
+      "duplicateSafe": true,
+      "interactiveUser": true,
+      "cleaned": true
+    },
+    "upgrade-self-test": {
+      "version": "0.2.0",
+      "sameTask": true,
+      "sameStepHistory": true,
+      "executionEmpty": true,
+      "storeUnchanged": true
+    }
+  },
+  "screenshots": "Windows Server 2022, real Compose components, headless, fictional data, 1x/2x density",
+  "remaining_physical_checks": [
+    "Chinese IME",
+    "DPI/display changes",
+    "actual toast clicks and lock-screen delivery"
+  ],
+  "release_published": false
+}

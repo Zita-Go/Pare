@@ -130,7 +130,7 @@ import java.time.format.DateTimeFormatter
         if(scheduleBaseline.scheduledAt!=null) StepTextButton({val expected=scheduleBaseline;work.editSnapshot({snapshot->draft.acceptSchedule(TimelineScheduleBaseline.from(snapshot,planId,task.id))}){TimelineActions.clearSchedule(it,task.id,planId,expected)}},enabled=!work.busy){Text("移除时间块")}
     }
     HorizontalDivider()
-    SectionLabel("任务提醒","Windows 应用或托盘运行时提醒；完全退出后不会提醒。")
+    SectionLabel("任务提醒","运行或托盘驻留时提醒；退出后的系统提醒可在“设置 → Windows”中开启。")
     Field(reminder,{reminder=it},"提醒日期与时间 yyyy-MM-dd HH:mm（留空清除）",enabled=!work.busy)
     ChoiceRow(listOf("" to "不重复","daily" to "每天","weekly" to "每周","monthly" to "每月"),recurrence,!work.busy){recurrence=it}
     StepButton({val value=reminder;val cycle=recurrence;val expected=reminderBaseline;work.editSnapshot({snapshot->draft.acceptReminder(TaskReminderBaseline.from(snapshot.items.getValue(task.key)))}) {

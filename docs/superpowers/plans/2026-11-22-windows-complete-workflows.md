@@ -22,9 +22,9 @@
 - [x] Intelligence: local eligible hints/cooldown, preferences/background, feedback, local trace viewing/deletion, approved-context use; no automatic network.
 - [x] Backup import/recovery: bounded validated preview, stale preview protection, rollback snapshot, credentials excluded; malformed/conflict/duplicate/mutation tests.
 - [x] Presence: configure/publish/read existing protocol with opt-in, staleness and lifecycle shutdown; no remote execution commands.
-- [ ] Windows integration: self-start, actionable/system scheduled notifications, update checking/download verification/controlled installer, local attention signals, mini desktop window; adapter tests and native CI checks.
-- [ ] Integration: full core/app suites, Android regression if shared sources changed, Windows CI package/install/smoke and fictional dark/light/density screenshots; independent code audit and fix findings.
-- [ ] Delivery: feature/verification matrix, remaining physical-machine checks, clean commit/push; do not imply public release or automatic enablement.
+- [x] Windows integration: self-start, actionable/system scheduled notifications, update checking/download verification/controlled installer, local attention signals, mini desktop window; adapter tests and native CI checks.
+- [x] Integration: full core/app suites, Android regression if shared sources changed, Windows CI package/install/smoke and fictional dark/light/density screenshots; independent code audit and fix findings.
+- [x] Delivery: feature/verification matrix, remaining physical-machine checks, clean commit/push; do not imply public release or automatic enablement.
 
 ## Integration checkpoint
 
@@ -36,3 +36,10 @@
 - Windows0.2.0 CI now builds/installs prior0.1.0 fixture then upgrades and checks unchanged store/history; native system registration/cleanup smoke also added. No public release yet.
 
 - Pre-CI frozen tree: core295/app98, zero failures, one Windows-native test skipped onMac. Mac360/Android389 regressions passed. Follow-up audit cleared both restoration issues: conservative trash merge and prepared-only rollback publishing. Actual pointer tests, narrow/wide dark/light/density layouts and short-block titles passed. Windows0.2.0 packaging/upgrade/native-registration run next.
+
+- Backendv2 deployed as20261122123824; originalv1 rollback regression re-run successfully byroot after a hung tool call was interrupted. v2 rollback assertions passed; zero remaining fixture accounts, Advisor reviewed. Acceptance record in backend/supabase/docs/presence-v2-acceptance.md.
+- FirstWindows0.2 run45028021531 found WindowsPowerShell module autoload failure inherited through Java frompwsh7. Fixed child-only PSModulePath to trustedWindows5.1 builtin modules; added poisoned-parent-process regression.
+- Run45030161274 passed all unit tests, build,0.1→0.2 upgrade with unchangedstore/history and new-package smoke. Native-system cleanup failed because hidden TaskScheduler items were excluded byGetTasks(0); uncaught main error made jpackage show a blocking dialog. Corrected all enumerations toGetTasks(1), diagnostic CLI catches errors and exits with code1; workflow split with phase-specific deadlines/logs. Final native rerun pending.
+- Final Windows run45032978273 atd5d4143 succeeded in every step: tests, native installers, prior0.1 build/install/fixture, upgrade/store+step-history preservation, new executable smoke, native registration/duplicate-safe/cleanup and package/checksum uploads. PublicRelease remains uncreated. Verification/artifact links and physical-PC limits are in docs/releases/windows-v0.2.0.md; no personal store or credentials used.
+
+- Final verification archive downloaded with matching SHA256 d6fcb8e6c2de2d0b114846b34a791102f0ef52ba97aad7f0f178422daf115b03. XML/HTML counters confirmed core295/app99, zero failures and skips. All three nativecheck JSON receipts confirmed; selected final Windows PNGs copied unchanged. Installers remain in GitHub artifact14758742929; slow local336MB transfer was not completed and no local installer is claimed.
