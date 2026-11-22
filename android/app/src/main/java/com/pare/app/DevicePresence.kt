@@ -39,7 +39,7 @@ data class DevicePresenceRequest(
 ) {
     fun validate() {
         presenceUUID(deviceId)
-        require(sequence in 1..DEVICE_PRESENCE_MAX_SEQUENCE && label == "Android" && runs.size <= 32 && runs.map { it.runId }.distinct().size == runs.size && runs.map { it.taskId }.distinct().size == runs.size && runs.count { it.kind == "personal" } <= 1) { "跨端运行请求无效" }
+        require(sequence in 1..DEVICE_PRESENCE_MAX_SEQUENCE && label in setOf("Android","Windows") && runs.size <= 32 && runs.map { it.runId }.distinct().size == runs.size && runs.map { it.taskId }.distinct().size == runs.size && runs.count { it.kind == "personal" } <= 1) { "跨端运行请求无效" }
         runs.forEach(DevicePresenceRun::validate)
     }
 }
@@ -55,7 +55,7 @@ data class DevicePresenceDevice(
 ) {
     fun validate(serverNow: Instant) {
         presenceUUID(deviceId)
-        require(sequence in 1..DEVICE_PRESENCE_MAX_SEQUENCE && label in setOf("Mac", "Android") && runs.size <= 32 && runs.map { it.runId }.distinct().size == runs.size && runs.map { it.taskId }.distinct().size == runs.size && runs.count { it.kind == "personal" } <= 1) { "设备状态无效" }
+        require(sequence in 1..DEVICE_PRESENCE_MAX_SEQUENCE && label in setOf("Mac", "Android", "Windows") && runs.size <= 32 && runs.map { it.runId }.distinct().size == runs.size && runs.map { it.taskId }.distinct().size == runs.size && runs.count { it.kind == "personal" } <= 1) { "设备状态无效" }
         val seen = Instant.parse(lastSeen); val expiry = Instant.parse(expiresAt)
         require(!seen.isAfter(serverNow) && !seen.isBefore(serverNow.minusSeconds(86_400)) && expiry.isAfter(seen) && Duration.between(seen, expiry).toMillis() <= 90_000L) { "设备状态有效期无效" }
         runs.forEach(DevicePresenceRun::validate)

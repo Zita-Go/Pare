@@ -2,6 +2,14 @@ import XCTest
 @testable import PareCore
 
 final class ExecutionPresenceTests: XCTestCase {
+    func testWindowsPeerIsAcceptedWithoutAcceptingArbitraryDeviceNames() throws {
+        var reply = response()
+        reply.devices[0].label = "Windows"
+        XCTAssertNoThrow(try reply.validate())
+        XCTAssertNoThrow(try ExecutionPresenceRequest(deviceID: device, sequence: 1, label: "Windows", runs: []).data())
+        reply.devices[0].label = "Workstation title"
+        XCTAssertThrowsError(try reply.validate())
+    }
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let device = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
     private let task = UUID(uuidString: "22222222-2222-4222-8222-222222222222")!

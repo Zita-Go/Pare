@@ -31,7 +31,7 @@ final class ExecutionPresenceHTTPTests: XCTestCase {
     func testAuthenticatedRPCIsSeparateFromContentAndAcceptsServerAcknowledgement() async throws {
         let request=ExecutionPresenceRequest(deviceID: UUID(), sequence: 4, label: "Mac", runs: [])
         let client=try client { outgoing in
-            XCTAssertEqual(outgoing.url?.path, "/rest/v1/rpc/pare_presence_exchange")
+            XCTAssertEqual(outgoing.url?.path, "/rest/v1/rpc/pare_presence_exchange_v2")
             XCTAssertEqual(outgoing.value(forHTTPHeaderField: "Authorization"), "Bearer fictional-access")
             let body=try self.body(outgoing)
             XCTAssertEqual(Set(body.keys), Set(["p_device_id","p_sequence","p_label","p_runs"]))

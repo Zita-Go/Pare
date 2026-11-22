@@ -12,8 +12,10 @@ class DevicePresenceController(
     private val sequences: DevicePresenceSequenceStore,
     private val clock: ExecutionClock,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-    private val sharingAllowed: () -> Boolean = { true }
+    private val sharingAllowed: () -> Boolean = { true },
+    private val deviceLabel:String = "Android"
 ) {
+    constructor(engine:SyncEngine,sequences:DevicePresenceSequenceStore,clock:ExecutionClock,scope:CoroutineScope,sharingAllowed:()->Boolean):this(engine,sequences,clock,scope,sharingAllowed,"Android")
     private val pollLock = Mutex()
     private val guard = Any()
     private val generation = AtomicLong(0)
@@ -70,7 +72,7 @@ class DevicePresenceController(
             // A recovered server high-watermark may require one additional fresh sequence.
             repeat(2) {
                 check(canSend()) { "共享选择或账号已改变，未清空新状态" }
-                val request = DevicePresenceRequest(device, sequences.next(currentOwner, device))
+                val request = DevicePresenceRequest(device, sequences.next(currentOwner, device),label=deviceLabel)
                 val reply = engine.exchangePresence(request, currentOwner, ::canSend)
                 check(reply != null && canSend()) { "尚未确认清空运行报告" }
                 sequences.advance(currentOwner, device, reply.acceptedSequence)
@@ -133,7 +135,7 @@ class DevicePresenceController(
             }
             try {
                 execution.validate()
-                val request = DevicePresenceRequest(current.device, sequences.next(owner, current.device), runs = DevicePresenceProjection.runs(execution, moment))
+                val request = DevicePresenceRequest(current.device, sequences.next(owner, current.device),label=deviceLabel, runs = DevicePresenceProjection.runs(execution, moment))
                 // The sequence is on disk before the HTTP operation starts.
                 val reply = engine.exchangePresence(request, owner) { ticket == generation.get() && permitted(owner, current.device) }
                 if (ticket != generation.get() || !permitted(owner, current.device)) { refreshFreshness(); return }

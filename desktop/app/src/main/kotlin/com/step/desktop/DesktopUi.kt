@@ -21,6 +21,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -36,11 +39,12 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.pare.app.*
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.jsonPrimitive
 import java.time.*
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->Unit,onDesktopOptions:()->Unit={}) {
+fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->Unit,onDesktopOptions:()->Unit={},openTaskId:String?=null,onOpenTaskConsumed:()->Unit={}) {
     val state by runtime.engine.state.collectAsState()
     val initialized by runtime.engine.initialized.collectAsState()
     val syncStatus by runtime.engine.status.collectAsState()
@@ -48,6 +52,18 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     val work=rememberWork(runtime)
     var page by remember {mutableStateOf("今天")}
     var editor by remember {mutableStateOf<Pair<String,String?>?>(null)}
+    var pendingTaskOpen by remember {mutableStateOf<String?>(null)}
+    LaunchedEffect(openTaskId,initialized) {
+        if(openTaskId!=null&&initialized) {
+            val task=runtime.engine.state.value.items["task:$openTaskId"]
+            if(task!=null&&!task.deleted&&task.content()!=null) {
+                if(editor!=null&&editor!=("task" to openTaskId)&&DesktopDraftStatus.hasUnsavedEdits.value)pendingTaskOpen=openTaskId
+                else editor="task" to openTaskId
+            }
+            else runtime.error.value="这项任务已删除或不可用"
+            onOpenTaskConsumed()
+        }
+    }
     var settings by remember {mutableStateOf(false)}
     var ai by remember {mutableStateOf<AiTarget?>(null)}
     var picker by remember {mutableStateOf(false)}
@@ -57,6 +73,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     var date by remember(todayId) {mutableStateOf(LocalDate.parse(todayId.substringBefore('@')))}
     val planId="$date@${todayId.substringAfter('@')}"
     DesktopTheme {
+        QuickActionHost(runtime) {
         Surface(Modifier.fillMaxSize().stepWindowBackground().testTag("desktop_root"),color=Color.Transparent) {
             Row {
                 Column(Modifier.width(184.dp).fillMaxHeight().stepSidebarBackground().padding(12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
@@ -65,7 +82,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                         Text("Step",style=MaterialTheme.typography.headlineMedium,color=MaterialTheme.colorScheme.onSurface)
                     }
                     Text("让下一步变得清楚",style=MaterialTheme.typography.bodySmall,color=StepMuted,modifier=Modifier.padding(start=10.dp,bottom=24.dp))
-                    listOf("今天" to Icons.Outlined.CalendarToday,"四象限" to Icons.Outlined.Dashboard,"想法" to Icons.Outlined.Lightbulb,"目标" to Icons.Outlined.Flag).forEach {(name,symbol)->
+                    listOf("今天" to Icons.Outlined.CalendarToday,"四象限" to Icons.Outlined.Dashboard,"想法" to Icons.Outlined.Lightbulb,"目标" to Icons.Outlined.Flag,"资料库" to Icons.Outlined.LibraryBooks,"回顾" to Icons.Outlined.History).forEach {(name,symbol)->
                         Surface(onClick={page=name},modifier=Modifier.testTag("nav_$name").stepSelectionSurface(page==name),shape=MaterialTheme.shapes.small,color=Color.Transparent) {
                             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=11.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
                                 StepIcon(symbol,color=if(page==name)StepGold else StepMuted);Text(name,fontWeight=FontWeight.Medium,color=if(page==name)StepGold else StepMuted)
@@ -93,13 +110,16 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                     } else {
                         Column(Modifier.weight(1f).padding(horizontal=24.dp,vertical=22.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
                             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                                Column(Modifier.weight(1f)) {Text(page,style=MaterialTheme.typography.headlineLarge,modifier=Modifier.testTag("workspace_title"));Text(when(page){"今天"->"给有限的精力，留出明确的位置";"四象限"->"分清轻重，再决定今天要做什么";"想法"->"保留背景、发现与决定，让想法慢慢长大";"目标"->"记住方向，把它连接到具体行动";else->"先接住，再整理。每一条都可以成为行动或想法。"},color=StepMuted,style=MaterialTheme.typography.bodyMedium)}
+                                Column(Modifier.weight(1f)) {Text(page,style=MaterialTheme.typography.headlineLarge,modifier=Modifier.testTag("workspace_title"));Text(when(page){"今天"->"给有限的精力，留出明确的位置";"四象限"->"分清轻重，再决定今天要做什么";"想法"->"保留背景、发现与决定，让想法慢慢长大";"目标"->"记住方向，把它连接到具体行动";"资料库"->"找回任务、想法与留下的记录";"回顾"->"看看实际投入，让下一周更清楚";else->"先接住，再整理。每一条都可以成为行动或想法。"},color=StepMuted,style=MaterialTheme.typography.bodyMedium)}
                                 if(page=="今天") {StepOutlinedButton({picker=true}){Text("选择任务")};StepButton({ai=AiTarget(PlanningAIKind.DAY,null,planId)}){IconLabel(Icons.Outlined.AutoAwesome,"规划这一天")}}
-                                else StepButton({editor=(when(page){"想法"->"idea";"目标"->"goal";"收件箱"->"inbox";else->"task"}) to null}){IconLabel(Icons.Outlined.Add,"新建")}
+                                else if(page !in setOf("资料库","回顾")) StepButton({editor=(when(page){"想法"->"idea";"目标"->"goal";"收件箱"->"inbox";else->"task"}) to null}){IconLabel(Icons.Outlined.Add,"新建")}
                             }
+                            IntelligenceHintStrip(runtime){ai=it}
                             when(page) {
-                                "今天" -> TodayPane(state,planId,date,{date=it},{editor="task" to it},work,{ai=AiTarget(PlanningAIKind.DAY,null,planId)})
-                                "四象限" -> QuadrantPane(state,planId,work,{editor="task" to it},{editor="task" to null})
+                                "资料库" -> LibraryPane(runtime){kind,id->editor=kind to id}
+                                "回顾" -> ReviewPane(runtime){editor="task" to it}
+                                "今天" -> TodayPane(runtime,state,planId,date,{date=it},{editor="task" to it},work,{ai=AiTarget(PlanningAIKind.DAY,null,planId)})
+                                "四象限" -> QuadrantPane(runtime,state,planId,work,{editor="task" to it},{editor="task" to null})
                                 "想法","目标" -> CollectionPane(state,if(page=="想法")"idea" else "goal",{editor=it.kind to it.id})
                                 else -> InboxPane(state,work,{editor="inbox" to it},{ai=AiTarget(PlanningAIKind.INBOX,it,planId)})
                             }
@@ -121,6 +141,12 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                 else -> ContentEditor(runtime,"inbox",id,{editor=null})
             }
         }}
+        pendingTaskOpen?.let {requested->AlertDialog(
+            onDismissRequest={pendingTaskOpen=null},title={Text("先处理当前编辑？")},
+            text={Text("还有未保存的编辑。打开另一任务会关闭当前编辑器；你可以先保留草稿继续编辑。")},
+            confirmButton={StepTextButton({editor="task" to requested;pendingTaskOpen=null},Modifier.testTag("deep_link_discard")){Text("放弃当前草稿并打开")}},
+            dismissButton={StepTextButton({pendingTaskOpen=null},Modifier.testTag("deep_link_keep")){Text("保留当前编辑")}}
+        )}
         if(settings) SettingsUi(runtime,{settings=false},onRequestClose)
         ai?.let {AiUi(runtime,it,{ai=null})}
         if(picker) UiModal("选择这一天要推进的任务",{picker=false},work) {
@@ -134,14 +160,19 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
             }
             if(activeTasks(state).isEmpty()) EmptyState("还没有可选择的任务","到四象限新建任务，或把收件箱内容整理为行动。")
         }
+        }
     }
 }
 
-@Composable private fun ColumnScope.TodayPane(state:SyncState,planId:String,date:LocalDate,onDate:(LocalDate)->Unit,onTask:(String)->Unit,work:UiWork,onAI:()->Unit) {
+@Composable private fun ColumnScope.TodayPane(runtime:DesktopRuntime,state:SyncState,planId:String,date:LocalDate,onDate:(LocalDate)->Unit,onTask:(String)->Unit,work:UiWork,onAI:()->Unit) {
     val day=TimelineDay.fromPlanId(planId)
     val projection=TimelineProjection.project(state,day)
     val overview=TodayOverviewProjection.project(state,day)
-    val tasks=(overview.scheduled+overview.unscheduled+overview.completed).map {it.task}.distinctBy {it.id}
+    val projected=(overview.scheduled+overview.unscheduled+overview.completed).map {it.task}.associateBy {it.id}
+    val order=state.items["day_plan:$planId"]?.content().array("ordered_task_ids").map {it.jsonPrimitive.content}
+    val tasks=(order+projected.keys).distinct().mapNotNull {projected[it]}
+    var timeline by remember {mutableStateOf(false)}
+    val drag=remember(planId,work){UiTaskDrag(work,planId)}
     val focus=tasks.firstOrNull {planWin(state,planId,it.id)&&!it.completed()}
     val remaining=tasks.filterNot {it.id==focus?.id}
     val effort=TodayEffort.summary(state,day,overview)
@@ -155,10 +186,16 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
         Spacer(Modifier.weight(1f))
         Text("${tasks.count {!it.completed()}} 件待推进 · ${tasks.count {it.completed()}} 件已完成",style=MaterialTheme.typography.bodySmall,color=StepMuted)
     }
+    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        FilterChip(!timeline,{timeline=false;drag.cancel()},label={Text("紧凑清单")},modifier=Modifier.testTag("view_list"))
+        FilterChip(timeline,{timeline=true;drag.cancel()},label={Text("交互时间轴")},modifier=Modifier.testTag("view_timeline"))
+        DragFeedback(drag)
+    }
+    if(timeline) {Box(Modifier.weight(1f)){PlanningTimeline(runtime,planId,onTask,onDate)};return}
     Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
-        Box(Modifier.weight(1.16f).fillMaxHeight()) {
+        Box(Modifier.weight(1.16f).fillMaxHeight().onGloballyPositioned {drag.groups[0]=it.boundsInRoot();drag.scrollAreas[0]=it.boundsInRoot() to actionScroll}) {
             LazyColumn(state=actionScroll,modifier=Modifier.fillMaxSize().padding(end=10.dp),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(bottom=12.dp)) {
-                if(focus!=null)item {TaskRow(focus,state,planId,work,onTask,featured=true)}
+                if(focus!=null)item {TaskRow(focus,state,planId,work,onTask,featured=true,runtime=runtime)}
                 item {
                     StepCard(modifier=Modifier.fillMaxWidth()) {
                         Column {
@@ -170,7 +207,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                             if(tasks.isEmpty())EmptyState("今天，还留有空间","从四象限选出值得推进的事，再安排一个能够开始的小动作。")
                             remaining.forEachIndexed {index,task->
                                 key(task.id) {
-                                    TaskRow(task,state,planId,work,onTask)
+                                    TaskRow(task,state,planId,work,onTask,runtime=runtime,drag=drag)
                                     if(index<remaining.lastIndex)HorizontalDivider(Modifier.padding(start=56.dp,end=16.dp),color=StepLine)
                                 }
                             }
@@ -238,7 +275,9 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
         }
     }
 }
-@Composable private fun ColumnScope.QuadrantPane(state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,onNew:()->Unit) {
+@Composable private fun ColumnScope.QuadrantPane(runtime:DesktopRuntime,state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,onNew:()->Unit) {
+    val drag=remember(work){UiTaskDrag(work)}
+    DragFeedback(drag)
     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         repeat(2) {row-> Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
             repeat(2) {column->
@@ -246,7 +285,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                 val tasks=OrganizeActions.tasks(state,q)
                 val accent=LocalStepPalette.current.quadrants[q]
                 val scroll=rememberLazyListState()
-                StepCard(modifier=Modifier.weight(1f).fillMaxHeight(),accent=accent) {
+                StepCard(modifier=Modifier.weight(1f).fillMaxHeight().onGloballyPositioned {drag.groups[q]=it.boundsInRoot()}.then(if(drag.target()?.first==q)Modifier.border(1.dp,StepGold,MaterialTheme.shapes.medium)else Modifier),accent=accent) {
                     Column(Modifier.fillMaxSize()) {
                         Row(Modifier.padding(horizontal=18.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(6.dp).background(accent,CircleShape))
@@ -255,11 +294,11 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                             Text(tasks.size.toString(),color=StepMuted,style=MaterialTheme.typography.bodySmall)
                         }
                         HorizontalDivider(Modifier.padding(horizontal=16.dp),color=StepLine)
-                        Box(Modifier.weight(1f).fillMaxWidth().padding(start=4.dp,end=6.dp,bottom=6.dp)) {
+                        Box(Modifier.weight(1f).fillMaxWidth().padding(start=4.dp,end=6.dp,bottom=6.dp).onGloballyPositioned {drag.scrollAreas[q]=it.boundsInRoot() to scroll}) {
                             LazyColumn(state=scroll,modifier=Modifier.fillMaxSize().padding(end=8.dp),contentPadding=PaddingValues(vertical=4.dp)) {
                                 if(tasks.isEmpty())item {Text(listOf("优先处理真正有时限的事","给长期价值留出空间","考虑委托、简化或稍后处理","允许自己暂时放下")[q],color=StepMuted,style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(14.dp))}
                                 itemsIndexed(tasks,key={_,task->task.id}) {index,task->
-                                    TaskRow(task,state,planId,work,onTask)
+                                    TaskRow(task,state,planId,work,onTask,runtime=runtime,drag=drag)
                                     if(index<tasks.lastIndex)HorizontalDivider(Modifier.padding(start=52.dp,end=10.dp),color=StepLine)
                                 }
                             }
@@ -271,8 +310,13 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
         }}
     }
 }
-@Composable internal fun TaskRow(task:Entity,state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,featured:Boolean=false) {
+@Composable internal fun TaskRow(task:Entity,state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,featured:Boolean=false,runtime:DesktopRuntime?=null,drag:UiTaskDrag?=null) {
     val included=DayTaskSelection.contains(state,task.id,planId);val win=planWin(state,planId,task.id)
+    DisposableEffect(drag,task.id){onDispose {drag?.rows?.remove(task.id)}}
+    val insert=drag?.active?.id!=task.id&&drag?.target()?.second==task.id
+    val gold=StepGold
+    val rowModifier=Modifier.testTag("task_${task.id}").onGloballyPositioned {drag?.rows?.set(task.id,it.boundsInRoot())}
+        .drawWithContent {drawContent();if(insert)drawLine(gold,Offset.Zero,Offset(size.width,0f),strokeWidth=2.dp.toPx())}
     ContextMenuArea(items = {
         buildList {
             add(ContextMenuItem("打开 / 编辑") { onTask(task.id) })
@@ -300,6 +344,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                     Text("先推进这一件",style=MaterialTheme.typography.bodySmall,color=StepMuted)
                 }
                 Row(Modifier.fillMaxWidth().padding(start=4.dp,end=8.dp,top=if(featured)4.dp else 2.dp,bottom=if(featured)14.dp else 6.dp),verticalAlignment=Alignment.Top) {
+                    if(drag!=null&&!task.completed())TaskDragHandle(drag,state,task)
                     TaskCompletionControl(task.completed(),!work.busy,task.title()) {value->
                         work.complete(task.id,value)
                     }
@@ -314,6 +359,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                         val effort=TodayEffort.forTask(state,TimelineDay.fromPlanId(planId),task.id)
                         if(effort.minutes!=null)Text(effort.label,style=MaterialTheme.typography.bodySmall,color=StepGreen)
                         if(task.conflict!=null)Text("存在同步冲突 · 在设置中处理",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                        if(runtime!=null)QuickTaskActions(runtime,task,compact=true)
                     }
                     StepTextButton({work.edit {DayTaskActions.setWin(it,task.id,!win,planId,Instant.now())}},enabled=!work.busy && !task.completed(),contentPadding=PaddingValues(4.dp),modifier=Modifier.padding(top=4.dp).width(36.dp)){
                         StepIcon(if(win)Icons.Outlined.Star else Icons.Outlined.StarBorder,if(win)"取消当日重点"else"设为当日重点",if(win)StepGold else StepMuted)
@@ -321,8 +367,8 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                 }
             }
         }
-        if(featured)StepCard(modifier=Modifier.testTag("task_${task.id}"),emphasis=true,onClick={onTask(task.id)},content=rowContent)
-        else Surface(onClick={onTask(task.id)},modifier=Modifier.testTag("task_${task.id}"),color=Color.Transparent,shape=MaterialTheme.shapes.small,content=rowContent)
+        if(featured)StepCard(modifier=rowModifier,emphasis=true,onClick={onTask(task.id)},content=rowContent)
+        else Surface(onClick={onTask(task.id)},modifier=rowModifier,color=Color.Transparent,shape=MaterialTheme.shapes.small,content=rowContent)
     }
 }
 
@@ -392,6 +438,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
 }
 @Composable fun QuickCaptureUi(runtime:DesktopRuntime,onClose:()->Unit,visible:Boolean=true) {
     DesktopTheme {
+        QuickActionHost(runtime) {
         val work=rememberWork(runtime);var text by remember {mutableStateOf("")};var id by remember {mutableStateOf(uid())}
         ReportUnsavedEdits(text.isNotBlank())
         val focus=remember {FocusRequester()}
@@ -406,8 +453,10 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                 Field(text,{text=it},"此刻想到什么？",lines=3,enabled=!work.busy,inputModifier=Modifier.focusRequester(focus))
                 Text("Ctrl + Enter 保存",style=MaterialTheme.typography.bodySmall,color=StepMuted)
                 WorkFeedback(work)
+                CaptureTodayControls(runtime)
             }
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {StepTextButton(onClose,enabled=!work.busy){Text("取消")};StepButton(save,modifier=Modifier.testTag("quick_capture_save"),enabled=text.isNotBlank()&&!work.busy){Text("保存到收件箱")}}
         }}
+        }
     }
 }

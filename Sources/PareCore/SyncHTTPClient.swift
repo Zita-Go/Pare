@@ -167,7 +167,7 @@ public final class SyncHTTPClient: @unchecked Sendable {
 
     public func exchangePresence(_ request: ExecutionPresenceRequest, accessToken: String) async throws -> ExecutionPresenceResponse {
         let body = try request.data()
-        let data = try await send(path: "/rest/v1/rpc/pare_presence_exchange", body: body, accessToken: accessToken, maximumResponseBytes: 1_048_576)
+        let data = try await send(path: "/rest/v1/rpc/pare_presence_exchange_v2", body: body, accessToken: accessToken, maximumResponseBytes: 1_048_576)
         let response = try ExecutionPresenceResponse.decode(data)
         guard let accepted = response.acceptedSequence, accepted >= request.sequence,
               let own = response.devices.first(where: { $0.deviceID == request.deviceID }), own.sequence == accepted else {

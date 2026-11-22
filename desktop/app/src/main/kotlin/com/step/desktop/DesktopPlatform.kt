@@ -38,6 +38,8 @@ internal class DesktopPlatform(private val home:Path,private val onCapture:()->U
     val shortcut=MutableStateFlow(props.getProperty("shortcut","Ctrl+Shift+Space"))
     val keepInTray=MutableStateFlow(props.getProperty("keepInTray","true").toBoolean())
     val darkAppearance=MutableStateFlow(props.getProperty("darkAppearance","true").toBoolean())
+    val widgetVisible=MutableStateFlow(props.getProperty("widgetVisible","false").toBoolean())
+    val widgetPinned=MutableStateFlow(props.getProperty("widgetPinned","true").toBoolean())
     val status=MutableStateFlow<String?>(null)
     private val pending=ConcurrentLinkedQueue<String>()
     @Volatile private var running=true
@@ -55,9 +57,12 @@ internal class DesktopPlatform(private val home:Path,private val onCapture:()->U
     }
     fun changeTray(value:Boolean) {keepInTray.value=value;persist()}
     fun changeAppearance(dark:Boolean) {darkAppearance.value=dark;DesktopAppearance.dark.value=dark;persist()}
+    fun changeWidget(visible:Boolean) {widgetVisible.value=visible;persist()}
+    fun pinWidget(pinned:Boolean) {widgetPinned.value=pinned;persist()}
     @Synchronized private fun persist() {
         props.setProperty("shortcut",shortcut.value);props.setProperty("keepInTray",keepInTray.value.toString())
         props.setProperty("darkAppearance",darkAppearance.value.toString())
+        props.setProperty("widgetVisible",widgetVisible.value.toString());props.setProperty("widgetPinned",widgetPinned.value.toString())
         val temp=home.resolve("window.properties.tmp")
         try {
             Files.newOutputStream(temp).use {props.store(it,"Step desktop preferences")}

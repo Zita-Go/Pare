@@ -53,7 +53,9 @@ internal class DesktopSessionVault(home:Path,private val protector:DesktopSecret
     @Synchronized override fun close() {closed=true}
 }
 
-@Serializable internal data class DesktopAIData(val version:Int=1,val config:MobileAIConfig=MobileAIConfig(),val apiKey:String="",val history:List<MobileAITrace> = emptyList())
+@Serializable data class DesktopAIFeedback(val id:String,val requestId:String,val subjectId:String,val kind:String,val comment:String,val at:String)
+@Serializable data class DesktopAIContext(val background:String="",val feedback:List<DesktopAIFeedback> = emptyList())
+@Serializable internal data class DesktopAIData(val version:Int=1,val config:MobileAIConfig=MobileAIConfig(),val apiKey:String="",val history:List<MobileAITrace> = emptyList(),val context:DesktopAIContext=DesktopAIContext())
 internal class DesktopAIVault(home:Path,private val protector:DesktopSecretProtector) {
     private val file=DesktopAtomicFile(home.resolve("ai.dpapi"),600_000)
     @Synchronized fun load():DesktopAIData=file.read()?.let {
@@ -70,6 +72,22 @@ internal class DesktopAIVault(home:Path,private val protector:DesktopSecretProte
     @Synchronized fun append(trace:MobileAITrace):DesktopAIData {
         val current=load()
         return current.copy(history=MobileAIHistory.append(current.history,trace.redacted(current.apiKey))).also(::save)
+    }
+    @Synchronized fun mutate(purgeBackup:Boolean=false,change:(DesktopAIData)->DesktopAIData):DesktopAIData {
+        val next=change(load())
+        require(next.context.background.length<=8_000 && next.context.feedback.size<=100)
+        require(next.context.feedback.map {it.id}.distinct().size==next.context.feedback.size)
+        next.context.feedback.forEach {
+            require(it.id.length in 1..160 && it.requestId.length in 1..160 && it.subjectId.length<=160 && it.kind.length in 1..80 && it.comment.length<=2_000)
+            java.time.Instant.parse(it.at)
+        }
+        if(purgeBackup) {
+            val bytes=wire.encodeToString(next).toByteArray(Charsets.UTF_8)
+            require(bytes.size<=500_000)
+            file.write(protector.protect(bytes),retainBackup=false)
+            Files.deleteIfExists(file.backup)
+        } else save(next)
+        return next
     }
     private fun save(data:DesktopAIData) {
         val bytes=wire.encodeToString(data).toByteArray(Charsets.UTF_8)

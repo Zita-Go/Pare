@@ -63,6 +63,17 @@ class DesktopVisualFixtureTest {
                     onAllNodesWithText("完成报告提纲").onFirst().assertIsDisplayed()
                     capture(dark,width,height,"today","desktop_root",fullWindow=true)
 
+                    onNodeWithTag("view_timeline").performClick()
+                    onNodeWithTag("timeline_grid").assertExists()
+                    capture(dark,width,height,"timeline","desktop_root",fullWindow=true)
+                    onNodeWithTag("nav_资料库").performClick()
+                    onNodeWithTag("library_scope_COMPLETED").performClick()
+                    onNodeWithTag("library_$DONE").assertIsDisplayed()
+                    capture(dark,width,height,"library","desktop_root",fullWindow=true)
+                    onNodeWithTag("nav_回顾").performClick()
+                    onNodeWithTag("review_export").assertIsDisplayed()
+                    capture(dark,width,height,"review","desktop_root",fullWindow=true)
+
                     onNodeWithTag("nav_四象限").performClick()
                     listOf(REPORT,TRIP,REPLY,BOOKMARKS).forEach {onNodeWithTag("task_$it").assertIsDisplayed()}
                     capture(dark,width,height,"quadrants","desktop_root",fullWindow=true)

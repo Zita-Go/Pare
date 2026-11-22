@@ -55,7 +55,7 @@ class SupabaseApi(private val baseUrl:String,private val publicKey:String) {
     fun push(s:Session,request:Push):Reply = wire.decodeFromJsonElement(post("rest/v1/rpc/pare_sync_apply",wire.encodeToJsonElement(request).jsonObject,s.accessToken))
     fun presence(s:Session,request:DevicePresenceRequest):DevicePresenceReply {
         request.validate()
-        return wire.decodeFromJsonElement<DevicePresenceReply>(post("rest/v1/rpc/pare_presence_exchange",wire.encodeToJsonElement(request).jsonObject,s.accessToken)).also {it.validate(request)}
+        return wire.decodeFromJsonElement<DevicePresenceReply>(post("rest/v1/rpc/pare_presence_exchange_v2",wire.encodeToJsonElement(request).jsonObject,s.accessToken)).also {it.validate(request)}
     }
     fun logout(s:Session) {post("auth/v1/logout?scope=local",JsonObject(emptyMap()),s.accessToken)}
 }

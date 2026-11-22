@@ -96,6 +96,24 @@ class DesktopStore(home:Path):SyncStore,AutoCloseable {
         state.pending?.let {require(it.device==state.device && it.operation.isNotBlank() && it.mutations.isNotEmpty())}
     }
     private fun persist(state:SyncState)=file.write(wire.encodeToString(DesktopSnapshot(1,checksum(state),state)).toByteArray(Charsets.UTF_8))
+    @Synchronized internal fun saveRollback(expected:SyncState):Path {
+        check(read()==expected) {"本机内容已改变，请重新预览"}
+        val path=file.path.resolveSibling("sync-rollback-${uid()}.json")
+        DesktopAtomicFile(path).write(wire.encodeToString(DesktopSnapshot(1,checksum(expected),expected)).toByteArray(Charsets.UTF_8),retainBackup=false)
+        return path
+    }
+    @Synchronized internal fun recoverAutomaticBackup() {
+        check(!closed && !loaded) {"当前资料已正常读取；恢复自动备份仅用于无法打开的资料库"}
+        val bytes=DesktopAtomicFile(file.backup).read() ?: error("没有可恢复的自动备份")
+        val recovered=wire.decodeFromString<DesktopSnapshot>(bytes.toString(Charsets.UTF_8))
+        check(recovered.version==1 && recovered.checksum==checksum(recovered.state)) {"自动备份也未通过校验；所有原文件已保留"}
+        validate(recovered.state)
+        if(Files.exists(file.path)) {
+            val damaged=file.path.resolveSibling("sync-damaged-${uid()}.json")
+            Files.copy(file.path,damaged)
+        }
+        file.write(bytes,retainBackup=false)
+    }
     @Synchronized override fun close() {
         if(closed)return
         closed=true

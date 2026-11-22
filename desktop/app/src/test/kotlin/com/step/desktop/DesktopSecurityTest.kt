@@ -20,6 +20,34 @@ internal class TestProtector:DesktopSecretProtector {
 }
 
 class DesktopSecurityTest {
+    @Test fun clearingAIHistoryPreservesServiceAndRemovesRecoverableOldTraces()=kotlinx.coroutines.runBlocking {
+        val home=Files.createTempDirectory("step-history-delete");val protector=TestProtector()
+        val vault=DesktopAIVault(home,protector)
+        val config=MobileAIConfig("https://fixture.invalid/chat","model")
+        vault.update(config,"fictional-key")
+        vault.append(MobileAITrace("trace-one","task","2026-11-22T00:00:00Z","fictional private request","response",true))
+        DesktopRuntime(home,DesktopConfig(),{_,_->},protector,NoNetwork,FixtureClock(),MobileAIClient()).use {r->
+            r.initialize();r.clearAIHistory().getOrThrow()
+            assertTrue(r.aiHistory.value.isEmpty());assertTrue(r.aiSettings.value.hasKey)
+            assertEquals(config,r.aiSettings.value.config)
+        }
+        assertTrue(vault.load().history.isEmpty())
+        assertFalse(Files.exists(home.resolve("ai.dpapi.bak")))
+    }
+    @Test fun feedbackUpdatesOneRequestWithoutLosingOtherFeedback()=kotlinx.coroutines.runBlocking {
+        val home=Files.createTempDirectory("step-feedback-test")
+        DesktopRuntime(home,DesktopConfig(),{_,_->},TestProtector(),NoNetwork,FixtureClock(),MobileAIClient()).use {r->
+            r.initialize()
+            val a=DesktopAIFeedback("a","request-a","task","helpful","fictional","2026-11-22T00:00:00Z")
+            val b=DesktopAIFeedback("b","request-b","task","unhelpful","fictional","2026-11-22T00:00:00Z")
+            r.recordAIFeedback(a).getOrThrow();r.recordAIFeedback(b).getOrThrow()
+            r.recordAIFeedback(a.copy(kind="unhelpful")).getOrThrow()
+            assertEquals(2,r.aiContext.value.feedback.size)
+            assertEquals("unhelpful",r.aiContext.value.feedback.first {it.requestId=="request-a"}.kind)
+            r.deleteAIFeedback("a").getOrThrow()
+            assertEquals(listOf(b),r.aiContext.value.feedback)
+        }
+    }
     @Test fun closedRuntimeCannotClearCredentialsOwnedByReopenedInstance() {
         val home=Files.createTempDirectory("step-vault-lifetime-test");val protector=TestProtector()
         val old=DesktopSessionVault(home,protector)

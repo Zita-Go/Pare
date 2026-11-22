@@ -9,6 +9,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DevicePresenceTest {
+    @Test fun windowsReportsKeepTheirPlatformLabelAndAndroidDefaultRemainsUnchanged() {
+        val request=DevicePresenceRequest("70000000-0000-0000-0000-000000000002",1,label="Windows")
+        request.validate()
+        val now=Instant.parse("2026-11-22T00:00:00Z")
+        DevicePresenceReply(1,now.toString(),1,listOf(DevicePresenceDevice(request.deviceId,1,"Windows",now.toString(),now.plusSeconds(90).toString(),emptyList()))).validate(request)
+        assertEquals("Android",DevicePresenceRequest(request.deviceId,2).label)
+    }
     private val owner = "70000000-0000-0000-0000-000000000001"
     private val device = "70000000-0000-0000-0000-000000000002"
     private val peer = "70000000-0000-0000-0000-000000000003"

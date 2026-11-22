@@ -27,7 +27,7 @@ class DesktopWorkflowUiTest {
             input("做到什么就可以停下来？").performTextReplacement("看到三个标题就停")
             onNodeWithText("保存下一步").performScrollTo().performClick()
             awaitSaved(runtime) {it.content().str("nextAction")=="列出三个示例章节标题"}
-            onNodeWithText("完成这一步").performScrollTo().performClick()
+            onNode(hasText("完成这一步") and hasAnyAncestor(hasTestTag("desktop_dialog"))).performScrollTo().performClick()
             awaitSaved(runtime) {it.content().array("completedSteps").size==1 && it.content().str("nextAction").isEmpty()}
 
             var task=runtime.engine.state.value.items.getValue("task:$TASK")

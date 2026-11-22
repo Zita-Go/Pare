@@ -63,7 +63,7 @@ public struct ExecutionPresenceRequest: Encodable, Sendable {
     }
     public func data() throws -> Data {
         do {
-            guard (1...9_007_199_254_740_991).contains(sequence), ["Mac", "Android"].contains(label) else { throw SyncHTTPError.invalidRequest }
+            guard (1...9_007_199_254_740_991).contains(sequence), ["Mac", "Android", "Windows"].contains(label) else { throw SyncHTTPError.invalidRequest }
             try validatePresenceRuns(runs)
             let data=try SyncWire.encoder().encode(self)
             guard data.count <= 32_768 else { throw SyncHTTPError.invalidRequest }
@@ -86,7 +86,7 @@ public struct ExecutionPresenceResponse: Codable, Equatable, Sendable {
               acceptedSequence.map({ (1...9_007_199_254_740_991).contains($0) }) ?? true, serverNow.timeIntervalSince1970.isFinite,
               (0...253_402_300_799).contains(serverNow.timeIntervalSince1970) else { throw SyncHTTPError.invalidResponse }
         for device in devices {
-            guard (1...9_007_199_254_740_991).contains(device.sequence), ["Mac", "Android"].contains(device.label),
+            guard (1...9_007_199_254_740_991).contains(device.sequence), ["Mac", "Android", "Windows"].contains(device.label),
                   device.lastSeen <= serverNow, serverNow.timeIntervalSince(device.lastSeen) <= 86_400,
                   device.expiresAt > device.lastSeen, device.expiresAt.timeIntervalSince(device.lastSeen) <= 90 else { throw SyncHTTPError.invalidResponse }
             try validatePresenceRuns(device.runs)

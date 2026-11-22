@@ -35,12 +35,19 @@ import java.time.format.DateTimeFormatter
     var tab by remember {mutableStateOf("step")};val work=rememberWork(runtime)
     val stepDraft=remember(id){initial?.let {UiStepDraft(it)}}
     val scheduleDraft=remember(id,planId){initial?.let {UiScheduleDraft(state,it,planId)}}
-    UiModal(if(current==null)"新建行动"else"推进这件事",onClose,work,width=840,dirty=title!=baseline.text || note!=baseline.note || quadrant!=(baseline.quadrant.toString()) || stepDraft?.dirty==true || scheduleDraft?.dirty==true,subtitle=current?.title()) {
+    val metadataDraft=remember(id){initial?.let {UiMetadataDraft(it,PreferencesActions.planningZone(state))}}
+    var estimate by remember {mutableStateOf("")}
+    UiModal(if(current==null)"新建行动"else"推进这件事",onClose,work,width=840,dirty=title!=baseline.text || note!=baseline.note || quadrant!=(baseline.quadrant.toString()) || stepDraft?.dirty==true || scheduleDraft?.dirty==true || metadataDraft?.dirty==true || (initial==null&&estimate.isNotBlank()),subtitle=current?.title()) {
         if(current==null) {
             Field(title,{title=it},"任务名称",enabled=!work.busy)
             ChoiceRow(quadrantNames.mapIndexed {i,s->i.toString() to s},quadrant,!work.busy){quadrant=it}
+            Field(estimate,{estimate=it},"任务总预估（分钟，可留空）",enabled=!work.busy)
             Field(note,{note=it},"背景与备注",lines=3,enabled=!work.busy)
-            StepButton({val t=title;val n=note;val q=quadrant.toInt();work.edit(onClose){checkedContentSave(it,initial,"task",id,t,n,q,baseline)}},enabled=title.isNotBlank()&&!work.busy){Text("创建行动")}
+            StepButton({val t=title;val n=note;val q=quadrant.toInt();val e=estimate;work.edit(onClose){state->
+                val created=checkedContentSave(state,initial,"task",id,t,n,q,baseline)
+                val minutes=e.trim().takeIf {it.isNotEmpty()}?.let {it.toIntOrNull()?:error("请输入整数分钟")}
+                DesktopTaskMetadata.save(created,id,DesktopMetadataBaseline.from(created.items.getValue("task:$id")),minutes,null,null,Instant.now())
+            }},enabled=title.isNotBlank()&&!work.busy){Text("创建行动")}
         } else {
             ChoiceRow(listOf("step" to "最小下一步","detail" to "任务详情","schedule" to "安排与提醒","focus" to "专注 / 等待"),tab,!work.busy){tab=it}
             when(tab) {
@@ -50,6 +57,8 @@ import java.time.format.DateTimeFormatter
                     ChoiceRow(quadrantNames.mapIndexed {i,s->i.toString() to s},quadrant,!work.busy){quadrant=it}
                     Field(note,{note=it},"背景与备注",lines=4,enabled=!work.busy)
                     StepButton({val t=title;val n=note;val q=quadrant.toInt();work.editSnapshot({snapshot->val saved=snapshot.items.getValue("task:$id");baseline=ContentEditBaseline.from(saved);stepDraft?.let {it.baseline.value=it.baseline.value.copy(title=saved.title())}} ){checkedContentSave(it,initial,"task",id,t,n,q,baseline)}},enabled=title.isNotBlank()&&!work.busy){Text("保存任务详情")}
+                    HorizontalDivider()
+                    TaskMetadataPanel(runtime,current,requireNotNull(metadataDraft),work){saved->baseline=baseline.copy(estimatedMinutes=ContentEditBaseline.from(saved).estimatedMinutes)}
                     HorizontalDivider()
                     val included=DayTaskSelection.contains(state,id,planId);val win=planWin(state,planId,id)
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
