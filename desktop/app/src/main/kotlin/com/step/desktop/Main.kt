@@ -1,6 +1,8 @@
 package com.step.desktop
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -124,8 +126,9 @@ fun main(args:Array<String>) {
             }
             onDispose {icon?.let {runCatching {SystemTray.getSystemTray().remove(it)}}}
         }
-        Window(visible=visible,onCloseRequest=requestClose,title="Step",icon=painterResource("step.png"),state=rememberWindowState(width=1160.dp,height=780.dp)) {
-            window.minimumSize=Dimension(960,680)
+        Window(visible=visible,onCloseRequest=requestClose,title="Step",icon=painterResource("step.png"),state=rememberFittedWindowState(1160,780)) {
+            KeepWindowInWorkArea(window,960,680,visible)
+            CompositionLocalProvider(LocalDesktopWindow provides window) {
             LaunchedEffect(window,darkAppearance,visible) {applyWindowsFrameAppearance(window,darkAppearance)}
             if(runtime!=null && initializationError==null)Box {
                 DesktopUi(runtime,{capture=true},requestClose,{desktopOptions=true},taskRequest,{runtime.requestedTask.value=null})
@@ -148,17 +151,24 @@ fun main(args:Array<String>) {
                 }},shape=MaterialTheme.shapes.small) {Text("保留坏文件并恢复上一份自动备份")}
                 Button(onClick={quit()},shape=MaterialTheme.shapes.small) {Text("关闭")}
             }}
+            }
         }
-        if(runtime!=null) Window(visible=capture,onCloseRequest={capture=false},title="Step · 随手记",alwaysOnTop=true,resizable=false,state=rememberWindowState(width=460.dp,height=400.dp)) {
+        if(runtime!=null) Window(visible=capture,onCloseRequest={capture=false},title="Step · 随手记",alwaysOnTop=true,resizable=false,state=rememberFittedWindowState(460,400)) {
+            KeepWindowInWorkArea(window,340,260,capture)
+            CompositionLocalProvider(LocalDesktopWindow provides window) {
             LaunchedEffect(window,darkAppearance,capture) {applyWindowsFrameAppearance(window,darkAppearance)}
             QuickCaptureUi(runtime,onClose={capture=false},visible=capture)
+            }
         }
-        if(runtime!=null && platform!=null)Window(visible=widgetVisible,onCloseRequest={platform.changeWidget(false)},title="Step · 桌面小窗",alwaysOnTop=widgetPinned,state=rememberWindowState(width=390.dp,height=560.dp),icon=painterResource("step.png")) {
-            window.minimumSize=Dimension(340,420)
+        if(runtime!=null && platform!=null)Window(visible=widgetVisible,onCloseRequest={platform.changeWidget(false)},title="Step · 桌面小窗",alwaysOnTop=widgetPinned,state=rememberFittedWindowState(390,560),icon=painterResource("step.png")) {
+            KeepWindowInWorkArea(window,340,420,widgetVisible)
+            CompositionLocalProvider(LocalDesktopWindow provides window) {
             LaunchedEffect(window,darkAppearance) {applyWindowsFrameAppearance(window,darkAppearance)}
             DesktopWidgetUi(runtime,{id->runtime.requestedTask.value=id;visible=true},{capture=true})
+            }
         }
-        if(confirmExit) DialogWindow(onCloseRequest={confirmExit=false;runtime?.requestedInstaller?.value=null},title=if(installerRequest!=null)"安装更新前保存草稿"else"退出 Step？",resizable=false,state=rememberDialogState(width=420.dp,height=220.dp)) {
+        if(confirmExit) DialogWindow(onCloseRequest={confirmExit=false;runtime?.requestedInstaller?.value=null},title=if(installerRequest!=null)"安装更新前保存草稿"else"退出 Step？",resizable=false,state=rememberFittedDialogState(420,220)) {
+            KeepWindowInWorkArea(window,420,220,true)
             DesktopTheme {Surface {Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
                 Text("还有未保存的编辑",style=MaterialTheme.typography.titleLarge)
                 Text("退出会丢弃这些草稿。已保存的任务会保留，正在进行的专注会暂停。")
@@ -168,11 +178,12 @@ fun main(args:Array<String>) {
                 }
             }}}
         }
-        if(desktopOptions && platform!=null) DialogWindow(onCloseRequest={desktopOptions=false},title="Step · 桌面选项",resizable=false,state=rememberDialogState(width=470.dp,height=570.dp)) {
+        if(desktopOptions && platform!=null) DialogWindow(onCloseRequest={desktopOptions=false},title="Step · 桌面选项",resizable=false,state=rememberFittedDialogState(470,570)) {
+            KeepWindowInWorkArea(window,340,260,true)
             LaunchedEffect(window,darkAppearance) {applyWindowsFrameAppearance(window,darkAppearance)}
             val current by platform.shortcut.collectAsState();val tray by platform.keepInTray.collectAsState();val status by platform.status.collectAsState()
             var value by remember(current) {mutableStateOf(current)}
-            DesktopTheme {Surface {Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
+            DesktopTheme {Surface {Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
                 Text("外观与桌面",style=MaterialTheme.typography.titleLarge)
                 Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     Text("外观",style=MaterialTheme.typography.bodyMedium)
@@ -193,6 +204,9 @@ fun main(args:Array<String>) {
 }
 private fun selfTest(path:Path)=runBlocking {
     require(!Files.exists(path) || Files.list(path).use { !it.findAny().isPresent }) {"Self test requires a fresh isolated directory"}
+    val chineseDate=java.time.LocalDate.of(2026,11,22).format(
+        java.time.format.DateTimeFormatter.ofPattern("M月d日 · EEEE",java.util.Locale.CHINESE))
+    check(chineseDate=="11月22日 · 星期日") {"Packaged runtime must include Chinese weekday data: $chineseDate"}
     val runtime=DesktopRuntime(path,DesktopConfig())
     try {
         runtime.initialize()
@@ -205,7 +219,7 @@ private fun selfTest(path:Path)=runBlocking {
         check(!runtime.engine.state.value.items.getValue("task:$taskId").completed())
         val surface=org.jetbrains.skia.Surface.makeRasterN32Premul(32,32)
         surface.canvas.clear(0xff1c5e49.toInt());surface.close()
-        Files.writeString(path.resolve("smoke-result.json"),"""{"version":"${DesktopUpdates.CURRENT_VERSION}","os":"${System.getProperty("os.name")}","localSave":true,"stepCompletion":true,"skiaLoaded":true}""")
+        Files.writeString(path.resolve("smoke-result.json"),"""{"version":"${DesktopUpdates.CURRENT_VERSION}","os":"${System.getProperty("os.name")}","localSave":true,"stepCompletion":true,"skiaLoaded":true,"chineseWeekday":true,"chineseDate":"$chineseDate"}""")
     } finally {runtime.close()}
 }
 private fun upgradeSelfTest(path:Path)=runBlocking {

@@ -18,6 +18,8 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -108,8 +110,17 @@ internal class UiWork(private val scope:CoroutineScope, private val runtime:Desk
     ReportUnsavedEdits(dirty)
     var confirmDiscard by remember {mutableStateOf(false)}
     val requestClose:()->Unit={if(work?.busy!=true){if(dirty)confirmDiscard=true else onClose()}}
+    // Read before entering Dialog. Native dialogs can exceed a small widget/capture owner;
+    // constrain them to that monitor's work area. Headless scenes have no AWT window.
+    val nativeArea=rememberNativeWindowWorkArea(LocalDesktopWindow.current)
+    val ownerSize=LocalWindowInfo.current.containerSize
+    val density=LocalDensity.current
+    val availableWidth=nativeArea?.width?.dp?:with(density){ownerSize.width.toDp()}.coerceAtLeast(1.dp)
+    val availableHeight=nativeArea?.height?.dp?:with(density){ownerSize.height.toDp()}.coerceAtLeast(1.dp)
+    val modalWidth=minOf(width.dp,availableWidth)
+    val modalHeight=minOf(680.dp,availableHeight)
     Dialog(onDismissRequest=requestClose,properties=DialogProperties(usePlatformDefaultWidth=false)) {
-        Surface(Modifier.width(width.dp).heightIn(max=680.dp).padding(16.dp).testTag("desktop_dialog").stepPanelSurface(radius=18.dp,elevation=8.dp),shape=MaterialTheme.shapes.large,color=Color.Transparent,contentColor=MaterialTheme.colorScheme.onSurface) {
+        Surface(Modifier.width(modalWidth).heightIn(max=modalHeight).padding(16.dp).testTag("desktop_dialog").stepPanelSurface(radius=18.dp,elevation=8.dp),shape=MaterialTheme.shapes.large,color=Color.Transparent,contentColor=MaterialTheme.colorScheme.onSurface) {
             Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment=Alignment.Top,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
