@@ -11,10 +11,10 @@
   &nbsp; · &nbsp;
   <a href="https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-0.15.0-android-debug.apk"><strong>下载安卓版</strong></a>
   &nbsp; · &nbsp;
-  <a href="https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1"><strong>Windows 预览版</strong></a>
+  <a href="https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1"><strong>Windows 版</strong></a>
 </p>
 <p align="center">Apple Silicon Mac · macOS 13+ &nbsp; | &nbsp; Android 8.0+ &nbsp; | &nbsp; Windows 10/11 x64</p>
-<p align="center"><sub>当前预发布：Mac 2.16.0 / Android 0.15.0 · <a href="https://github.com/Zita-Go/Pare/releases/tag/v2.16.0">版本说明</a></sub></p>
+<p align="center"><sub>当前版本：Mac 2.16.0 / Android 0.15.0 / Windows 0.2.1 · <a href="https://github.com/Zita-Go/Pare/releases/tag/v2.16.0">版本说明</a></sub></p>
 <p align="center"><a href="#开始使用">开始使用</a> · <a href="#一步一步推进">功能介绍</a> · <a href="#换设备继续用">跨设备同步</a> · <a href="#数据存在哪里">数据与隐私</a></p>
 
 Step 是一个帮助你整理想法、规划行动的工具。事情太多时，用四象限做取舍；任务太大时，先找到一个能开始的动作；想法还不成熟时，留着慢慢探索。
@@ -32,7 +32,7 @@ Step 是一个帮助你整理想法、规划行动的工具。事情太多时，
 | --- | --- |
 | **Mac** | 下载并解压，将 `Step.app` 拖入「应用程序」。启动后点屏幕顶部的 Step 图标，或按 **⌥Space** 打开随手记，再点「整理」。 |
 | **Android** | 将下载的 APK 安装到手机，打开 Step。在「整理」中点「随手记」收集想法，或在「今天」直接添加任务。 |
-| **Windows 预览版** | 安装发布页中的 `Step-0.2.1.exe`，打开 Step。按 **Ctrl+Shift+Space** 随手记下事情，在四象限整理，再加入今天。适用于 Intel、AMD 的 x64 电脑。 |
+| **Windows 版** | 安装发布页中的 `Step-0.2.1.exe`，打开 Step。按 **Ctrl+Shift+Space** 随手记下事情，在四象限整理，再加入今天。适用于 Intel、AMD 的 x64 电脑。 |
 
 > 更新前请备份，保存输入并退出旧版。[安装注意事项](#安装与提醒常见问题)
 
@@ -73,7 +73,7 @@ Step 会保留每一步的内容、完成时间和完成标准。完成一步后
 
 ## 换设备继续用
 
-想在 Mac、Android 和 Windows 预览版之间接着用时，登录同一个 **Step 同步账号**：
+想在 Mac、Android 和 Windows 版之间接着用时，登录同一个 **Step 同步账号**：
 
 | Mac | Android | Windows |
 | --- | --- | --- |
@@ -103,7 +103,7 @@ AI 是可选的。配置自己的模型服务后，可以让它帮你找下一�
 
 AI 密钥、AI 原始请求历史、快捷键和设备设置留在各自设备。跨设备运行状态共享需要另行开启，只提供状态参考，不能远程控制计时。
 
-同步使用加密连接和账号隔离，**不是端到端加密**。重要内容请保留备份；同步服务目前供预发布体验使用。[查看同步范围与备份方法](docs/guide.md#同步与数据保存)
+同步使用加密连接和账号隔离，**不是端到端加密**。重要内容请保留备份；同步服务目前供体验使用。[查看同步范围与备份方法](docs/guide.md#同步与数据保存)
 
 ## 安装与提醒常见问题
 
@@ -124,7 +124,7 @@ AI 密钥、AI 原始请求历史、快捷键和设备设置留在各自设备�
 <details>
 <summary><strong>Windows 安装与提醒</strong></summary>
 
-Windows 0.2.1 是预览版，尚无商业代码签名；安装时可能显示未识别发布者。请从[Windows 发布页](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1)下载，并用同页的 `SHA256SUMS.txt` 核对文件。
+Windows 0.2.1 尚无商业代码签名；安装时可能显示未识别发布者。请从[Windows 发布页](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1)下载，并用同页的 `SHA256SUMS.txt` 核对文件。
 
 在「设置 → Windows」开启需要的系统功能。退出后的提醒需要单独开启；关机、未登录或系统关闭通知时，不能保证收到提醒。个人电脑的多显示器缩放、锁屏通知外观和通知按钮操作仍需补充验收。[Windows 功能与使用说明](docs/releases/windows-v0.2.0.md)
 

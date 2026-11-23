@@ -1,14 +1,11 @@
-name: Stage Windows preview release
+name: Stage Windows release
 on:
-  push:
-    branches: [codex/windows-preview]
-    paths: ['.github/workflows/windows-preview-release.yml', 'docs/releases/windows-v0.2.1-github.md']
   workflow_dispatch:
 permissions:
   contents: write
   actions: read
 concurrency:
-  group: windows-preview-release-0.2.1
+  group: windows-release-0.2.1
   cancel-in-progress: false
 jobs:
   stage:
@@ -81,7 +78,7 @@ jobs:
           assert r['isDraft'] and r['targetCommitish']==os.environ['SOURCE'],'Refusing to modify an existing published/different release'
           PY
           else
-            gh release create "$TAG" --repo "$REPO" --target "$SOURCE" --draft --prerelease --latest=false --title 'Step for Windows 0.2.1 · 预览版' --notes-file docs/releases/windows-v0.2.1-github.md
+            gh release create "$TAG" --repo "$REPO" --target "$SOURCE" --draft --latest=false --title 'Step for Windows 0.2.1' --notes-file docs/releases/windows-v0.2.1-github.md
           fi
           release_id=$(gh release view "$TAG" --repo "$REPO" --json databaseId --jq .databaseId)
           [[ "$release_id" =~ ^[0-9]+$ ]] || exit 1
@@ -105,7 +102,7 @@ jobs:
           from pathlib import Path
           root=Path(os.environ['RUNNER_TEMP'])
           r=json.loads((root/'step-staged-release.json').read_text());expected=json.loads((root/'step-release-hashes.json').read_text())
-          assert r['draft'] and r['prerelease'] and r['target_commitish']==os.environ['SOURCE']
+          assert r['draft'] and not r['prerelease'] and r['target_commitish']==os.environ['SOURCE']
           assert {a['name'] for a in r['assets']}==set(expected)
           assert all(a.get('digest')=='sha256:'+expected[a['name']] for a in r['assets'])
           print('Draft ready with verified assets; public publication is a separate final action.')

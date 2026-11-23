@@ -1,4 +1,4 @@
-name: Windows desktop preview
+name: Windows desktop
 on:
   push:
     branches: [main, codex/windows-preview]
@@ -50,7 +50,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not prepare isolated upgrade baseline' }
           python "$baseline\desktop\configure.py" --required
           & "$baseline\android\gradlew.bat" -p "$baseline\desktop" --no-daemon :app:packageMsi
-          if ($LASTEXITCODE -ne 0) { throw 'Could not build prior Windows preview' }
+          if ($LASTEXITCODE -ne 0) { throw 'Could not build prior Windows version' }
       - name: Install prior version and create fictional data
         timeout-minutes: 6
         shell: pwsh
