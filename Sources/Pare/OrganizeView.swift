@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import PareCore
 
-private enum WorkspaceMode: String, CaseIterable {
+enum WorkspaceMode: String, CaseIterable {
     case matrix = "四象限"
     case today = "今日计划"
     case library = "搜索与记录"
@@ -58,6 +58,15 @@ struct OrganizeView: View {
     @State private var inboxExpanded: Bool? = nil
     @State private var searchFocusRequest = 0
     @State private var showLongTermGoals = false
+
+    init(store: Store, summaryState: TodaySummaryState,
+         onOpenWeeklyReview: @escaping () -> Void = {}, onOpenSettings: @escaping () -> Void,
+         initialWorkspace: WorkspaceMode = .matrix, initialInboxExpanded: Bool? = nil) {
+        self.store = store; self.summaryState = summaryState
+        self.onOpenWeeklyReview = onOpenWeeklyReview; self.onOpenSettings = onOpenSettings
+        _workspace = State(initialValue: initialWorkspace)
+        _inboxExpanded = State(initialValue: initialInboxExpanded)
+    }
 
     var body: some View {
         HStack(spacing: 0) {

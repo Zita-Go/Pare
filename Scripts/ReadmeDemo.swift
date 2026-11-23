@@ -51,9 +51,12 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         backdrop.backgroundColor = NSColor(red: 0.10, green: 0.12, blue: 0.11, alpha: 1)
         backdrop.isReleasedWhenClosed = false
         backdrop.orderFront(nil)
+        let readme = CommandLine.arguments.contains("--readme-matrix") || CommandLine.arguments.contains("--readme-today")
         organizer = OrganizeWindowController(store: store, onClose: {},
             onOpenSettings: { [weak self] in self?.showShortcutSettings() },
-            onOpenWeeklyReview: { [weak self] in self?.showWeeklyReview() })
+            onOpenWeeklyReview: { [weak self] in self?.showWeeklyReview() },
+            initialWorkspace: CommandLine.arguments.contains("--readme-today") ? .today : .matrix,
+            initialInboxExpanded: readme ? false : nil)
         capture = PopoverController(store: store) { [weak self] in self?.showOrganizer() }
         shortcuts = CaptureShortcutController { [weak self] shortcut in
             HotKey(keyCode: shortcut.keyCode, modifiers: shortcut.modifiers) { [weak self] in
@@ -201,7 +204,9 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         capture?.close()
         organizer.present()
         let compact = CommandLine.arguments.contains("--compact")
-        organizer.window?.setContentSize(NSSize(width: compact ? 880 : 1060, height: compact ? 620 : 660))
+        // Documentation captures keep the full title bar and enough vertical room for
+        // today's short example list; never crop the top/bottom to make a hero image.
+        organizer.window?.setContentSize(NSSize(width: compact ? 880 : 1060, height: compact ? 620 : 800))
         organizer.window?.center()
     }
 

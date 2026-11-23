@@ -14,7 +14,8 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
 
     init(store: Store, onClose: @escaping () -> Void,
          onOpenSettings: @escaping () -> Void,
-         onOpenWeeklyReview: @escaping () -> Void = {}) {
+         onOpenWeeklyReview: @escaping () -> Void = {},
+         initialWorkspace: WorkspaceMode = .matrix, initialInboxExpanded: Bool? = nil) {
         self.onClose = onClose
 
         let window = NSWindow(
@@ -32,7 +33,8 @@ final class OrganizeWindowController: NSWindowController, NSWindowDelegate {
         window.minSize = NSSize(width: 880, height: 580)
 
         let hosting = NSHostingController(rootView: OrganizeView(store: store, summaryState: summaryState,
-            onOpenWeeklyReview: onOpenWeeklyReview, onOpenSettings: onOpenSettings))
+            onOpenWeeklyReview: onOpenWeeklyReview, onOpenSettings: onOpenSettings,
+            initialWorkspace: initialWorkspace, initialInboxExpanded: initialInboxExpanded))
         window.contentViewController = hosting
         window.center()
 

@@ -2,10 +2,16 @@ import AppKit
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
+import ScreenCaptureKit
 import Foundation
 import Darwin
 
 let allowedBundleIDs: Set<String> = ["com.zitago.Pare.ReadmeDemo", "com.zitago.Pare.ShortcutCheck"]
+func fail(_ message: String) -> Never {
+    FileHandle.standardError.write(Data("capture-window: \(message)\n".utf8))
+    exit(EXIT_FAILURE)
+}
+
 func integer(_ value: Any?) -> Int? {
     if let value = value as? Int { return value }
     if let value = value as? NSNumber { return value.intValue }
@@ -20,13 +26,22 @@ func isPareDemo(_ window: [String: Any]) -> Bool {
 
 if (CommandLine.arguments.count == 2 && CommandLine.arguments[1] == "--list")
     || (CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--list-pid") {
-    let requestedPID = CommandLine.arguments.count == 3 ? Int(CommandLine.arguments[2]) : nil
+    let requestedPID: Int?
+    if CommandLine.arguments.count == 3 {
+        guard let pid = pid_t(CommandLine.arguments[2]),
+              let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
+              allowedBundleIDs.contains(bundleID) else {
+            fail("--list-pid accepts only a running Step Screenshots or Shortcut Check demo")
+        }
+        requestedPID = Int(pid)
+    } else { requestedPID = nil }
     let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
-    if requestedPID != nil { print("visible-window-count=\(windows.count)") }
-    for window in windows {
-        let ownerPID = integer(window[kCGWindowOwnerPID as String])
-        guard (requestedPID.map { ownerPID == $0 } ?? isPareDemo(window)),
-              let id = integer(window[kCGWindowNumber as String]),
+    let selected = windows.filter { window in
+        isPareDemo(window) && (requestedPID.map { integer(window[kCGWindowOwnerPID as String]) == $0 } ?? true)
+    }
+    if requestedPID != nil { print("visible-window-count=\(selected.count)") }
+    for window in selected {
+        guard let id = integer(window[kCGWindowNumber as String]),
               let dictionary = window[kCGWindowBounds as String] as? [String: Any],
               let bounds = CGRect(dictionaryRepresentation: dictionary as CFDictionary) else { continue }
         let owner = window[kCGWindowOwnerName as String] as? String ?? "Step demo"
@@ -37,31 +52,78 @@ if (CommandLine.arguments.count == 2 && CommandLine.arguments[1] == "--list")
     exit(EXIT_SUCCESS)
 }
 
-// Capture only the selected native window, even while another app is in front.
-// The optional top inset omits system sharing controls in the title bar at
-// capture time; no UI pixels are repainted or reconstructed.
-guard CommandLine.arguments.count >= 3,
-      let windowID = UInt32(CommandLine.arguments[1]) else {
-    fatalError("Usage: capture-window WINDOW_ID OUTPUT.png [TOP_INSET_PT]")
+// Documentation exports always include the complete native window and title bar.
+// Accept the old explicit zero inset for compatibility, but reject partial exports.
+guard (3...4).contains(CommandLine.arguments.count),
+      let windowID = UInt32(CommandLine.arguments[1]), windowID != 0 else {
+    fail("Usage: capture-window WINDOW_ID OUTPUT.png [0] | --list | --list-pid DEMO_PID")
+}
+if CommandLine.arguments.count == 4 {
+    guard let inset = Double(CommandLine.arguments[3]), inset == 0 else {
+        fail("Only full-window screenshots are supported; omit the top inset or use 0")
+    }
 }
 let output = URL(fileURLWithPath: CommandLine.arguments[2])
-let inset = CommandLine.arguments.count > 3 ? Double(CommandLine.arguments[3]) ?? 0 : 0
 let windows = CGWindowListCopyWindowInfo(.optionIncludingWindow, windowID) as? [[String: Any]] ?? []
 guard let window = windows.first,
       isPareDemo(window),
-      let dictionary = window[kCGWindowBounds as String] as? [String: Any],
-      let bounds = CGRect(dictionaryRepresentation: dictionary as CFDictionary) else {
-    fatalError("Select an available Step Screenshots demo window")
+      let ownerPID = integer(window[kCGWindowOwnerPID as String]) else {
+    fail("Select an available Step Screenshots demo window")
 }
-guard inset >= 0, inset < bounds.height else { fatalError("Invalid top inset") }
-let crop = CGRect(x: bounds.minX, y: bounds.minY + inset,
-                  width: bounds.width, height: bounds.height - inset)
-guard let image = CGWindowListCreateImage(crop, .optionIncludingWindow, windowID,
-                                         [.boundsIgnoreFraming, .bestResolution]),
-      let destination = CGImageDestinationCreateWithURL(output as CFURL,
-                                                        UTType.png.identifier as CFString, 1, nil) else {
-    fatalError("Could not capture selected window")
+
+@available(macOS 14.0, *)
+func captureFullWindow(id: CGWindowID, ownerPID: Int, output: URL) async throws {
+    let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+    guard let window = content.windows.first(where: {
+        $0.windowID == id && $0.owningApplication.map {
+            allowedBundleIDs.contains($0.bundleIdentifier) && Int($0.processID) == ownerPID
+        } == true
+    }) else {
+        fail("Selected demo window is no longer available")
+    }
+    // A desktop-independent filter includes only the selected window, not the user's
+    // other apps or desktop. The native scale is normally 2 on a Retina display.
+    let filter = SCContentFilter(desktopIndependentWindow: window)
+    let rect = filter.contentRect
+    let scale = CGFloat(filter.pointPixelScale)
+    guard rect.width.isFinite, rect.height.isFinite, scale.isFinite,
+          rect.width > 0, rect.height > 0, scale > 0 else {
+        fail("ScreenCaptureKit returned invalid window geometry")
+    }
+    let config = SCStreamConfiguration()
+    config.width = Int((rect.width * scale).rounded())
+    config.height = Int((rect.height * scale).rounded())
+    config.captureResolution = .best
+    config.scalesToFit = false
+    config.preservesAspectRatio = true
+    config.showsCursor = false
+    config.capturesAudio = false
+    config.ignoreShadowsSingleWindow = true
+    config.ignoreGlobalClipSingleWindow = true
+    // sourceRect intentionally remains unset: the full window includes the title bar.
+    let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+    guard image.width == config.width, image.height == config.height else {
+        fail("Unexpected capture dimensions; refusing to resize or crop the image")
+    }
+    guard let destination = CGImageDestinationCreateWithURL(output as CFURL,
+                                                           UTType.png.identifier as CFString, 1, nil) else {
+        fail("Could not create PNG output")
+    }
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else { fail("Could not save screenshot") }
+    print("Saved \(output.lastPathComponent): \(image.width) × \(image.height), complete window at \(scale)× native scale")
 }
-CGImageDestinationAddImage(destination, image, nil)
-guard CGImageDestinationFinalize(destination) else { fatalError("Could not save screenshot") }
-print("Saved \(output.lastPathComponent): \(image.width) × \(image.height)")
+
+if #available(macOS 14.0, *) {
+    Task {
+        do {
+            try await captureFullWindow(id: windowID, ownerPID: ownerPID, output: output)
+            exit(EXIT_SUCCESS)
+        } catch {
+            fail("ScreenCaptureKit capture failed: \(error.localizedDescription)")
+        }
+    }
+    dispatchMain()
+} else {
+    fail("Screenshot export requires macOS 14 or later; the Step app's requirements are unchanged")
+}

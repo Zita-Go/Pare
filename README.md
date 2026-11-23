@@ -1,142 +1,162 @@
 <p align="center">
-  <img src="docs/images/app-icon.png" width="88" alt="Step：绿色阶梯形 S 与金色目标圆球">
+  <img src="docs/images/app-icon.png" width="80" alt="Step 图标：绿色阶梯形 S 与金色目标圆球">
 </p>
 
 <h1 align="center">Step</h1>
 <p align="center"><strong>把想法变成下一步，一步一步完成。</strong></p>
-<p align="center">记录想法 · 分清轻重 · 安排今天 · 从一件小事开始</p>
+<p align="center">四象限做取舍 · 想法慢慢成形 · 今天从一件小事开始</p>
 
 <p align="center">
   <a href="https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-2.16.0-macos-arm64.zip"><strong>下载 Mac 版</strong></a>
-  &nbsp; · &nbsp;
+  &nbsp; / &nbsp;
+  <a href="https://github.com/Zita-Go/Pare/releases/download/windows-v0.2.1/Step-0.2.1.exe"><strong>下载 Windows 版</strong></a>
+  &nbsp; / &nbsp;
   <a href="https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-0.15.0-android-debug.apk"><strong>下载安卓版</strong></a>
-  &nbsp; · &nbsp;
-  <a href="https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1"><strong>Windows 版</strong></a>
 </p>
-<p align="center">Apple Silicon Mac · macOS 13+ &nbsp; | &nbsp; Android 8.0+ &nbsp; | &nbsp; Windows 10/11 x64</p>
-<p align="center"><sub>当前版本：Mac 2.16.0 / Android 0.15.0 / Windows 0.2.1 · <a href="https://github.com/Zita-Go/Pare/releases/tag/v2.16.0">版本说明</a></sub></p>
-<p align="center"><a href="#开始使用">开始使用</a> · <a href="#一步一步推进">功能介绍</a> · <a href="#换设备继续用">跨设备同步</a> · <a href="#数据存在哪里">数据与隐私</a></p>
-
-Step 是一个帮助你整理想法、规划行动的工具。事情太多时，用四象限做取舍；任务太大时，先找到一个能开始的动作；想法还不成熟时，留着慢慢探索。
-
-**不需要先注册账号或配置 AI。** 在本机记下事情、安排今天、开始专注，就可以用起来。
+<p align="center"><sub>无需先注册账号或配置 AI，打开就能在本机记下想法、规划今天。</sub></p>
 
 <p align="center">
-  <img src="docs/images/today.png" width="900" alt="Mac 今日计划示意：选出一件重点，写下具体下一步，并从五分钟开始">
+  <a href="docs/images/readme/mac-matrix.png"><img src="docs/images/readme/mac-matrix.png" width="1000" alt="Mac 四象限完整窗口：按重要与紧急整理任务，选择今天要推进的事"></a>
 </p>
-<p align="center"><sub>截图使用示例内容；部分导航名称与当前版本略有差异。</sub></p>
+<p align="center"><sub>先分清轻重，再挑出今天值得推进的几件事。图片均使用演示资料，点击可查看原图。</sub></p>
+<p align="center"><a href="#开始使用">开始使用</a> · <a href="#从想法到行动">功能介绍</a> · <a href="#换设备接着做">账号同步</a> · <a href="#安装与常见问题">安装帮助</a></p>
 
 ## 开始使用
 
-| 设备 | 安装与打开 |
-| --- | --- |
-| **Mac** | 下载并解压，将 `Step.app` 拖入「应用程序」。启动后点屏幕顶部的 Step 图标，或按 **⌥Space** 打开随手记，再点「整理」。 |
-| **Android** | 将下载的 APK 安装到手机，打开 Step。在「整理」中点「随手记」收集想法，或在「今天」直接添加任务。 |
-| **Windows 版** | 安装发布页中的 `Step-0.2.1.exe`，打开 Step。按 **Ctrl+Shift+Space** 随手记下事情，在四象限整理，再加入今天。适用于 Intel、AMD 的 x64 电脑。 |
+| 设备 | 下载与版本 | 第一次打开 |
+| :--- | :--- | :--- |
+| **Mac**<br>Apple Silicon · macOS 13+ | [下载 2.16.0](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-2.16.0-macos-arm64.zip) · [版本说明](https://github.com/Zita-Go/Pare/releases/tag/v2.16.0) | 解压后将 `Step.app` 拖入「应用程序」。点菜单栏图标或按 **⌥Space** 随手记，再点「整理」。 |
+| **Windows**<br>Intel / AMD x64 · Windows 10/11 | [下载 0.2.1](https://github.com/Zita-Go/Pare/releases/download/windows-v0.2.1/Step-0.2.1.exe) · [版本说明](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1) | 安装后打开 Step。按 **Ctrl+Shift+Space** 随手记，在四象限归类，再加入今天。 |
+| **Android**<br>Android 8.0+ | [下载 0.15.0](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-0.15.0-android-debug.apk) · [版本说明](https://github.com/Zita-Go/Pare/releases/tag/v2.16.0) | 安装 APK 后打开 Step，在「整理」中记下想法，或在「今天」直接添加任务。 |
 
-> 更新前请备份，保存输入并退出旧版。[安装注意事项](#安装与提醒常见问题)
+**先走完这三步，就可以开始了：**
 
-第一次使用，试着完成这三步：
+1. **记下一件事。** 不用先整理完整清单，写一句话也可以。
+2. **选进今天。** 在四象限分清轻重，挑出今天要推进的事，再选一件重点。
+3. **写下一个小动作。** 把“完成报告”变成“打开文档，写三个标题”。先做五分钟，做完点「完成这一步」。
 
-1. **记下一件事。** 不必马上整理完整清单。
-2. **选出今天要推进的重点。** 在四象限做取舍，再加入今天：Mac 点太阳，Android 点「＋ 今天」。
-3. **写下最小下一步。** 比如把“完成报告”缩小为“打开文档，写三个小标题”。可以先专注五分钟，做完后点「完成这一步」。
+> 更新前请先备份、保存输入并退出旧版。[查看安装帮助](#安装与常见问题)
 
-## 一步一步推进
+## 从想法到行动
 
-### 做完一步，不必结束整个任务
+### 分清轻重，也留出余地
 
-一个长期任务可以不断向前推进：**写下一步 → 完成这一步 → 再写下一步**。
+四象限帮你区分**重要**与**紧急**，今日计划帮你决定有限精力用在哪里。没有加入今天的任务会继续保留，不必每天面对整份清单。
 
-Step 会保留每一步的内容、完成时间和完成标准。完成一步后，主任务仍然保留，计时与安排不会被自动结束；误点可以撤销。暂时不知道接下来做什么，也可以先留空。
+平时用清单看清当天的行动，需要排时间时再切到时间轴，拖动安排开始时间和时长。
 
-### 分清轻重，再安排时间
+<p align="center">
+  <a href="docs/images/readme/mac-today.png"><img src="docs/images/readme/mac-today.png" width="1000" alt="Mac 今日计划完整窗口：今日重点、最小下一步、待推进事项和添加入口"></a>
+</p>
+<p align="center"><sub>Mac · 今日计划：先看重点，再决定接下来做什么。</sub></p>
 
-四象限帮你区分重要与紧急；今日计划帮你挑出有限的重点。平时用清单快速查看，需要安排时间时再切到时间轴，拖动任务调整开始时间和时长。
+### 做完一步，再向前一步
+
+长期任务可以按 **写下一步 → 完成这一步 → 再写下一步** 推进。Step 保留每一步的内容、完成时间和完成标准；完成一步后，主任务继续保留，已有计时与安排不会被自动结束，误点也可以撤销。
+
+没动力时，用「我卡住了」把动作缩小，写清“做到哪里就可以停”。可以只保存，也可以开始一小段专注。
 
 ### 让想法慢慢长成项目
 
-还在萌芽的想法，不需要立刻变成待办。先记下正在探索的问题，逐渐补充发现和决定，准备好时再拆出具体行动。原想法和相关行动始终保持联系。
+一个还不成熟的方向，可以先留作想法。记录正在探索的问题，补充发现和决定，准备好时再拆出具体行动；原想法与关联任务始终保持联系。
+
+<table>
+  <tr>
+    <td align="center" width="50%"><strong>看清今天</strong><br><sub>今日重点与行动清单</sub></td>
+    <td align="center" width="50%"><strong>继续完善一个想法</strong><br><sub>问题、发现与关联行动</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/images/android/v0.13/today-light.png"><img src="docs/images/android/v0.13/today-light.png" width="198" alt="Android 今天完整应用页面：今日重点、六项行动及底部导航"></a></td>
+    <td align="center"><a href="docs/images/android/v0.11/idea-workspace.png"><img src="docs/images/android/v0.11/idea-workspace.png" width="222" alt="Android 想法工作台完整应用页面：当前问题、探索记录与关联行动"></a></td>
+  </tr>
+</table>
+<p align="center"><sub>Android · 保留图片原始比例，展示完整应用页面。</sub></p>
+
+### 自己推进，也记得回来检查
+
+事情交给其他 AI、机器或别人处理时，可以记录等待状态，提醒自己回来检查。**个人专注与等待分开记录**，不会把等待时间算成你的投入；Step 不会接管外部 AI。
+
+<details>
+<summary><strong>看看 Windows 的今日界面</strong></summary>
 
 <p align="center">
-  <img src="docs/images/android/v0.13/today-light.png" width="260" alt="Android 今日清单：突出今日重点与下一步，按需切换时间轴">
-  &nbsp;&nbsp;
-  <img src="docs/images/android/v0.11/idea-workspace.png" width="260" alt="Android 想法工作台：记录探索的问题与发现，并关联具体行动">
+  <a href="docs/images/windows/v0.2/dark-1280-2x-today.png"><img src="docs/images/windows/v0.2/dark-1280-2x-today.png" width="1000" alt="Windows 今日界面全景：左侧工作区导航、今日重点、行动列表和时间安排"></a>
 </p>
-<p align="center"><sub>在手机上查看今天的行动，也能继续完善一个长期想法。</sub></p>
 
-### 没动力时，把开始变得更容易
+Windows 界面图使用真实应用组件和演示资料，以 2 倍像素密度渲染；不包含系统窗口边框。[查看 Windows 功能与操作说明](docs/releases/windows-v0.2.0.md)
 
-「我卡住了」帮你写清一个更小的动作，以及“做到哪里就可以停”。你可以只保存，也可以开始一小段专注；回看时既能看到完成，也能看到投入。
+</details>
 
-事情交给其他 AI、机器或别人处理时，可以记录等待状态、提醒自己回来检查。个人专注与等待分开记录，Step 不会接管外部 AI。
+## 换设备接着做
 
-## 换设备继续用
+在 Mac、Windows 和 Android 上登录同一个 **Step 同步账号**。首次连接时查看合并内容，确认后开启同步；之后离线修改先留在本机，联网后继续同步。有冲突时，可以比较两个版本再决定。
 
-想在 Mac、Android 和 Windows 版之间接着用时，登录同一个 **Step 同步账号**：
+| Mac | Windows | Android |
+| :--- | :--- | :--- |
+| 设置 → 同步 | 设置 → 账号与同步 | 更多 → 账号与同步 |
 
-| Mac | Android | Windows |
-| --- | --- | --- |
-| 右上角「设置 → 同步」 | 右上角「更多 → 账号与同步」 | 「设置 → 账号与同步」 |
-
-首次连接先查看合并预览，确认后开启同步。任务、想法、目标、计划和步骤历史会跟随账号同步；离线修改先留在本机，联网后继续同步。有冲突时，可以比较两个版本再决定保留哪一个。
-
-**换设备前，先确认原设备同步成功。** 新设备仍需单独开启通知、配置 AI 连接；正在进行的计时不会跨设备接续。
+任务、想法、目标、计划和步骤历史可以随账号同步。**换设备前，先确认原设备同步成功。** 正在进行的计时不会跨设备接续，通知权限与 AI 连接需要在各设备单独配置。
 
 ## AI 帮你思考，由你决定
 
-AI 是可选的。配置自己的模型服务后，可以让它帮你找下一步、整理想法或安排今天。你选择参考内容，查看建议，再决定采纳哪些修改。
+配置自己的模型服务后，可以让 AI 帮你找下一步、整理想法或安排今天。你选择参考内容，查看建议，再决定采纳哪些修改。
 
-- 需要时才主动生成，不会在后台反复请求模型。
-- 可以按需附带长期目标、规划偏好与相关历史记录。
-- 采纳前可以检查建议；结果不会自动完成任务或开始计时。
+- 需要时才生成建议，本地轻提示不会自动调用模型。
+- 可以按需参考长期目标、规划偏好与相关记录。
+- 采纳前查看修改；AI 不会自动替你完成任务或启动计时。
 
-[查看 AI 配置与使用方法](docs/guide.md#ai-辅助)
+[Mac AI 操作详解](docs/guide.md#ai-辅助) · [Windows 使用说明](docs/releases/windows-v0.2.0.md)
 
-## 数据存在哪里
+## 数据与隐私
 
-| 使用方式 | 内容如何保存 |
-| --- | --- |
-| **仅在本机使用** | 任务、想法和计划保存在本机，不需要账号。 |
-| **开启账号同步** | 本机仍保存内容；同步成功后，任务、想法、计划等在云端也有一份。 |
-| **主动使用 AI** | 你确认发送的参考内容会交给所配置的模型服务，与账号同步是两条独立流程。 |
+| 你的选择 | 内容如何保存 |
+| :--- | :--- |
+| **只在本机使用** | 任务、想法和计划保存在本机，无需账号。 |
+| **开启账号同步** | 本机仍保留内容，同步成功后云端也保存一份。 |
+| **主动使用 AI** | 你确认发送的参考内容交给所配置的模型服务，与账号同步分开。 |
 
-AI 密钥、AI 原始请求历史、快捷键和设备设置留在各自设备。跨设备运行状态共享需要另行开启，只提供状态参考，不能远程控制计时。
+模型密钥、AI 原始请求历史、快捷键和设备设置留在各自设备。跨设备运行状态共享需要另行开启，只供参考，不能远程控制计时。
 
-同步使用加密连接和账号隔离，**不是端到端加密**。重要内容请保留备份；同步服务目前供体验使用。[查看同步范围与备份方法](docs/guide.md#同步与数据保存)
+同步使用加密连接与账号隔离，**不是端到端加密**。同步也不能代替独立备份，重要内容请另外导出留存。[了解同步范围与备份方法](docs/guide.md#同步与数据保存)
 
-## 安装与提醒常见问题
+## 安装与常见问题
 
 <details>
 <summary><strong>Mac 提示无法打开，或要求钥匙串授权</strong></summary>
 
-当前 Mac 安装包尚未经过 Developer ID 签名和 Apple 公证。请只从本仓库下载，并按系统提示处理；可用发布页的[校验文件](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-SHA256SUMS.txt)核对下载内容。首次读取已保存的账号或模型凭据时，可能要求你在系统窗口完成钥匙串授权。不要把本机密码发给他人。
+当前 Mac 安装包尚未经过 Developer ID 签名和 Apple 公证。请从本仓库下载，按系统提示处理，并可用发布页的[校验文件](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-SHA256SUMS.txt)核对内容。首次读取已保存的账号或模型凭据时，可能要求在系统窗口完成钥匙串授权，不要把本机密码发给他人。
 
 </details>
 
 <details>
-<summary><strong>Android 安装或提醒不正常</strong></summary>
+<summary><strong>Windows 安装时显示未识别发布者</strong></summary>
 
-当前 APK 使用测试签名，尚未完成物理手机验收。如果与已安装版本的签名不同，可能无法直接覆盖；先备份数据，不要为了安装而直接卸载旧版。提醒需要系统通知权限；后台提醒与同步还可能受手机省电设置影响。
+当前安装包尚无商业代码签名。请从 [Windows 发布页](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1)下载，可选择 EXE、MSI 或免安装 ZIP，并用同页的 `SHA256SUMS.txt` 核对文件。兼容性与验收范围详见版本说明。
 
 </details>
 
 <details>
-<summary><strong>Windows 安装与提醒</strong></summary>
+<summary><strong>Android 无法覆盖安装，或没有收到提醒</strong></summary>
 
-Windows 0.2.1 尚无商业代码签名；安装时可能显示未识别发布者。请从[Windows 发布页](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1)下载，并用同页的 `SHA256SUMS.txt` 核对文件。
+当前 APK 使用测试签名，尚未完成物理手机验收。若与已安装版本签名不同，可能无法直接覆盖；请先备份，不要为了安装而直接卸载旧版。提醒需要系统通知权限，后台提醒与同步还可能受手机省电设置影响。
 
-在「设置 → Windows」开启需要的系统功能。退出后的提醒需要单独开启；关机、未登录或系统关闭通知时，不能保证收到提醒。个人电脑的多显示器缩放、锁屏通知外观和通知按钮操作仍需补充验收。[Windows 功能与使用说明](docs/releases/windows-v0.2.0.md)
+</details>
+
+<details>
+<summary><strong>关闭应用后，还会提醒吗？</strong></summary>
+
+Mac 可以关闭主窗口并保留菜单栏应用；Windows 可以保留系统托盘，退出后提醒需在「设置 → Windows」单独开启。电脑关机、未登录或系统关闭通知时，不能保证收到提醒。Android 需允许通知，并留意系统的后台与省电限制。
 
 </details>
 
 <details>
 <summary><strong>旧版 Pare 可以升级吗？</strong></summary>
 
-可以。Step 是 Pare 的新名称，沿用原有账号和资料库。更新前先导出备份、正常退出旧版；资料库升级后，回退旧版需配合恢复升级前的备份。避免同时运行新旧两份应用。
+可以。Step 是 Pare 的新名称，沿用原有账号和资料库。更新前先导出备份并正常退出旧版；资料库升级后，回退旧版需配合恢复升级前的备份。避免同时运行新旧两份应用。
 
 </details>
 
 ---
 
-[Mac 使用指南](docs/guide.md) · [下载与版本说明](https://github.com/Zita-Go/Pare/releases/tag/v2.16.0) · [反馈问题](https://github.com/Zita-Go/Pare/issues)
+<p align="center"><strong>不用一次做好全部。先找到能开始的那一步。</strong></p>
+<p align="center"><a href="docs/guide.md">Mac 使用指南</a> · <a href="docs/releases/windows-v0.2.0.md">Windows 使用指南</a> · <a href="https://github.com/Zita-Go/Pare/releases">全部下载</a> · <a href="https://github.com/Zita-Go/Pare/issues">反馈问题</a></p>
