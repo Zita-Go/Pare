@@ -110,8 +110,9 @@
   "release": {
     "url": "https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1",
     "published_at": "2026-11-22T19:45:38Z",
-    "prerelease": true,
+    "prerelease": false,
     "marked_latest": false,
-    "public_checksum_download_verified": true
+    "public_checksum_download_verified": true,
+    "title": "Step for Windows 0.2.1"
   }
 }
