@@ -30,6 +30,7 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         || Bundle.main.bundleIdentifier == "com.zitago.Pare.ShortcutCheck"
     private let verifyIntegrations = CommandLine.arguments.contains("--verify-integrations")
     private let parallelDemo = CommandLine.arguments.contains("--parallel-demo")
+    private let completionRegression = CommandLine.arguments.contains("--completion-regression")
     private var aiDemoEndpoint: String? {
         CommandLine.arguments.first { $0.hasPrefix("--ai-endpoint=") }
             .map { String($0.dropFirst("--ai-endpoint=".count)) }
@@ -38,7 +39,8 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("pare-readme-\(UUID().uuidString)", isDirectory: true)
-        try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
         store = Store(fileURL: directory.appendingPathComponent("store.json"))
         seed()
         configureDemoAI()
@@ -82,6 +84,10 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
         settings.todayCapacityMinutes = 120
         store.updateSettings(settings)
         store.rolloverIfNeeded()
+        if completionRegression {
+            seedCompletionRegression()
+            return
+        }
         if CommandLine.arguments.contains("--usability-demo") {
             var preferences = store.agentPreferences
             preferences.planningMinutes = 60
@@ -155,6 +161,39 @@ final class DemoDelegate: NSObject, NSApplicationDelegate {
             store.startParallelRun(trip.id, now: now.addingTimeInterval(-38 * 60),
                                    nextCheckAt: now.addingTimeInterval(7 * 60))
             store.startParallelRun(reply.id, now: now.addingTimeInterval(-12 * 60))
+        }
+    }
+
+    /// Fictional density fixture for completing a row near the viewport edge.
+    /// Before the click: 12 tasks, 8 completed; target completion makes 9.
+    private func seedCompletionRegression() {
+        let now = Date()
+        let start = Calendar.current.startOfDay(for: now)
+        let completedGroups: [(Quadrant, [String])] = [
+            (.importantUrgent, [String(repeating: "甲", count: 17), String(repeating: "乙", count: 12), "虚构甲三项"]),
+            (.importantNotUrgent, [String(repeating: "丙", count: 12)]),
+            (.neither, ["虚构丁一"])
+        ]
+        for (quadrant, titles) in completedGroups {
+            for (index, title) in titles.enumerated() {
+                let task = store.addTask(title, to: quadrant,
+                                         addToToday: quadrant == .importantNotUrgent || (quadrant == .importantUrgent && index != 1),
+                                         now: start.addingTimeInterval(Double(index)))!
+                store.setCompleted(task.id, true, now: now)
+            }
+        }
+
+        // Character counts: 3, 4, 5, 8, 9, 14, 22. No estimates or actuals.
+        let titles = ["折纸船", "整理画笔", "完成回归项", "为纸船画一面小旗",
+                      "准备虚构展览小卡片", "把演示用的纸船放进蓝色盒子里",
+                      "给虚构纸船展览写一段只用于界面测试的介绍文案"]
+        // The five-character target moves from the fourth row to the seventh
+        // when completed, while its inline time prompt increases its height.
+        let creationOrder = [1, 2, 6, 4, 0, 5, 3]
+        for (index, title) in titles.enumerated() {
+            let task = store.addTask(title, to: .urgentNotImportant, addToToday: index != 1,
+                                     now: start.addingTimeInterval(Double(creationOrder[index])))!
+            if [0, 4, 5].contains(index) { store.setCompleted(task.id, true, now: now) }
         }
     }
 
