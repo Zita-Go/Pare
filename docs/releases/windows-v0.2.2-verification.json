@@ -1,0 +1,43 @@
+{
+  "version": "0.2.2",
+  "source_commit": "38341c4978bd4d5098f756a53941ce61537c01f9",
+  "build_run": "https://github.com/Zita-Go/Pare/actions/runs/45356191207",
+  "tests": {
+    "core": 301,
+    "desktop": 116,
+    "android": 395
+  },
+  "installer_artifact": {
+    "id": 14902437909,
+    "sha256": "d0a043a571557003d19f6bc9a1c0dcdbdf771e8b4daeb1951f02f5a6b2f924ab"
+  },
+  "verification_artifact": {
+    "id": 14902442970,
+    "sha256": "61661517834fd726fea7d50a11dd56657b3c22ba1cb4024410a0088c6f677ab1"
+  },
+  "validated": [
+    "153-page first login completes without uploading local changes",
+    "persisted cursor resumes after restart and preserves dirty local content",
+    "cancellation, revoke and sign-out prevent subsequent pages and premature ready state",
+    "automatic sync page bound is retained with distinct status",
+    "settings continue-pull action enables confirmation only after completion",
+    "0.2.1 MSI upgrade preserves task, step history and raw data file",
+    "packaged launch and native registration/cleanup"
+  ],
+  "test_data": "isolated temporary profiles and fictional remote commits; no real accounts or user records",
+  "server_changes": false,
+  "requires_data_reset": false,
+  "release_published": true,
+  "release": {
+    "url": "https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.2",
+    "published_at": "2026-11-24T08:43:28Z",
+    "prerelease": false,
+    "marked_latest": false
+  },
+  "package_sha256": {
+    "SHA256SUMS.txt": "926e675fce40344fbb9e9b7d6e07b3bd8299a1e51a9e1fc306e46bb5be37ea86",
+    "Step-0.2.2-windows-x64-portable.zip": "9716b30203a90f30263fb55c0b3511daf40d570cdaf5286e5c613addcc43683d",
+    "Step-0.2.2.exe": "b9bcdcc83e780618b0db5522f2b6da116bc9c76eda44fe312de0914fe75529bc",
+    "Step-0.2.2.msi": "83ec924da587376714488f4d59df92385467b580218e2fea81d8ebf00276afda"
+  }
+}

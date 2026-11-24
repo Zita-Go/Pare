@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-2.16.0-macos-arm64.zip"><strong>下载 Mac 版</strong></a>
   &nbsp; / &nbsp;
-  <a href="https://github.com/Zita-Go/Pare/releases/download/windows-v0.2.1/Step-0.2.1.exe"><strong>下载 Windows 版</strong></a>
+  <a href="https://github.com/Zita-Go/Pare/releases/download/windows-v0.2.2/Step-0.2.2.exe"><strong>下载 Windows 版</strong></a>
   &nbsp; / &nbsp;
   <a href="https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-0.15.0-android-debug.apk"><strong>下载安卓版</strong></a>
 </p>
@@ -26,7 +26,7 @@
 | 设备 | 下载与版本 | 第一次打开 |
 | :--- | :--- | :--- |
 | **Mac**<br>Apple Silicon · macOS 13+ | [下载 2.16.0](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-2.16.0-macos-arm64.zip) · [版本说明](https://github.com/Zita-Go/Pare/releases/tag/v2.16.0) | 解压后将 `Step.app` 拖入「应用程序」。点菜单栏图标或按 **⌥Space** 随手记，再点「整理」。 |
-| **Windows**<br>Intel / AMD x64 · Windows 10/11 | [下载 0.2.1](https://github.com/Zita-Go/Pare/releases/download/windows-v0.2.1/Step-0.2.1.exe) · [版本说明](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1) | 安装后打开 Step。按 **Ctrl+Shift+Space** 随手记，在四象限归类，再加入今天。 |
+| **Windows**<br>Intel / AMD x64 · Windows 10/11 | [下载 0.2.2](https://github.com/Zita-Go/Pare/releases/download/windows-v0.2.2/Step-0.2.2.exe) · [版本说明](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.2) | 安装后打开 Step。按 **Ctrl+Shift+Space** 随手记，在四象限归类，再加入今天。 |
 | **Android**<br>Android 8.0+ | [下载 0.15.0](https://github.com/Zita-Go/Pare/releases/download/v2.16.0/Step-0.15.0-android-debug.apk) · [版本说明](https://github.com/Zita-Go/Pare/releases/tag/v2.16.0) | 安装 APK 后打开 Step，在「整理」中记下想法，或在「今天」直接添加任务。 |
 
 **先走完这三步，就可以开始了：**
@@ -131,7 +131,7 @@ Windows 界面图使用真实应用组件和演示资料，以 2 倍像素密度
 <details>
 <summary><strong>Windows 安装时显示未识别发布者</strong></summary>
 
-当前安装包尚无商业代码签名。请从 [Windows 发布页](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.1)下载，可选择 EXE、MSI 或免安装 ZIP，并用同页的 `SHA256SUMS.txt` 核对文件。兼容性与验收范围详见版本说明。
+当前安装包尚无商业代码签名。请从 [Windows 发布页](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.2)下载，可选择 EXE、MSI 或免安装 ZIP，并用同页的 `SHA256SUMS.txt` 核对文件。兼容性与验收范围详见版本说明。
 
 </details>
 
