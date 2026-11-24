@@ -1,0 +1,83 @@
+{
+  "version": "0.3.0",
+  "source_commit": "91b8d636e918b6003dfd4c174ca692c5e03e9ef8",
+  "build_run": "https://github.com/Zita-Go/Pare/actions/runs/45417186016",
+  "tests": {
+    "core": 304,
+    "desktop": 142,
+    "android": 398,
+    "failures": 0,
+    "windows_skipped": 0
+  },
+  "installer_artifact": {
+    "id": 14933182097,
+    "sha256": "912ed9a6ed3262ee1e17482000aa5458a4cb622a36a82f15a97806b4ac660080"
+  },
+  "verification_artifact": {
+    "id": 14933386553,
+    "sha256": "1a28c84e0d02b4a7e3bf6d58eb2ee0193963f7b20a3d1ef4e4e7897cd838a93d"
+  },
+  "upgrade_from": "0.2.2",
+  "upgrade_preserves_store_and_steps": true,
+  "native_acceptance": {
+    "run": "https://github.com/Zita-Go/Pare/actions/runs/45419230623",
+    "artifact_id": 14933522793,
+    "artifact_sha256": "ecb2fa86e08ab33cff264365560c7daa5ca24c0b683f25b79158ec26c998d70f",
+    "overall": "incomplete",
+    "checks": {
+      "interactive_desktop": "pass",
+      "input_method_inventory": "pass",
+      "notification_platform": "unsupported",
+      "pinyin_profile_configuration": "pass",
+      "window_open": "pass",
+      "main_window_fit_in_workarea": "pass",
+      "window_fit_in_workarea": "pass",
+      "actual_window_dpi": "pass",
+      "multi_monitor_scaling": "unsupported",
+      "quick_capture_hotkey": "pass",
+      "editor_ready_for_unicode": "pass",
+      "capture_window_fit_in_workarea": "pass",
+      "unicode_initial_input": "pass",
+      "unicode_select_all_replace": "pass",
+      "unicode_save_persistence": "pass",
+      "unicode_edit_save": "pass",
+      "fictional_clipboard_cleanup": "pass",
+      "editor_ready_for_paste": "pass",
+      "clipboard_paste_initial": "pass",
+      "clipboard_paste_replace": "pass",
+      "clipboard_paste_edit_save": "pass",
+      "ime_draft_reset": "pass",
+      "pinyin_activation": "pass",
+      "ime_candidate_screenshot": "pass",
+      "microsoft_pinyin": "pass",
+      "ime_candidate_layout": "unsupported",
+      "input_languages_restored": "pass",
+      "notification_registration": "pass",
+      "notification_show_api": "pass",
+      "notification_history": "pass",
+      "notification_visible": "unsupported",
+      "normal_exit_before_reminder": "pass",
+      "scheduled_reminder_processing": "pass",
+      "scheduled_delivery": "pass",
+      "normal_exit_before_locked_reminder": "pass",
+      "workstation_locked": "pass",
+      "locked_reminder_processing": "pass",
+      "lock_screen_delivery": "pass",
+      "lock_screen_visible": "unsupported",
+      "cleanup": "pass"
+    }
+  },
+  "release": {
+    "url": "https://github.com/Zita-Go/Pare/releases/tag/windows-v0.3.0",
+    "published_at": "2026-11-24T15:02:44Z",
+    "prerelease": false,
+    "marked_latest": false
+  },
+  "package_sha256": {
+    "SHA256SUMS.txt": "ed9c67e18ccee959c9e67cff3d2dbed2b9d259dd22f412f66fd087626e9cfbd2",
+    "Step-0.3.0-windows-x64-portable.zip": "02357d1ebf031f6040dbf57008311958768d7966c458ca4e603ff8a4f23cedd2",
+    "Step-0.3.0.exe": "5abd0d1b18719471769399872546928e3ebea2f76338f6d840ad6a8c42e1da2d",
+    "Step-0.3.0.msi": "75e958b4f6da2e59f9342463c6876f5a2b5486903641f3f58837566c76f09849"
+  },
+  "test_data": "Isolated fictional stores; no personal tasks, credentials or AI history"
+}

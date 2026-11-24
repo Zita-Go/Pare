@@ -62,7 +62,7 @@ jobs:
           $tokens=$null; $issues=$null
           [Management.Automation.Language.Parser]::ParseFile((Resolve-Path .github/scripts/windows-interactive-acceptance.ps1),[ref]$tokens,[ref]$issues) | Out-Null
           if ($issues.Count) { $issues | Format-List; throw 'Acceptance script parse failed' }
-      - name: Upgrade from the previous 0.2.2 preview
+      - name: Upgrade from the previous Windows 0.2.2
         timeout-minutes: 8
         shell: pwsh
         run: |

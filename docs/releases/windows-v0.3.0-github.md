@@ -8,3 +8,7 @@ Step for Windows 0.3.0 让日常规划与推进更直接。
 - 窄窗口优先显示单列行动，时间概览按需展开；宽窗口保留受限宽度的时间侧栏。外观、快捷键、托盘与桌面小窗统一从“设置 → 外观与快捷键”进入。
 
 保存输入并退出旧版后，可覆盖安装。已有资料、账号与同步进度继续保留，无需清空数据。提供 Windows 10/11 x64 的 EXE、MSI 和免安装 ZIP；校验值见 SHA256SUMS.txt。安装包尚无商业代码签名。
+
+验证：核心304项、桌面142项测试在Windows构建通过（零失败、零跳过），Android398项回归通过；0.2.2覆盖升级保留资料。已在隔离Windows云端桌面验证快捷入口、中文拼音、复制粘贴和保存，以及退出/锁屏后的提醒处理与系统通知历史。物理多屏、输入法候选窗布局、通知按钮和锁屏卡片外观仍保留原有验收边界。
+
+[构建与升级验证](https://github.com/Zita-Go/Pare/actions/runs/45417186016) · [原生交互验证](https://github.com/Zita-Go/Pare/actions/runs/45419230623) · [Windows使用指南](https://github.com/Zita-Go/Pare/blob/main/docs/guide-windows.md)

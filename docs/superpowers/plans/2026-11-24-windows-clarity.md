@@ -29,8 +29,10 @@
 - [x] Add red root workflow tests: selected-date visibility/inclusion, direct create, schedule entry routing, featured start, compact overview.
 - [x] Implement root presentation changes; preserve drag, undo and dirty-close safeguards.
 - [x] Run full core/desktop tests, inspect compact/wide light/dark output, and independent review.
-- [ ] Build Windows 0.3.0, test upgrade from 0.2.2, rerun actual native input acceptance against the produced artifact.
-- [ ] Publish verified Windows package, update download links, push clean main and report user-visible results.
+- [x] Build Windows 0.3.0, test upgrade from 0.2.2, rerun actual native input acceptance against the produced artifact.
+- [x] Publish verified Windows package, update download links, push clean main and report user-visible results.
 
 ## Review focus
 Cross-date targeting; task creation rollback if plan is conflicted; idea drafts surviving child navigation; task vs idea AI context; all sync error/consent states; existing timer blocking a second focus; compact text/button overflow; continued support for drag/time resize and Escape/dirty-close.
+
+Verification: core304/desktop142 on Windows, Android398; all zero failures. Native run45419230623 verified input/hotkey/reminder history, retaining explicit physical-device unsupported checks. Release source91b8d63 published as windows-v0.3.0; ordinary release, not Latest.

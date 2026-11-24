@@ -1,6 +1,6 @@
 # Step for Windows 0.2 使用说明
 
-当前下载请前往 [Windows 0.2.2](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.2.2)。本页介绍 0.2 系列的日常功能；底部保留 0.2.0 构建的历史验证记录。
+当前下载请前往 [Windows 0.3.0](https://github.com/Zita-Go/Pare/releases/tag/windows-v0.3.0)，操作方法见 [Windows 使用指南](../guide-windows.md)。本页介绍 0.2 系列的日常功能；底部保留 0.2.0 构建的历史验证记录。
 
 把想法接住，分清轻重，再从能开始的一步推进。Windows 版提供四象限、想法孵化、今日清单与时间安排，并与同账号的任务内容同步。
 
