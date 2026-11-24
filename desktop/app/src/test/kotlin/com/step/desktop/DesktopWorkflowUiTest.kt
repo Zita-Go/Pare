@@ -57,7 +57,7 @@ class DesktopWorkflowUiTest {
             onNodeWithText("移至 · 重要且紧急").performClick()
             awaitSaved(runtime) {it.content().number("quadrant")==0}
             onNodeWithTag("task_$TASK").performMouseInput {click(button=MouseButton.Secondary)}
-            onNodeWithText("加入这一天").performClick()
+            onNode(hasText("加入今天") and hasTestTag("day_include_$TASK").not()).performClick()
             val planId=ContentActions.planId(runtime.engine.state.value,Instant.now())
             waitUntil(timeoutMillis=5_000) {DayTaskSelection.contains(runtime.engine.state.value,TASK,planId)}
             waitForIdle()

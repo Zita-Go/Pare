@@ -190,6 +190,55 @@ class SyncEngineTest {
         assertEquals(SyncOutcome.BLOCKED,engine.sync());assertFalse(f.schedule.enabled)
         assertEquals(SyncOutcome.SKIPPED,engine.sync());assertEquals(0,remote.pulls)
     }
+    @Test fun localEditingKeepsTheReauthenticationErrorWhenManualSyncIsBlocked()=runBlocking {
+        val f=Fixture(expired=true)
+        var refreshAttempts=0
+        val remote=object:RemoteApi() {override suspend fun refresh(session:Session):Session {refreshAttempts++;throw ApiFailure(401)}}
+        val engine=SyncEngine(f.store,f.vault,remote,f.schedule,nowSeconds={100});engine.initialize()
+        assertEquals(SyncOutcome.BLOCKED,engine.sync())
+        val failure=engine.status.value
+        assertTrue(failure.contains("重新登录"))
+
+        val edited=payload(text="fictional edit after expired session")
+        engine.edit {StateMachine.edit(it,"inbox",id,edited)}
+        assertEquals(SyncOutcome.SKIPPED,engine.sync(manual=true))
+
+        assertEquals(failure,engine.status.value)
+        assertEquals(edited,f.store.read().items.getValue("inbox:$id").payload)
+        assertTrue(f.store.read().items.getValue("inbox:$id").dirty)
+        assertEquals(1,refreshAttempts);assertEquals(0,remote.pulls);assertTrue(remote.pushes.isEmpty())
+        assertFalse(f.schedule.enabled)
+    }
+
+    @Test fun pausingAndEditingAnExpiredAccountStillExplainThatLoginIsRequired()=runBlocking {
+        val f=Fixture(expired=true)
+        val remote=object:RemoteApi() {override suspend fun refresh(session:Session):Session {throw ApiFailure(401)}}
+        val engine=SyncEngine(f.store,f.vault,remote,f.schedule,nowSeconds={100});engine.initialize()
+        assertEquals(SyncOutcome.BLOCKED,engine.sync())
+
+        engine.pause()
+        assertTrue(engine.status.value.contains("重新登录"))
+        assertTrue(engine.status.value.contains("暂停"))
+        engine.edit {StateMachine.edit(it,"inbox",id,payload(text="fictional paused-account edit"))}
+
+        assertEquals(SyncOutcome.SKIPPED,engine.sync(manual=true))
+        assertTrue(engine.status.value.contains("重新登录"))
+        assertTrue(engine.status.value.contains("暂停"))
+        assertFalse(f.store.read().enabled);assertFalse(f.schedule.enabled)
+        assertEquals(0,remote.pulls);assertTrue(remote.pushes.isEmpty())
+    }
+
+    @Test fun localEditingKeepsPauseNoticeUntilAnExplicitPreviewIsRequested()=runBlocking {
+        val f=Fixture();f.engine.initialize();f.engine.pause()
+        f.engine.edit {StateMachine.edit(it,"inbox",id,payload(text="fictional edit while paused"))}
+
+        assertTrue(f.engine.status.value.contains("暂停"))
+        assertFalse(f.store.read().enabled);assertFalse(f.schedule.enabled)
+        assertEquals(SyncOutcome.DONE,f.engine.sync(manual=true))
+        assertTrue(f.engine.previewReady.value)
+        assertTrue(f.engine.status.value.contains("预览"));assertTrue(f.remote.pushes.isEmpty())
+    }
+
     @Test fun offlinePullRetriesWithoutPreparingAnUnobservedUpload()=runBlocking {
         val f=Fixture();var offline=true
         f.store.update {StateMachine.edit(it,"inbox",id,payload())}

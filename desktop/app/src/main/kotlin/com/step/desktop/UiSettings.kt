@@ -14,7 +14,10 @@ import java.nio.file.Path
 
 @Composable internal fun SettingsUi(runtime:DesktopRuntime,onClose:()->Unit,onRequestClose:()->Unit) {
     val state by runtime.engine.state.collectAsState();val session by runtime.engine.session.collectAsState()
-    val engineBusy by runtime.engine.busy.collectAsState();val previewReady by runtime.engine.previewReady.collectAsState();val status by runtime.engine.status.collectAsState()
+    val engineBusy by runtime.engine.busy.collectAsState();val previewReady by runtime.engine.previewReady.collectAsState()
+    val syncPresentation=rememberDesktopSyncPresentation(runtime)
+    val desktopOptionsContent=LocalDesktopOptionsContent.current
+    val desktopDraft=remember {DesktopOptionsDraft()}
     val initialized by runtime.engine.initialized.collectAsState()
     val systemSettings by runtime.systemSettings.collectAsState()
     var systemDraft by remember {mutableStateOf(systemSettings)}
@@ -31,12 +34,13 @@ import java.nio.file.Path
     var confirmRecovery by remember{mutableStateOf(false)}
     var preferences by remember{mutableStateOf(false)}
     var history by remember{mutableStateOf(false)}
-    UiModal("设置",onClose,work,width=820,dirty=(session==null&&(email.isNotBlank()||password.isNotEmpty()))||aiDraft.dirty||systemDraft.copy(attentionSnoozedUntil=systemSettings.attentionSnoozedUntil)!=systemSettings) {
-        ChoiceRow(listOf("sync" to "账号与同步","ai" to "AI 服务","preferences" to "背景与偏好","local" to "本机与备份","system" to "Windows"),tab,!work.busy){tab=it}
+    UiModal("设置",onClose,work,width=820,dirty=desktopDraft.dirty||(session==null&&(email.isNotBlank()||password.isNotEmpty()))||aiDraft.dirty||systemDraft.copy(attentionSnoozedUntil=systemSettings.attentionSnoozedUntil)!=systemSettings) {
+        ChoiceRow(listOf("sync" to "账号与同步")+(if(desktopOptionsContent!=null)listOf("desktop" to "外观与快捷键")else emptyList())+listOf("ai" to "AI 服务","preferences" to "背景与偏好","local" to "本机与备份","system" to "Windows"),tab,!work.busy){tab=it}
         when(tab) {
             "sync" -> {
                 SectionLabel("同一账号，继续推进","本机内容先保存；首次登录拉取预览后，由你确认开启上传。")
-                Text(status,color=StepGreen)
+                Text(syncPresentation.label,color=syncPresentation.color(),modifier=Modifier.testTag("settings_sync_status"))
+                Text(syncPresentation.detail,color=syncPresentation.color(),style=MaterialTheme.typography.bodySmall)
                 if(runtime.config.syncUrl.isBlank() || runtime.config.syncPublicKey.isBlank())Text("此构建尚未配置同步服务。你仍可使用本机资料库。",color=MaterialTheme.colorScheme.error)
                 if(session==null) {
                     Field(email,{email=it},"邮箱",enabled=!work.busy&&!engineBusy)
@@ -81,6 +85,7 @@ import java.nio.file.Path
                     }
                 }
             }
+            "desktop" -> desktopOptionsContent?.invoke(desktopDraft)
             "ai" -> {
                 AISettingsPanel(runtime,work,aiDraft)
                 HorizontalDivider(color=StepLine)

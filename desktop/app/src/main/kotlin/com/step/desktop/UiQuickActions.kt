@@ -24,7 +24,7 @@ private val LocalQuickSupportRequest=staticCompositionLocalOf<((Entity)->Unit)?>
 }
 
 /** Shared by ordinary rows, quick capture and the small desktop window. */
-@Composable internal fun QuickTaskActions(runtime:DesktopRuntime,task:Entity,prefix:String="quick",compact:Boolean=false) {
+@Composable internal fun QuickTaskActions(runtime:DesktopRuntime,task:Entity,prefix:String="quick",compact:Boolean=false,featured:Boolean=false) {
     if(task.completed() || task.deleted)return
     val execution by runtime.execution.state.collectAsState()
     val ready by runtime.executionReady.collectAsState()
@@ -39,11 +39,14 @@ private val LocalQuickSupportRequest=staticCompositionLocalOf<((Entity)->Unit)?>
     val run=execution.focus?.takeIf {it.taskId==task.id}?:execution.external.firstOrNull {it.taskId==task.id}
     Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
         Row(horizontalArrangement=Arrangement.spacedBy(4.dp),verticalAlignment=Alignment.CenterVertically) {
-            if(run==null)Box {
-                StepTextButton({focusMenu=true},modifier=control.testTag("${prefix}_focus_${task.id}"),enabled=ready&&!work.busy,contentPadding=padding) {IconLabel(Icons.Outlined.PlayArrow,"专注")}
+            if(run==null)Row(horizontalArrangement=Arrangement.spacedBy(4.dp),verticalAlignment=Alignment.CenterVertically) {
+                if(featured)StepButton({work.execute {it.startFocus(task.id,5)}},modifier=Modifier.testTag("featured_start_${task.id}"),enabled=ready&&!work.busy&&execution.focus==null){IconLabel(Icons.Outlined.PlayArrow,"开始 5 分钟")}
+                Box {
+                StepTextButton({focusMenu=true},modifier=control.testTag("${prefix}_focus_${task.id}"),enabled=ready&&!work.busy&&execution.focus==null,contentPadding=padding) {IconLabel(Icons.Outlined.PlayArrow,if(featured)"时长"else"专注")}
                 DropdownMenu(focusMenu,{focusMenu=false}) {listOf(5,15,30,60).forEach {minutes->
                     DropdownMenuItem(text={Text("$minutes 分钟")},onClick={focusMenu=false;work.execute {it.startFocus(task.id,minutes)}})
                 }}
+                }
             } else {
                 if(!run.due)StepTextButton({work.execute {if(run.paused)it.resume(task.id)else it.pause(task.id)}},modifier=control.testTag("${prefix}_${if(run.paused)"resume"else"pause"}_${task.id}"),enabled=!work.busy,contentPadding=padding) {
                     IconLabel(if(run.paused)Icons.Outlined.PlayArrow else Icons.Outlined.Pause,if(run.paused)"继续"else"暂停")
@@ -55,6 +58,7 @@ private val LocalQuickSupportRequest=staticCompositionLocalOf<((Entity)->Unit)?>
             }
             StepTextButton({if(requestSupport!=null)requestSupport(task)else support=true},modifier=control.testTag("${prefix}_support_${task.id}"),enabled=!work.busy,contentPadding=padding){val label=if(baseline.nextAction.isBlank())"写下一步"else"卡住了";if(compact)Text(label)else IconLabel(Icons.Outlined.Lightbulb,label)}
         }
+        if(featured&&run==null&&execution.focus!=null)Text("另一项任务正在专注，请先在上方结束或取消。",style=MaterialTheme.typography.bodySmall,color=StepMuted)
         WorkFeedback(work)
     }
     if(support)QuickSupportSheet(runtime,task.id,{support=false})

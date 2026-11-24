@@ -8,6 +8,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pare.app.*
 import kotlinx.coroutines.delay
@@ -26,29 +27,40 @@ import java.time.format.DateTimeFormatter
     }
 }
 
-@Composable internal fun TaskEditor(runtime:DesktopRuntime,existingId:String?,planId:String,onClose:()->Unit,onAI:(String)->Unit) {
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun TaskEditor(runtime:DesktopRuntime,existingId:String?,planId:String,onClose:()->Unit,onAI:(String)->Unit,initialTab:String="step",addToPlan:Boolean=false,initialQuadrant:Int=1) {
     val state by runtime.engine.state.collectAsState();val id=remember {existingId?:uid()}
     val initial=remember {state.items["task:$id"]};val current=state.items["task:$id"]
-    var baseline by remember {mutableStateOf(ContentEditBaseline.from(initial))}
+    val startingQuadrant=remember {initial?.content().number("quadrant")?:initialQuadrant.coerceIn(0,3)}
+    var baseline by remember {mutableStateOf(ContentEditBaseline.from(initial).copy(quadrant=startingQuadrant))}
     var title by remember {mutableStateOf(initial?.title().orEmpty())};var note by remember {mutableStateOf(initial?.content().str("note"))}
-    var quadrant by remember {mutableStateOf((initial?.content().number("quadrant")?:1).toString())}
-    var tab by remember {mutableStateOf("step")};val work=rememberWork(runtime)
+    var quadrant by remember {mutableStateOf(startingQuadrant.toString())}
+    var tab by remember {mutableStateOf(initialTab.takeIf {it in setOf("step","detail","schedule","focus")}?:"step")};val work=rememberWork(runtime)
     val stepDraft=remember(id){initial?.let {UiStepDraft(it)}}
     val scheduleDraft=remember(id,planId){initial?.let {UiScheduleDraft(state,it,planId)}}
     val metadataDraft=remember(id){initial?.let {UiMetadataDraft(it,PreferencesActions.planningZone(state))}}
     var estimate by remember {mutableStateOf("")}
-    UiModal(if(current==null)"新建行动"else"推进这件事",onClose,work,width=840,dirty=title!=baseline.text || note!=baseline.note || quadrant!=(baseline.quadrant.toString()) || stepDraft?.dirty==true || scheduleDraft?.dirty==true || metadataDraft?.dirty==true || (initial==null&&estimate.isNotBlank()),subtitle=current?.title()) {
-        if(current==null) {
+    UiModal(if(existingId==null)"新建行动"else"推进这件事",onClose,work,width=840,dirty=title!=baseline.text || note!=baseline.note || quadrant!=(baseline.quadrant.toString()) || stepDraft?.dirty==true || scheduleDraft?.dirty==true || metadataDraft?.dirty==true || (initial==null&&estimate.isNotBlank()),subtitle=initial?.let {current?.title()?:it.title()}) {
+        // Keep the creation form mounted until its save callback closes it. The store can
+        // publish the created entity before that callback, while edit drafts are still null.
+        if(existingId==null) {
+            if(addToPlan)Text("创建后加入 ${planId.substringBefore('@')} · ${planId.substringAfter('@')}",style=MaterialTheme.typography.bodySmall,color=StepMuted)
             Field(title,{title=it},"任务名称",enabled=!work.busy)
             ChoiceRow(quadrantNames.mapIndexed {i,s->i.toString() to s},quadrant,!work.busy){quadrant=it}
             Field(estimate,{estimate=it},"任务总预估（分钟，可留空）",enabled=!work.busy)
             Field(note,{note=it},"背景与备注",lines=3,enabled=!work.busy)
             StepButton({val t=title;val n=note;val q=quadrant.toInt();val e=estimate;work.edit(onClose){state->
-                val created=checkedContentSave(state,initial,"task",id,t,n,q,baseline)
+                var created=checkedContentSave(state,initial,"task",id,t,n,q,baseline)
                 val minutes=e.trim().takeIf {it.isNotEmpty()}?.let {it.toIntOrNull()?:error("请输入整数分钟")}
-                DesktopTaskMetadata.save(created,id,DesktopMetadataBaseline.from(created.items.getValue("task:$id")),minutes,null,null,Instant.now())
-            }},enabled=title.isNotBlank()&&!work.busy){Text("创建行动")}
-        } else {
+                val now=Instant.now()
+                created=DesktopTaskMetadata.save(created,id,DesktopMetadataBaseline.from(created.items.getValue("task:$id")),minutes,null,null,now)
+                if(addToPlan) {
+                    created=DayTaskActions.setIncluded(created,id,true,planId,now)
+                    created=StateMachine.group(created,setOf("task:$id","day_plan:$planId"))
+                }
+                created
+            }},modifier=Modifier.testTag("task_create"),enabled=title.isNotBlank()&&!work.busy){Text("创建行动")}
+        } else if(current!=null&&!current.deleted&&current.content()!=null&&initial!=null) {
             ChoiceRow(listOf("step" to "最小下一步","detail" to "任务详情","schedule" to "安排与提醒","focus" to "专注 / 等待"),tab,!work.busy){tab=it}
             when(tab) {
                 "step" -> StepPanel(runtime,current,requireNotNull(stepDraft),work,onAI){saved->val value=ContentEditBaseline.from(saved);baseline=baseline.copy(nextAction=value.nextAction,lastCompletedStepId=value.lastCompletedStepId)}
@@ -61,16 +73,17 @@ import java.time.format.DateTimeFormatter
                     TaskMetadataPanel(runtime,current,requireNotNull(metadataDraft),work){saved->baseline=baseline.copy(estimatedMinutes=ContentEditBaseline.from(saved).estimatedMinutes)}
                     HorizontalDivider()
                     val included=DayTaskSelection.contains(state,id,planId);val win=planWin(state,planId,id)
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        StepOutlinedButton({work.edit {DayTaskActions.setIncluded(it,id,!included,planId,Instant.now())}},enabled=!work.busy){Text(if(included)"移出所选日期"else"加入所选日期")}
-                        StepOutlinedButton({work.edit {DayTaskActions.setWin(it,id,!win,planId,Instant.now())}},enabled=!work.busy&&!current.completed()){Text(if(win)"取消当日重点"else"设为当日重点")}
+                    val dayLabel=planningDayLabel(planId)
+                    FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        StepOutlinedButton({work.edit {DayTaskActions.setIncluded(it,id,!included,planId,Instant.now())}},enabled=!work.busy){Text(if(included)"移出$dayLabel"else"加入$dayLabel")}
+                        StepOutlinedButton({work.edit {DayTaskActions.setWin(it,id,!win,planId,Instant.now())}},enabled=!work.busy&&!current.completed()){Text(if(win)"取消${dayLabel}重点"else"设为${dayLabel}重点")}
                         StepTextButton({val done=!current.completed();work.complete(id,done)},enabled=!work.busy){Text(if(current.completed())"恢复整个任务"else"完成整个任务")}
                     }
                 }
                 "schedule" -> SchedulePanel(runtime,current,planId,requireNotNull(scheduleDraft),work)
                 else -> ExecutionPanel(runtime,current,work)
             }
-        }
+        } else Text("这个行动已不可用，未保存的草稿仍保留。",color=StepMuted)
     }
 }
 @Composable private fun StepPanel(runtime:DesktopRuntime,task:Entity,draft:UiStepDraft,work:UiWork,onAI:(String)->Unit,onStepChange:(Entity)->Unit) {
@@ -165,6 +178,8 @@ import java.time.format.DateTimeFormatter
     Text("已记录 ${sessions.size} 段个人投入 · ${waits.size} 段外部等待",style=MaterialTheme.typography.bodySmall,color=StepMuted)
 }
 
+private data class UiLinkedTaskTarget(val taskId:String,val planId:String)
+
 @Composable internal fun IdeaEditor(runtime:DesktopRuntime,existingId:String?,planId:String,onClose:()->Unit,onAI:(String)->Unit) {
     val state by runtime.engine.state.collectAsState();val id=remember{existingId?:uid()};val initial=remember {state.items["idea:$id"]};val current=state.items["idea:$id"]
     var title by remember{mutableStateOf(initial?.title().orEmpty())};var notes by remember{mutableStateOf(initial?.content().str("notes"))}
@@ -173,9 +188,15 @@ import java.time.format.DateTimeFormatter
     var contextBaseline by remember{mutableStateOf(initial?.let {IdeaContextBaseline.from(it)})}
     var entry by remember{mutableStateOf("")};var entryKind by remember{mutableStateOf("note")};var entryId by remember{mutableStateOf(uid())}
     var action by remember{mutableStateOf("")};var actionId by remember{mutableStateOf(uid())};var tab by remember{mutableStateOf("context")};var showLink by remember{mutableStateOf(false)}
+    var linkedTask by remember{mutableStateOf<UiLinkedTaskTarget?>(null)}
+    var linkedAI by remember{mutableStateOf<AiTarget?>(null)}
+    var createdTaskId by remember{mutableStateOf<String?>(null)}
     val work=rememberWork(runtime)
-    UiModal(if(current==null)"种下一个想法"else"想法孵化",onClose,work,width=840,
-        dirty=title!=contentBaseline.text || notes!=contentBaseline.note || stage!=(contextBaseline?.stage?:"seed") || question!=(contextBaseline?.nextQuestion?:"") || entry.isNotBlank() || action.isNotBlank(),subtitle=current?.title()) {
+    val dirty=title!=contentBaseline.text || notes!=contentBaseline.note || stage!=(contextBaseline?.stage?:"seed") || question!=(contextBaseline?.nextQuestion?:"") || entry.isNotBlank() || action.isNotBlank()
+    // Keep the parent draft and its quit protection alive while showing a linked task.
+    ReportUnsavedEdits(dirty)
+    if(linkedTask==null)UiModal(if(current==null)"种下一个想法"else"想法孵化",onClose,work,width=840,
+        dirty=dirty,subtitle=current?.title()) {
         if(current!=null)ChoiceRow(listOf("context" to "背景与问题","explore" to "探索记录","actions" to "关联行动"),tab,!work.busy){tab=it}
         if(tab=="context" || current==null) {
             Field(title,{title=it},"想法",enabled=!work.busy);Field(notes,{notes=it},"为什么想到它？已有的背景与线索",lines=3,enabled=!work.busy)
@@ -198,14 +219,41 @@ import java.time.format.DateTimeFormatter
             }
         } else {
             val links=current.content().array("linkedTaskIDs").map {it.jsonPrimitive.content}.toSet()
-            links.forEach {taskId->val task=state.items["task:$taskId"];Row(verticalAlignment=Alignment.CenterVertically){Text(task?.title()?:"已移除的行动",modifier=Modifier.weight(1f));StepTextButton({val expected=IdeaManagementBaseline.from(current);work.edit {IdeaManagementActions.link(it,id,taskId,false,expected,Instant.now())}},enabled=!work.busy){Text("解除关联")}}}
+            links.forEach {taskId->
+                val task=state.items["task:$taskId"]
+                val available=task!=null&&!task.deleted&&task.content()!=null
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                        StepTextButton({linkedTask=UiLinkedTaskTarget(taskId,planId)},modifier=Modifier.fillMaxWidth().testTag("idea_linked_task_$taskId"),enabled=available&&!work.busy) {
+                            Text(task?.title()?.ifBlank {"已移除的行动"}?:"已移除的行动",modifier=Modifier.fillMaxWidth(),maxLines=2,overflow=TextOverflow.Ellipsis)
+                        }
+                        Text(when {
+                            !available -> "行动已删除或不可用 · 关联仍保留"
+                            task!!.completed() -> "已完成"
+                            task.content().str("nextAction").isNotBlank() -> "下一步：${task.content().str("nextAction")}"
+                            else -> "尚未写下下一步"
+                        },modifier=Modifier.padding(horizontal=9.dp),style=MaterialTheme.typography.bodySmall,color=StepMuted,maxLines=2,overflow=TextOverflow.Ellipsis)
+                    }
+                    StepTextButton({val expected=IdeaManagementBaseline.from(current);work.edit {IdeaManagementActions.link(it,id,taskId,false,expected,Instant.now())}},enabled=!work.busy){Text("解除关联")}
+                }
+            }
             Field(action,{action=it},"从想法中拆出一个具体行动",enabled=!work.busy)
-            StepButton({val text=action;val aid=actionId;work.edit({action="";actionId=uid()}){IdeaActions.createLinkedTask(it,id,aid,text,"","",1,null,Instant.now())}},enabled=action.isNotBlank()&&!work.busy){Text("创建并关联行动")}
+            StepButton({val text=action;val aid=actionId;work.edit({action="";actionId=uid();createdTaskId=aid}){IdeaActions.createLinkedTask(it,id,aid,text,"","",1,null,Instant.now())}},enabled=action.isNotBlank()&&!work.busy){Text("创建并关联行动")}
+            createdTaskId?.takeIf {it in links}?.let {createdId->
+                val created=state.items["task:$createdId"]
+                StepOutlinedButton({linkedTask=UiLinkedTaskTarget(createdId,planId)},modifier=Modifier.testTag("idea_open_created_task"),enabled=created!=null&&!created.deleted&&created.content()!=null&&!work.busy){Text("打开行动，写下一步")}
+            }
             StepTextButton({showLink=!showLink}){Text(if(showLink)"收起已有行动"else"关联已有行动")}
             if(showLink) activeTasks(state).filter {it.id !in links}.forEach {task->StepTextButton({val expected=IdeaManagementBaseline.from(current);work.edit {IdeaManagementActions.link(it,id,task.id,true,expected,Instant.now())}},enabled=!work.busy){IconLabel(Icons.Outlined.Add,task.title())}}
         }
         if(current!=null)StepTextButton({onAI(id)},enabled=!work.busy){Text("AI 帮我探索这个想法")}
     }
+    // An open child owns its original planning day. Parent day/time-zone refreshes must
+    // not replace schedule drafts or change the context of the child's AI route.
+    linkedTask?.let {target->key(target) {
+        TaskEditor(runtime,target.taskId,target.planId,{linkedTask=null;linkedAI=null},{linkedAI=AiTarget(null,it,target.planId)})
+    }}
+    linkedAI?.let {target->AiUi(runtime,target,{linkedAI=null})}
 }
 @Composable internal fun GoalEditor(runtime:DesktopRuntime,existingId:String?,onClose:()->Unit,onAI:(String)->Unit) {
     val state by runtime.engine.state.collectAsState();val initial=remember{existingId?.let {state.items["goal:$it"]}}

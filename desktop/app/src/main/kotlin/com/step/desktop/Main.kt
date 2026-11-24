@@ -85,6 +85,7 @@ fun main(args:Array<String>) {
             SwingUtilities.invokeLater {notices.add(title to body);trayIcon.value?.displayMessage(title,body,TrayIcon.MessageType.INFO)}
         }}.getOrElse {initializationError=it.message ?: "本机资料暂不可用";null}}
         val platform=remember {runtime?.let {DesktopPlatform(path) {capture=!capture}}}
+        val optionsContent: (@Composable (DesktopOptionsDraft)->Unit)?=if(platform==null)null else {draft->DesktopOptionsContent(platform,draft)}
         val taskRequest by (runtime?.requestedTask ?: MutableStateFlow<String?>(null)).collectAsState()
         val installerRequest by (runtime?.requestedInstaller ?: MutableStateFlow<Path?>(null)).collectAsState()
         val widgetVisible by (platform?.widgetVisible ?: MutableStateFlow(false)).collectAsState()
@@ -131,7 +132,9 @@ fun main(args:Array<String>) {
             CompositionLocalProvider(LocalDesktopWindow provides window) {
             LaunchedEffect(window,darkAppearance,visible) {applyWindowsFrameAppearance(window,darkAppearance)}
             if(runtime!=null && initializationError==null)Box {
-                DesktopUi(runtime,{capture=true},requestClose,{desktopOptions=true},taskRequest,{runtime.requestedTask.value=null})
+                CompositionLocalProvider(LocalDesktopOptionsContent provides optionsContent) {
+                    DesktopUi(runtime,{capture=true},requestClose,{desktopOptions=true},taskRequest,{runtime.requestedTask.value=null})
+                }
                 notices.firstOrNull()?.let {notice -> DesktopTheme {Box(Modifier.fillMaxSize()) {
                     Surface(modifier=Modifier.align(Alignment.BottomEnd).padding(20.dp).widthIn(max=460.dp),shadowElevation=8.dp,shape=MaterialTheme.shapes.medium) {
                         Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -181,23 +184,8 @@ fun main(args:Array<String>) {
         if(desktopOptions && platform!=null) DialogWindow(onCloseRequest={desktopOptions=false},title="Step · 桌面选项",icon=painterResource("step.png"),resizable=false,state=rememberFittedDialogState(470,570)) {
             KeepWindowInWorkArea(window,340,260,true)
             LaunchedEffect(window,darkAppearance) {applyWindowsFrameAppearance(window,darkAppearance)}
-            val current by platform.shortcut.collectAsState();val tray by platform.keepInTray.collectAsState();val status by platform.status.collectAsState()
-            var value by remember(current) {mutableStateOf(current)}
             DesktopTheme {Surface {Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
-                Text("外观与桌面",style=MaterialTheme.typography.titleLarge)
-                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Text("外观",style=MaterialTheme.typography.bodyMedium)
-                    FilterChip(darkAppearance,{platform.changeAppearance(true)},label={Text("深色")},shape=MaterialTheme.shapes.small)
-                    FilterChip(!darkAppearance,{platform.changeAppearance(false)},label={Text("浅色")},shape=MaterialTheme.shapes.small)
-                }
-                Text("随手记快捷键",style=MaterialTheme.typography.titleMedium)
-                OutlinedTextField(value,{value=it},label={Text("例如 Ctrl+Shift+Space")},singleLine=true,modifier=Modifier.fillMaxWidth())
-                Button(onClick={platform.changeShortcut(value)},shape=MaterialTheme.shapes.small) {Text("保存快捷键")}
-                Row {Checkbox(tray,{platform.changeTray(it)});Text("关闭主窗口后留在系统托盘")}
-                Row {Checkbox(widgetVisible,{platform.changeWidget(it)});Text("显示 Step 桌面小窗")}
-                Row {Checkbox(widgetPinned,{platform.pinWidget(it)});Text("桌面小窗保持置顶")}
-                Text("运行或托盘驻留时自动同步。退出后的系统提醒可在设置中单独开启；不接管其他设备计时。",style=MaterialTheme.typography.bodySmall)
-                status?.let {Text(it,color=MaterialTheme.colorScheme.error)}
+                DesktopOptionsContent(platform)
             }}}
         }
     }

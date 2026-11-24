@@ -53,17 +53,10 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     var page by remember {mutableStateOf("今天")}
     var editor by remember {mutableStateOf<Pair<String,String?>?>(null)}
     var pendingTaskOpen by remember {mutableStateOf<String?>(null)}
-    LaunchedEffect(openTaskId,initialized) {
-        if(openTaskId!=null&&initialized) {
-            val task=runtime.engine.state.value.items["task:$openTaskId"]
-            if(task!=null&&!task.deleted&&task.content()!=null) {
-                if(editor!=null&&editor!=("task" to openTaskId)&&DesktopDraftStatus.hasUnsavedEdits.value)pendingTaskOpen=openTaskId
-                else editor="task" to openTaskId
-            }
-            else runtime.error.value="这项任务已删除或不可用"
-            onOpenTaskConsumed()
-        }
-    }
+    var taskTab by remember {mutableStateOf("step")}
+    var taskPlan by remember {mutableStateOf<String?>(null)}
+    var addNewToDay by remember {mutableStateOf(false)}
+    var newTaskQuadrant by remember {mutableStateOf(1)}
     var settings by remember {mutableStateOf(false)}
     var ai by remember {mutableStateOf<AiTarget?>(null)}
     var picker by remember {mutableStateOf(false)}
@@ -72,6 +65,21 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     val todayId=ContentActions.planId(state,now)
     var date by remember(todayId) {mutableStateOf(LocalDate.parse(todayId.substringBefore('@')))}
     val planId="$date@${todayId.substringAfter('@')}"
+    fun openTask(id:String?,tab:String="step",includeNew:Boolean=false,quadrant:Int=1,targetPlan:String=planId) {
+        taskTab=tab;taskPlan=targetPlan;addNewToDay=includeNew;newTaskQuadrant=quadrant
+        editor="task" to id
+    }
+    LaunchedEffect(openTaskId,initialized) {
+        if(openTaskId!=null&&initialized) {
+            val task=runtime.engine.state.value.items["task:$openTaskId"]
+            if(task!=null&&!task.deleted&&task.content()!=null) {
+                if(editor==("task" to openTaskId)) { /* Keep the existing draft and date. */ }
+                else if(editor!=null&&DesktopDraftStatus.hasUnsavedEdits.value)pendingTaskOpen=openTaskId
+                else openTask(openTaskId)
+            } else runtime.error.value="这项任务已删除或不可用"
+            onOpenTaskConsumed()
+        }
+    }
     DesktopTheme {
         QuickActionHost(runtime) {
         Surface(Modifier.fillMaxSize().stepWindowBackground().testTag("desktop_root"),color=Color.Transparent) {
@@ -93,33 +101,37 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                     StepTextButton({page="收件箱"},modifier=Modifier.fillMaxWidth()) {StepIcon(Icons.Outlined.Inbox);Spacer(Modifier.width(10.dp));Text("收件箱");Spacer(Modifier.weight(1f));Text(state.items.values.count {it.kind=="inbox" && !it.deleted}.toString())}
                     Spacer(Modifier.weight(1f))
                     Text("先选重要的事，\n再迈出小小一步。",style=MaterialTheme.typography.bodySmall,color=StepMuted,modifier=Modifier.padding(10.dp))
-                    StepTextButton({settings=true}) {StepIcon(if(state.enabled)Icons.Outlined.CloudDone else Icons.Outlined.CloudOff);Spacer(Modifier.width(8.dp));Text(if(state.enabled)"同步已开启"else"本机优先")}
+                    SyncStatusButton(runtime){settings=true}
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
                     Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal=24.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         Text("我的空间",style=MaterialTheme.typography.bodyMedium,color=StepMuted,modifier=Modifier.weight(1f))
                         StepOutlinedButton(onQuickCapture,enabled=initialized){IconLabel(Icons.Outlined.Add,"随手记")}
-                        StepTextButton({ai=AiTarget(PlanningAIKind.DAY,null,planId)},enabled=initialized){IconLabel(Icons.Outlined.AutoAwesome,"AI 助手")}
+                        StepTextButton({ai=AiTarget(PlanningAIKind.DAY,null,planId)},enabled=initialized){IconLabel(Icons.Outlined.AutoAwesome,"AI 规划")}
                         StepTextButton({settings=true}){IconLabel(Icons.Outlined.Settings,"设置")}
-                        StepTextButton(onDesktopOptions){IconLabel(Icons.Outlined.Tune,"桌面选项")}
                     }
                     HorizontalDivider(color=StepLine)
-                    if(initialized)ExecutionStrip(runtime){editor="task" to it}
+                    if(initialized)ExecutionStrip(runtime){openTask(it)}
                     if(!initialized) {
                         Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.Center) {Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(16.dp)){CircularProgressIndicator();Text(syncStatus)}}
                     } else {
                         Column(Modifier.weight(1f).padding(horizontal=24.dp,vertical=22.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
                             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                                 Column(Modifier.weight(1f)) {Text(page,style=MaterialTheme.typography.headlineLarge,modifier=Modifier.testTag("workspace_title"));Text(when(page){"今天"->"给有限的精力，留出明确的位置";"四象限"->"分清轻重，再决定今天要做什么";"想法"->"保留背景、发现与决定，让想法慢慢长大";"目标"->"记住方向，把它连接到具体行动";"资料库"->"找回任务、想法与留下的记录";"回顾"->"看看实际投入，让下一周更清楚";else->"先接住，再整理。每一条都可以成为行动或想法。"},color=StepMuted,style=MaterialTheme.typography.bodyMedium)}
-                                if(page=="今天") {StepOutlinedButton({picker=true}){Text("选择任务")};StepButton({ai=AiTarget(PlanningAIKind.DAY,null,planId)}){IconLabel(Icons.Outlined.AutoAwesome,"规划这一天")}}
-                                else if(page !in setOf("资料库","回顾")) StepButton({editor=(when(page){"想法"->"idea";"目标"->"goal";"收件箱"->"inbox";else->"task"}) to null}){IconLabel(Icons.Outlined.Add,"新建")}
+                                if(page=="今天") {
+                                    StepOutlinedButton({picker=true}){Text("从已有任务选择")}
+                                    val hasFocus=state.items.values.any {it.kind=="task"&&!it.deleted&&!it.completed()&&planWin(state,planId,it.id)}
+                                    if(hasFocus)StepOutlinedButton({openTask(null,includeNew=true)},modifier=Modifier.testTag("create_day_task")){IconLabel(Icons.Outlined.Add,"添加${planningDayLabel(planId)}任务")}
+                                    else StepButton({openTask(null,includeNew=true)},modifier=Modifier.testTag("create_day_task")){IconLabel(Icons.Outlined.Add,"添加${planningDayLabel(planId)}任务")}
+                                }
+                                else if(page !in setOf("资料库","回顾")) StepButton({if(page=="四象限")openTask(null)else editor=(when(page){"想法"->"idea";"目标"->"goal";else->"inbox"}) to null}){IconLabel(Icons.Outlined.Add,"新建")}
                             }
                             IntelligenceHintStrip(runtime){ai=it}
                             when(page) {
-                                "资料库" -> LibraryPane(runtime){kind,id->editor=kind to id}
-                                "回顾" -> ReviewPane(runtime){editor="task" to it}
-                                "今天" -> TodayPane(runtime,state,planId,date,{date=it},{editor="task" to it},work,{ai=AiTarget(PlanningAIKind.DAY,null,planId)})
-                                "四象限" -> QuadrantPane(runtime,state,planId,work,{editor="task" to it},{editor="task" to null})
+                                "资料库" -> LibraryPane(runtime){kind,id->if(kind=="task")openTask(id)else editor=kind to id}
+                                "回顾" -> ReviewPane(runtime){openTask(it)}
+                                "今天" -> TodayPane(runtime,state,planId,date,{date=it},{openTask(it)},work,{task,targetPlan->openTask(task,"schedule",targetPlan=targetPlan)})
+                                "四象限" -> QuadrantPane(runtime,state,planId,date,{date=it},work,{openTask(it)})
                                 "想法","目标" -> CollectionPane(state,if(page=="想法")"idea" else "goal",{editor=it.kind to it.id})
                                 else -> InboxPane(state,work,{editor="inbox" to it},{ai=AiTarget(PlanningAIKind.INBOX,it,planId)})
                             }
@@ -135,7 +147,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
         }
         editor?.let {(kind,id)->key(kind,id) {
             when(kind) {
-                "task" -> TaskEditor(runtime,id,planId,{editor=null},{ai=AiTarget(null,it,planId)})
+                "task" -> TaskEditor(runtime,id,taskPlan?:planId,{editor=null},{ai=AiTarget(null,it,taskPlan?:planId)},initialTab=taskTab,addToPlan=addNewToDay,initialQuadrant=newTaskQuadrant)
                 "idea" -> IdeaEditor(runtime,id,planId,{editor=null},{ai=AiTarget(PlanningAIKind.IDEA,it,planId)})
                 "goal" -> GoalEditor(runtime,id,{editor=null},{ai=AiTarget(PlanningAIKind.GOAL,it,planId)})
                 else -> ContentEditor(runtime,"inbox",id,{editor=null})
@@ -144,7 +156,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
         pendingTaskOpen?.let {requested->AlertDialog(
             onDismissRequest={pendingTaskOpen=null},title={Text("先处理当前编辑？")},
             text={Text("还有未保存的编辑。打开另一任务会关闭当前编辑器；你可以先保留草稿继续编辑。")},
-            confirmButton={StepTextButton({editor="task" to requested;pendingTaskOpen=null},Modifier.testTag("deep_link_discard")){Text("放弃当前草稿并打开")}},
+            confirmButton={StepTextButton({openTask(requested);pendingTaskOpen=null},Modifier.testTag("deep_link_discard")){Text("放弃当前草稿并打开")}},
             dismissButton={StepTextButton({pendingTaskOpen=null},Modifier.testTag("deep_link_keep")){Text("保留当前编辑")}}
         )}
         if(settings) SettingsUi(runtime,{settings=false},onRequestClose)
@@ -164,119 +176,132 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     }
 }
 
-@Composable private fun ColumnScope.TodayPane(runtime:DesktopRuntime,state:SyncState,planId:String,date:LocalDate,onDate:(LocalDate)->Unit,onTask:(String)->Unit,work:UiWork,onAI:()->Unit) {
+@Composable private fun ColumnScope.TodayPane(runtime:DesktopRuntime,state:SyncState,planId:String,date:LocalDate,onDate:(LocalDate)->Unit,onTask:(String)->Unit,work:UiWork,onSchedule:(String,String)->Unit) {
     val day=TimelineDay.fromPlanId(planId)
-    val projection=TimelineProjection.project(state,day)
     val overview=TodayOverviewProjection.project(state,day)
     val projected=(overview.scheduled+overview.unscheduled+overview.completed).map {it.task}.associateBy {it.id}
     val order=state.items["day_plan:$planId"]?.content().array("ordered_task_ids").map {it.jsonPrimitive.content}
     val tasks=(order+projected.keys).distinct().mapNotNull {projected[it]}
     var timeline by remember {mutableStateOf(false)}
+    var showOverview by remember(planId) {mutableStateOf(false)}
     val drag=remember(planId,work){UiTaskDrag(work,planId)}
     val focus=tasks.firstOrNull {planWin(state,planId,it.id)&&!it.completed()}
     val remaining=tasks.filterNot {it.id==focus?.id}
-    val effort=TodayEffort.summary(state,day,overview)
     val actionScroll=rememberLazyListState()
-    val scheduleScroll=rememberLazyListState()
-    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-        StepTextButton({onDate(date.minusDays(1))},contentPadding=PaddingValues(6.dp)){StepIcon(Icons.Outlined.ChevronLeft,"前一天")}
-        Text(date.format(DateTimeFormatter.ofPattern("M月d日 · EEEE",java.util.Locale.CHINESE)),style=MaterialTheme.typography.titleMedium)
-        StepTextButton({onDate(date.plusDays(1))},contentPadding=PaddingValues(6.dp)){StepIcon(Icons.Outlined.ChevronRight,"后一天")}
-        StepTextButton({onDate(Instant.now().atZone(day.zone).toLocalDate())}){Text("今天")}
-        Spacer(Modifier.weight(1f))
-        Text("${tasks.count {!it.completed()}} 件待推进 · ${tasks.count {it.completed()}} 件已完成",style=MaterialTheme.typography.bodySmall,color=StepMuted)
-    }
-    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-        FilterChip(!timeline,{timeline=false;drag.cancel()},label={Text("紧凑清单")},modifier=Modifier.testTag("view_list"))
-        FilterChip(timeline,{timeline=true;drag.cancel()},label={Text("交互时间轴")},modifier=Modifier.testTag("view_timeline"))
-        DragFeedback(drag)
-    }
-    if(timeline) {Box(Modifier.weight(1f)){PlanningTimeline(runtime,planId,onTask,onDate)};return}
-    Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
-        Box(Modifier.weight(1.16f).fillMaxHeight().onGloballyPositioned {drag.groups[0]=it.boundsInRoot();drag.scrollAreas[0]=it.boundsInRoot() to actionScroll}) {
-            LazyColumn(state=actionScroll,modifier=Modifier.fillMaxSize().padding(end=10.dp),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(bottom=12.dp)) {
-                if(focus!=null)item {TaskRow(focus,state,planId,work,onTask,featured=true,runtime=runtime)}
-                item {
-                    StepCard(modifier=Modifier.fillMaxWidth()) {
-                        Column {
-                            Row(Modifier.fillMaxWidth().padding(horizontal=18.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically) {
-                                Text(if(focus!=null)"今天的其他行动"else"今天的行动",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
-                                Text("${remaining.size} 项",style=MaterialTheme.typography.bodySmall,color=StepMuted)
-                            }
-                            HorizontalDivider(Modifier.padding(horizontal=16.dp),color=StepLine)
-                            if(tasks.isEmpty())EmptyState("今天，还留有空间","从四象限选出值得推进的事，再安排一个能够开始的小动作。")
-                            remaining.forEachIndexed {index,task->
-                                key(task.id) {
-                                    TaskRow(task,state,planId,work,onTask,runtime=runtime,drag=drag)
-                                    if(index<remaining.lastIndex)HorizontalDivider(Modifier.padding(start=56.dp,end=16.dp),color=StepLine)
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
-                        }
-                    }
+    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        val compact=maxWidth<900.dp
+        Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            PlanningDateHeader(planId,date,onDate) {
+                Text("${tasks.count {!it.completed()}} 件待推进 · ${tasks.count {it.completed()}} 件已完成",style=MaterialTheme.typography.bodySmall,color=StepMuted)
+            }
+            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                FilterChip(!timeline,{timeline=false;drag.cancel()},label={Text("行动清单")},modifier=Modifier.testTag("view_list"))
+                FilterChip(timeline,{timeline=true;drag.cancel()},label={Text("时间安排")},modifier=Modifier.testTag("view_timeline"))
+                DragFeedback(drag)
+                Spacer(Modifier.weight(1f))
+                if(compact&&!timeline)StepTextButton({showOverview=!showOverview},modifier=Modifier.testTag("schedule_overview_toggle")) {
+                    IconLabel(if(showOverview)Icons.Outlined.ExpandLess else Icons.Outlined.Schedule,
+                        if(showOverview)"收起时间概览"else"时间概览 · ${overview.scheduled.size} 项")
                 }
             }
-            VerticalScrollbar(rememberScrollbarAdapter(actionScroll),Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp))
-        }
-        StepCard(modifier=Modifier.weight(.84f)) {
-            Box(Modifier.fillMaxWidth().padding(start=18.dp,end=8.dp,top=18.dp,bottom=14.dp)) {
-                LazyColumn(state=scheduleScroll,modifier=Modifier.fillMaxWidth().padding(end=10.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    item {
-                        Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            StepIcon(Icons.Outlined.Schedule,color=StepGold)
-                            Text("时间安排",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
-                            Text("${projection.blocks.sumOf {it.durationMinutes}} 分钟",style=MaterialTheme.typography.bodySmall,color=StepMuted)
-                        }
-                        HorizontalDivider(Modifier.padding(top=14.dp),color=StepLine)
-                    }
-                    if(projection.blocks.isEmpty())item {EmptyState("还没有时间块","打开任务的「安排与提醒」，为重要行动留出一段时间。")}
-                    items(projection.blocks,key={it.key}) {block->
-                        val accent=LocalStepPalette.current.quadrants[(block.task.content().number("quadrant")?:1).coerceIn(0,3)]
-                        Surface(onClick={onTask(block.task.id)},color=Color.Transparent,shape=MaterialTheme.shapes.small) {
-                            Row(Modifier.fillMaxWidth().padding(vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                                Column(Modifier.width(46.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                                    Text(block.start.atZone(day.zone).format(DateTimeFormatter.ofPattern("HH:mm")),color=MaterialTheme.colorScheme.onSurface,style=MaterialTheme.typography.titleMedium)
-                                    Text(block.end.atZone(day.zone).format(DateTimeFormatter.ofPattern("HH:mm")),style=MaterialTheme.typography.bodySmall,color=StepMuted)
-                                }
-                                Box(Modifier.width(3.dp).height(52.dp).background(accent.copy(alpha=.8f),CircleShape))
-                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                                    Text(block.task.title(),style=MaterialTheme.typography.titleMedium,maxLines=2,overflow=TextOverflow.Ellipsis)
-                                    Text("${block.durationMinutes} 分钟"+(if(block.laneCount>1)" · 有时间重叠"else""),style=MaterialTheme.typography.bodySmall,color=StepMuted)
-                                }
-                            }
-                        }
-                    }
-                    if(projection.unscheduled.isNotEmpty()) {
-                        item {
-                            HorizontalDivider(Modifier.padding(top=4.dp,bottom=14.dp),color=StepLine)
-                            Text("还未安排时间",style=MaterialTheme.typography.labelLarge,color=StepMuted)
-                        }
-                        items(projection.unscheduled,key={"unscheduled-${it.id}"}) {task->
-                            Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable {onTask(task.id)}.padding(vertical=7.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)) {
-                                StepIcon(Icons.Outlined.Schedule,color=StepMuted)
-                                Text(task.title(),style=MaterialTheme.typography.bodyMedium,modifier=Modifier.weight(1f),maxLines=2,overflow=TextOverflow.Ellipsis)
-                                StepIcon(Icons.Outlined.ChevronRight,color=StepMuted)
-                            }
-                        }
-                    }
-                    item {
-                        HorizontalDivider(Modifier.padding(top=4.dp,bottom=16.dp),color=StepLine)
-                        Text("今天的计划投入",style=MaterialTheme.typography.labelLarge,color=StepMuted)
-                        Row(Modifier.padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(26.dp)) {
-                            Column {Text("${effort.personalMinutes} 分钟",style=MaterialTheme.typography.titleLarge);Text("个人投入",style=MaterialTheme.typography.bodySmall,color=StepMuted)}
-                            Column {Text("${effort.checkMinutes} 分钟",style=MaterialTheme.typography.titleLarge);Text("检查结果",style=MaterialTheme.typography.bodySmall,color=StepMuted)}
-                        }
-                        if(effort.unplannedCount>0)Text("${effort.unplannedCount} 件行动尚未设置投入",style=MaterialTheme.typography.bodySmall,color=StepMuted,modifier=Modifier.padding(top=12.dp))
-                        Text(day.zone.id+" · 安排与实际专注分别记录",style=MaterialTheme.typography.labelSmall,color=StepMuted,modifier=Modifier.padding(top=16.dp))
-                    }
-                }
-                Box(Modifier.matchParentSize()) { VerticalScrollbar(rememberScrollbarAdapter(scheduleScroll),Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp)) }
+            if(timeline)Box(Modifier.weight(1f)){PlanningTimeline(runtime,planId,{onSchedule(it,planId)},onDate,onOpenSchedule=onSchedule)}
+            else if(compact) {
+                if(showOverview)TimeOverview(state,planId,onSchedule,Modifier.fillMaxWidth().height(220.dp))
+                TodayActionList(runtime,state,planId,work,onTask,tasks,remaining,focus,drag,actionScroll,Modifier.weight(1f).fillMaxWidth(),dense=true)
+            } else Row(Modifier.weight(1f).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(20.dp)) {
+                TodayActionList(runtime,state,planId,work,onTask,tasks,remaining,focus,drag,actionScroll,Modifier.weight(1f).fillMaxHeight())
+                TimeOverview(state,planId,onSchedule,Modifier.width(300.dp).fillMaxHeight())
             }
         }
     }
 }
-@Composable private fun ColumnScope.QuadrantPane(runtime:DesktopRuntime,state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,onNew:()->Unit) {
-    val drag=remember(work){UiTaskDrag(work)}
+
+@Composable private fun TodayActionList(runtime:DesktopRuntime,state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,tasks:List<Entity>,remaining:List<Entity>,focus:Entity?,drag:UiTaskDrag,scroll:androidx.compose.foundation.lazy.LazyListState,modifier:Modifier,dense:Boolean=false) {
+    Box(modifier.onGloballyPositioned {drag.groups[0]=it.boundsInRoot();drag.scrollAreas[0]=it.boundsInRoot() to scroll}) {
+        LazyColumn(state=scroll,modifier=Modifier.fillMaxSize().padding(end=10.dp),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=12.dp)) {
+            if(focus!=null)item {TaskRow(focus,state,planId,work,onTask,featured=true,runtime=runtime,dense=dense)}
+            item {
+                StepCard(modifier=Modifier.fillMaxWidth()) {
+                    Column {
+                        Row(Modifier.fillMaxWidth().padding(horizontal=18.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
+                            Text(if(focus!=null)"今天的其他行动"else"今天的行动",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
+                            Text("${remaining.size} 项",style=MaterialTheme.typography.bodySmall,color=StepMuted)
+                        }
+                        HorizontalDivider(Modifier.padding(horizontal=16.dp),color=StepLine)
+                        if(tasks.isEmpty())EmptyState("给这一天留一个起点","点击上方添加任务，或从已有任务中选一件。")
+                        remaining.forEachIndexed {index,task->key(task.id) {
+                            TaskRow(task,state,planId,work,onTask,runtime=runtime,drag=drag)
+                            if(index<remaining.lastIndex)HorizontalDivider(Modifier.padding(start=56.dp,end=16.dp),color=StepLine)
+                        }}
+                        Spacer(Modifier.height(4.dp))
+                    }
+                }
+            }
+        }
+        VerticalScrollbar(rememberScrollbarAdapter(scroll),Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp))
+    }
+}
+
+@Composable private fun TimeOverview(state:SyncState,planId:String,onSchedule:(String,String)->Unit,modifier:Modifier) {
+    val day=TimelineDay.fromPlanId(planId);val projection=TimelineProjection.project(state,day)
+    val effort=TodayEffort.summary(state,day,TodayOverviewProjection.project(state,day))
+    val scroll=rememberLazyListState()
+    StepCard(modifier=modifier.testTag("time_overview")) {
+        Box(Modifier.fillMaxSize().padding(start=18.dp,end=8.dp,top=16.dp,bottom=14.dp)) {
+            LazyColumn(state=scroll,modifier=Modifier.fillMaxSize().padding(end=10.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                item {
+                    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        StepIcon(Icons.Outlined.Schedule,color=StepGold)
+                        Text("时间安排",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
+                        Text("${projection.blocks.sumOf {it.durationMinutes}} 分钟",style=MaterialTheme.typography.bodySmall,color=StepMuted)
+                    }
+                    HorizontalDivider(Modifier.padding(top=12.dp),color=StepLine)
+                }
+                if(projection.blocks.isEmpty())item {EmptyState("还没有时间块","点击下方行动即可安排时间，也可以切换到时间安排视图拖动。")}
+                items(projection.blocks,key={it.key}) {block->
+                    val accent=LocalStepPalette.current.quadrants[(block.task.content().number("quadrant")?:1).coerceIn(0,3)]
+                    Surface(onClick={onSchedule(block.task.id,block.sourcePlanId)},modifier=Modifier.testTag("schedule_task_${block.task.id}"),color=Color.Transparent,shape=MaterialTheme.shapes.small) {
+                        Row(Modifier.fillMaxWidth().padding(vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Column(Modifier.width(44.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                                Text(block.start.atZone(day.zone).format(DateTimeFormatter.ofPattern("HH:mm")),style=MaterialTheme.typography.titleMedium)
+                                Text(block.end.atZone(day.zone).format(DateTimeFormatter.ofPattern("HH:mm")),style=MaterialTheme.typography.bodySmall,color=StepMuted)
+                            }
+                            Box(Modifier.width(3.dp).height(52.dp).background(accent.copy(alpha=.8f),CircleShape))
+                            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                                Text(block.task.title(),style=MaterialTheme.typography.titleMedium,maxLines=2,overflow=TextOverflow.Ellipsis)
+                                Text("${block.durationMinutes} 分钟"+(if(block.laneCount>1)" · 有时间重叠"else""),style=MaterialTheme.typography.bodySmall,color=StepMuted)
+                            }
+                        }
+                    }
+                }
+                if(projection.unscheduled.isNotEmpty()) {
+                    item {HorizontalDivider(Modifier.padding(top=4.dp,bottom=12.dp),color=StepLine);Text("点击行动安排时间",style=MaterialTheme.typography.labelLarge,color=StepMuted)}
+                    items(projection.unscheduled,key={"unscheduled-${it.id}"}) {task->
+                        Row(Modifier.fillMaxWidth().testTag("schedule_task_${task.id}").clip(MaterialTheme.shapes.small).clickable {onSchedule(task.id,planId)}.padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            StepIcon(Icons.Outlined.Schedule,color=StepMuted)
+                            Text(task.title(),style=MaterialTheme.typography.bodyMedium,modifier=Modifier.weight(1f),maxLines=2,overflow=TextOverflow.Ellipsis)
+                            StepIcon(Icons.Outlined.ChevronRight,color=StepMuted)
+                        }
+                    }
+                }
+                item {
+                    HorizontalDivider(Modifier.padding(top=4.dp,bottom=14.dp),color=StepLine)
+                    Text("计划投入",style=MaterialTheme.typography.labelLarge,color=StepMuted)
+                    Row(Modifier.padding(top=10.dp),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
+                        Column {Text("${effort.personalMinutes} 分钟",style=MaterialTheme.typography.titleLarge);Text("个人投入",style=MaterialTheme.typography.bodySmall,color=StepMuted)}
+                        Column {Text("${effort.checkMinutes} 分钟",style=MaterialTheme.typography.titleLarge);Text("检查结果",style=MaterialTheme.typography.bodySmall,color=StepMuted)}
+                    }
+                    if(effort.unplannedCount>0)Text("${effort.unplannedCount} 件行动尚未设置投入",style=MaterialTheme.typography.bodySmall,color=StepMuted,modifier=Modifier.padding(top=10.dp))
+                    Text(day.zone.id+" · 安排与实际专注分别记录",style=MaterialTheme.typography.labelSmall,color=StepMuted,modifier=Modifier.padding(top=12.dp))
+                }
+            }
+            VerticalScrollbar(rememberScrollbarAdapter(scroll),Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp))
+        }
+    }
+}
+@Composable private fun ColumnScope.QuadrantPane(runtime:DesktopRuntime,state:SyncState,planId:String,date:LocalDate,onDate:(LocalDate)->Unit,work:UiWork,onTask:(String)->Unit) {
+    val drag=remember(work,planId){UiTaskDrag(work)}
+    PlanningDateHeader(planId,date,onDate,showContext=true)
     DragFeedback(drag)
     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         repeat(2) {row-> Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
@@ -298,7 +323,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                             LazyColumn(state=scroll,modifier=Modifier.fillMaxSize().padding(end=8.dp),contentPadding=PaddingValues(vertical=4.dp)) {
                                 if(tasks.isEmpty())item {Text(listOf("优先处理真正有时限的事","给长期价值留出空间","考虑委托、简化或稍后处理","允许自己暂时放下")[q],color=StepMuted,style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(14.dp))}
                                 itemsIndexed(tasks,key={_,task->task.id}) {index,task->
-                                    TaskRow(task,state,planId,work,onTask,runtime=runtime,drag=drag)
+                                    TaskRow(task,state,planId,work,onTask,runtime=runtime,drag=drag,showDaySelection=true)
                                     if(index<tasks.lastIndex)HorizontalDivider(Modifier.padding(start=52.dp,end=10.dp),color=StepLine)
                                 }
                             }
@@ -310,7 +335,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
         }}
     }
 }
-@Composable internal fun TaskRow(task:Entity,state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,featured:Boolean=false,runtime:DesktopRuntime?=null,drag:UiTaskDrag?=null) {
+@Composable internal fun TaskRow(task:Entity,state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,featured:Boolean=false,runtime:DesktopRuntime?=null,drag:UiTaskDrag?=null,showDaySelection:Boolean=false,dense:Boolean=false) {
     val included=DayTaskSelection.contains(state,task.id,planId);val win=planWin(state,planId,task.id)
     DisposableEffect(drag,task.id){onDispose {drag?.rows?.remove(task.id)}}
     val insert=drag?.active?.id!=task.id&&drag?.target()?.second==task.id
@@ -321,7 +346,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
         buildList {
             add(ContextMenuItem("打开 / 编辑") { onTask(task.id) })
             if(!task.completed() && task.conflict==null && task.conflictGroup.isEmpty()) {
-                add(ContextMenuItem(if(included) "移出这一天" else "加入这一天") {
+                add(ContextMenuItem(if(included) "移出${planningDayLabel(planId)}" else "加入${planningDayLabel(planId)}") {
                     work.edit { DayTaskActions.setIncluded(it,task.id,!included,planId,Instant.now()) }
                 })
                 quadrantNames.forEachIndexed { q,label ->
@@ -337,18 +362,18 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     }) {
         val rowContent:@Composable ()->Unit = {
             Column {
-                if(featured)Row(Modifier.padding(start=18.dp,end=18.dp,top=16.dp,bottom=2.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                if(featured)Row(Modifier.padding(start=18.dp,end=18.dp,top=if(dense)10.dp else 16.dp,bottom=2.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     StepIcon(Icons.Outlined.StarBorder,color=StepGold)
                     Text("今日重点",style=MaterialTheme.typography.labelLarge,color=StepGold)
                     Spacer(Modifier.weight(1f))
                     Text("先推进这一件",style=MaterialTheme.typography.bodySmall,color=StepMuted)
                 }
-                Row(Modifier.fillMaxWidth().padding(start=4.dp,end=8.dp,top=if(featured)4.dp else 2.dp,bottom=if(featured)14.dp else 6.dp),verticalAlignment=Alignment.Top) {
+                Row(Modifier.fillMaxWidth().padding(start=4.dp,end=8.dp,top=if(featured)4.dp else 2.dp,bottom=if(featured&&!dense)14.dp else 6.dp),verticalAlignment=Alignment.Top) {
                     if(drag!=null&&!task.completed())TaskDragHandle(drag,state,task)
                     TaskCompletionControl(task.completed(),!work.busy,task.title()) {value->
                         work.complete(task.id,value)
                     }
-                    Column(Modifier.weight(1f).padding(top=11.dp),verticalArrangement=Arrangement.spacedBy(if(featured)7.dp else 4.dp)) {
+                    Column(Modifier.weight(1f).padding(top=if(dense)6.dp else 11.dp),verticalArrangement=Arrangement.spacedBy(if(featured&&!dense)7.dp else 4.dp)) {
                         Text(task.title(),maxLines=2,overflow=TextOverflow.Ellipsis,
                             style=if(featured)MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
                             color=when {task.completed()->StepMuted;win->MaterialTheme.colorScheme.onPrimaryContainer;else->MaterialTheme.colorScheme.onSurface},
@@ -359,10 +384,16 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                         val effort=TodayEffort.forTask(state,TimelineDay.fromPlanId(planId),task.id)
                         if(effort.minutes!=null)Text(effort.label,style=MaterialTheme.typography.bodySmall,color=StepGreen)
                         if(task.conflict!=null)Text("存在同步冲突 · 在设置中处理",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
-                        if(runtime!=null)QuickTaskActions(runtime,task,compact=true)
+                        if(runtime!=null)QuickTaskActions(runtime,task,compact=!featured,featured=featured)
                     }
-                    StepTextButton({work.edit {DayTaskActions.setWin(it,task.id,!win,planId,Instant.now())}},enabled=!work.busy && !task.completed(),contentPadding=PaddingValues(4.dp),modifier=Modifier.padding(top=4.dp).width(36.dp)){
-                        StepIcon(if(win)Icons.Outlined.Star else Icons.Outlined.StarBorder,if(win)"取消当日重点"else"设为当日重点",if(win)StepGold else StepMuted)
+                    if(!task.completed())Column(horizontalAlignment=Alignment.End,modifier=Modifier.padding(top=4.dp)) {
+                        if(showDaySelection)StepTextButton({work.edit {DayTaskActions.setIncluded(it,task.id,!included,planId,Instant.now())}},
+                            enabled=!work.busy&&task.conflict==null&&task.conflictGroup.isEmpty(),modifier=Modifier.testTag("day_include_${task.id}"),contentPadding=PaddingValues(horizontal=6.dp,vertical=5.dp)) {
+                            Text(if(included)"已选${planningDayLabel(planId)}"else"加入${planningDayLabel(planId)}",style=MaterialTheme.typography.labelMedium,color=if(included)StepGold else StepMuted)
+                        }
+                        if(included)StepTextButton({work.edit {DayTaskActions.setWin(it,task.id,!win,planId,Instant.now())}},enabled=!work.busy,contentPadding=PaddingValues(4.dp),modifier=Modifier.testTag("day_win_${task.id}").width(36.dp)){
+                            StepIcon(if(win)Icons.Outlined.Star else Icons.Outlined.StarBorder,if(win)"取消当日重点"else"设为当日重点",if(win)StepGold else StepMuted)
+                        }
                     }
                 }
             }

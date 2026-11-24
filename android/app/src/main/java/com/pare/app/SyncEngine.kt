@@ -114,7 +114,9 @@ class SyncEngine(
     fun edit(transform:(SyncState)->SyncState):SyncState {
         check(initialized.value) {"本机内容尚未读取完成，请稍后再试"}
         val saved=store.update(transform)
-        status.value=if(eligible(saved)) "已保存 · 等待同步" else "已保存到本机"
+        // Saving locally cannot clear the account action required to resume sync.
+        if(!authBlocked && !status.value.startsWith("同步已暂停"))
+            status.value=if(eligible(saved)) "已保存 · 等待同步" else "已保存到本机"
         // A scheduling failure must never turn a committed local edit into a failed save.
         runCatching {reconcile()}
         return saved
@@ -124,7 +126,11 @@ class SyncEngine(
     suspend fun pause() {
         revoke()
         store.update {it.copy(enabled=false)}
-        status.value="同步已暂停 · 变更保留在本机"
+        val pauseNotice="同步已暂停 · 变更保留在本机"
+        status.value=if(authBlocked) {
+            val issue=status.value.takeIf {"重新登录" in it} ?: "同步已停止，请检查账号或重新登录"
+            if(pauseNotice in issue)issue else "$issue\n$pauseNotice"
+        } else pauseNotice
     }
     suspend fun signOut() {
         pause()

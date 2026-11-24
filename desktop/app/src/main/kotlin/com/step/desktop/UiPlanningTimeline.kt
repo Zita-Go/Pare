@@ -116,7 +116,7 @@ internal class TimelineGesture(private val work:UiWork,val day:TimelineDay) {
     fun undo(){val receipt=undo?:return;work.edit({undo=null}){receipt.apply(it)}}
 }
 
-@Composable internal fun PlanningTimeline(runtime:DesktopRuntime,planId:String,onOpenTask:(String)->Unit,onDate:(LocalDate)->Unit) {
+@Composable internal fun PlanningTimeline(runtime:DesktopRuntime,planId:String,onOpenTask:(String)->Unit,onDate:(LocalDate)->Unit,onOpenSchedule:((String,String)->Unit)?=null) {
     val state by runtime.engine.state.collectAsState()
     val day=remember(planId){TimelineDay.fromPlanId(planId)}
     val work=rememberWork(runtime)
@@ -144,6 +144,8 @@ internal class TimelineGesture(private val work:UiWork,val day:TimelineDay) {
             StepCard(Modifier.width(205.dp).fillMaxHeight()) {
                 Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Text("未安排时间",style=MaterialTheme.typography.titleMedium)
+                    StepOutlinedButton({createMinute=((scroll.value/ppm).roundToInt().coerceIn(0,day.minutes-30)/30)*30},modifier=Modifier.fillMaxWidth().testTag("timeline_add")){Text("安排时间")}
+                    Text("可拖入行动，也可点击空白处安排。",style=MaterialTheme.typography.bodySmall,color=StepMuted)
                     LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         items(projection.unscheduled,key={it.id}) {task->
                             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
@@ -178,7 +180,7 @@ internal class TimelineGesture(private val work:UiWork,val day:TimelineDay) {
                                 val baseline=TimelineScheduleBaseline.from(state,block.sourcePlanId,block.task.id)
                                 Box(Modifier.offset(x=gutter+(width+6.dp)*display.lane,y=y).width(width).height(height).testTag("timeline_block_${block.task.id}")) {
                                 ContextMenuArea(items={
-                                    listOf(ContextMenuItem("打开任务"){onOpenTask(block.task.id)})+if(block.task.completed())emptyList()else listOf(
+                                    listOf(ContextMenuItem("调整时间安排"){(onOpenSchedule?.invoke(block.task.id,block.sourcePlanId)?:onOpenTask(block.task.id))})+if(block.task.completed())emptyList()else listOf(
                                         ContextMenuItem("提前15分钟"){gesture.edit {TimelineActions.setSchedule(it,block.task.id,block.sourcePlanId,block.start.minusSeconds(900),block.durationMinutes,baseline)}},
                                         ContextMenuItem("延后15分钟"){gesture.edit {TimelineActions.setSchedule(it,block.task.id,block.sourcePlanId,block.start.plusSeconds(900),block.durationMinutes,baseline)}},
                                         ContextMenuItem("延长15分钟"){gesture.edit {TimelineActions.setSchedule(it,block.task.id,block.sourcePlanId,block.start,block.durationMinutes+15,baseline)}},
@@ -190,7 +192,7 @@ internal class TimelineGesture(private val work:UiWork,val day:TimelineDay) {
                                         .background(accent.copy(alpha=.20f)).border(1.dp,accent.copy(alpha=.45f),MaterialTheme.shapes.small)) {
                                         Row(Modifier.fillMaxSize().stepDragHandle("timeline_drag_${block.task.id}",enabled=!block.task.completed(),
                                             onBegin={gesture.begin(state,block.task,block,false,it)},onMove=gesture::move,onFinish=gesture::finish,onCancel=gesture::cancel)
-                                            .clickable {onOpenTask(block.task.id)}.padding(start=7.dp,end=36.dp,top=2.dp,bottom=2.dp),verticalAlignment=Alignment.Top) {
+                                            .clickable {(onOpenSchedule?.invoke(block.task.id,block.sourcePlanId)?:onOpenTask(block.task.id))}.padding(start=7.dp,end=36.dp,top=2.dp,bottom=2.dp),verticalAlignment=Alignment.Top) {
                                             Text(block.task.title(),maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall,
                                                 modifier=Modifier.weight(1f).testTag("timeline_label_${block.task.id}"))
                                             if(width>180.dp)Text("${block.durationMinutes}分",style=MaterialTheme.typography.labelSmall,color=StepMuted)

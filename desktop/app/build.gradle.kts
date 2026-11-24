@@ -24,11 +24,11 @@ tasks.test { systemProperty("java.awt.headless", "true") }
 compose.desktop {
     application {
         mainClass = "com.step.desktop.MainKt"
-        jvmArgs("-Dstep.version=0.2.2")
+        jvmArgs("-Dstep.version=0.3.0")
         nativeDistributions {
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
             packageName = "Step"
-            packageVersion = "0.2.2"
+            packageVersion = "0.3.0"
             description = "Step — one step at a time"
             vendor = "Step"
             modules("java.net.http", "java.sql", "jdk.crypto.ec", "jdk.unsupported", "jdk.localedata")
