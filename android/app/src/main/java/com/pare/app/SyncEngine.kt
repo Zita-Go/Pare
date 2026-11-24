@@ -192,12 +192,18 @@ class SyncEngine(
         return current
     }
     private suspend fun pullAll(ticket:Long,manual:Boolean) {
-        repeat(maxPages) {
+        var pages=0
+        // Explicit previews can finish a long history; background work stays bounded.
+        // Both paths retain the enclosing timeout and cancellation/consent checkpoints.
+        while(manual || pages<maxPages) {
             val credentials=activeSession(ticket,manual)
             checkpoint(ticket,manual)
             val page=remote.pull(credentials,store.read().cursor)
             checkpoint(ticket,manual)
             store.update {StateMachine.pull(it,page)}
+            pages++
+            yield()
+            checkpoint(ticket,manual)
             if(!page.more) {previewReady.value=true;return}
         }
         throw SyncBoundReached()
@@ -230,7 +236,7 @@ class SyncEngine(
                         if(push(ticket,pending).status=="conflict") {exhausted=false;break}
                     }
                     if(exhausted && hasPending(store.read())) throw SyncBoundReached()
-                    pullAll(ticket,manual=false)
+                    pullAll(ticket,manual)
                 }
             }
             val snapshot=store.read()
@@ -248,7 +254,10 @@ class SyncEngine(
     }
     private fun handleFailure(e:Exception):SyncOutcome=when {
         e is SyncRevoked -> SyncOutcome.SKIPPED
-        e is IOException || e is SyncBoundReached || (e is ApiFailure && (e.code==429 || e.code>=500)) -> {
+        e is SyncBoundReached -> {
+            status.value="内容较多 · 已保存当前进度，将继续同步";SyncOutcome.RETRY
+        }
+        e is IOException || (e is ApiFailure && (e.code==429 || e.code>=500)) -> {
             status.value="等待联网或重试 · 变更已保存在本机";SyncOutcome.RETRY
         }
         else -> {

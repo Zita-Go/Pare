@@ -50,7 +50,12 @@ import java.nio.file.Path
                             Text("本机可见 ${state.items.values.count {!it.deleted}} 条内容 · ${state.items.values.count {it.dirty}} 条本机更改待上传 · ${state.items.values.count {it.conflict!=null}} 条需要你决定的冲突")
                             Text(if(previewReady)"云端内容已合并到本机预览。确认开启后，本机变更会上传到此账号；发生冲突的内容等待你选定版本。"else"当前显示本机已读取的内容；完整云端预览完成前不会启用上传。",style=MaterialTheme.typography.bodySmall,color=StepMuted)
                         }}
-                        if(!previewReady)Text("请等待拉取完成。若失败，可退出后重新登录获取预览。",color=StepMuted)
+                        if(!previewReady) {
+                            Text("已读取的内容和拉取进度会保留。继续拉取完整云端内容后，再确认开启自动同步。",color=StepMuted)
+                            StepOutlinedButton({work.run {runCatching {runtime.engine.sync(manual=true);Unit}}},enabled=!work.busy&&!engineBusy){
+                                Text(if(engineBusy)"正在拉取云端内容…"else"继续拉取云端内容")
+                            }
+                        }
                         StepButton({work.run {runCatching {runtime.engine.enable()}}},enabled=previewReady&&!work.busy&&!engineBusy){Text("确认合并并开启同步")}
                     }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {

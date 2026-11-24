@@ -44,6 +44,20 @@ class SyncEngineTest {
         val remote=RemoteApi();val schedule=Schedule()
         val engine=SyncEngine(store,vault,remote,schedule,nowSeconds={100})
     }
+    private inner class PagedRemote(var total:Long):RemoteApi() {
+        val requestedCursors=mutableListOf<Long>()
+        var beforePull:(suspend (Long)->Unit)?=null
+        override suspend fun login(email:String,password:String,signup:Boolean)=Session("owner","test@example.invalid","access","refresh",10000)
+        override suspend fun pull(session:Session,cursor:Long):Page {
+            requestedCursors.add(cursor);pulls++
+            beforePull?.invoke(cursor)
+            if(cursor==total) return Page(1,cursor,false,emptyList())
+            val sequence=cursor+1
+            val remoteID="00000000-0000-0000-0000-"+sequence.toString().padStart(12,'0')
+            val item=Remote("inbox",remoteID,1,payload=payload(remoteID),device="remote",sequence=sequence)
+            return Page(1,sequence,sequence<total,listOf(Commit(sequence,"operation-$sequence","remote",listOf(item))))
+        }
+    }
     @Test fun simultaneousForegroundAndWorkerRefreshAndUploadOnce()=runBlocking {
         val f=Fixture(expired=true)
         f.store.update {StateMachine.edit(it,"inbox",id,payload())}
@@ -73,6 +87,78 @@ class SyncEngineTest {
         f.engine.sync(manual=true)
         assertTrue(f.engine.previewReady.value);assertTrue(f.remote.pushes.isEmpty())
         assertFalse(f.schedule.enabled)
+    }
+    @Test fun firstLoginPullsAll153CommitPagesBeforeOfferingConsent()=runBlocking {
+        val store=MemoryStore(SyncState());val vault=MemorySession(null);val schedule=Schedule()
+        val localID="00000000-0000-0000-0000-999999999999"
+        store.update {StateMachine.edit(it,"inbox",localID,payload(localID,"local fictional draft before login"))}
+        val remote=PagedRemote(153)
+        val engine=SyncEngine(store,vault,remote,schedule,nowSeconds={100});engine.initialize()
+        engine.authenticate("test@example.invalid","fictional-password",signup=false)
+        assertEquals(153L,store.read().cursor);assertEquals(154,store.read().items.size)
+        assertTrue(store.read().items.getValue("inbox:$localID").dirty)
+        assertTrue(engine.previewReady.value);assertFalse(store.read().enabled)
+        assertTrue(remote.pushes.isEmpty());assertFalse(schedule.enabled);assertFalse(engine.busy.value)
+    }
+    @Test fun restartedDisabledAccountContinuesSavedCursorToEndWithoutUploadingLocalEdits()=runBlocking {
+        val f=Fixture(enabled=false);val remote=PagedRemote(206)
+        var offline=true
+        remote.beforePull={cursor -> if(offline && cursor==53L) throw IOException("fictional interruption")}
+        val first=SyncEngine(f.store,f.vault,remote,f.schedule,nowSeconds={100});first.initialize()
+        assertEquals(SyncOutcome.RETRY,first.sync(manual=true));assertEquals(53L,f.store.read().cursor)
+        val local=payload(text="local fictional revision after interrupted preview")
+        first.edit {StateMachine.edit(it,"inbox",id,local)}
+
+        val restarted=SyncEngine(f.store,f.vault,remote,f.schedule,nowSeconds={100});restarted.initialize()
+        assertFalse(restarted.previewReady.value);offline=false
+        val resumedAt=remote.requestedCursors.size
+        assertEquals(SyncOutcome.DONE,restarted.sync(manual=true))
+        assertEquals(53L,remote.requestedCursors[resumedAt]);assertEquals(206L,f.store.read().cursor)
+        assertEquals(206,f.store.read().items.size);assertTrue(restarted.previewReady.value)
+        assertEquals(local,f.store.read().items.getValue("inbox:$id").payload)
+        assertTrue(f.store.read().items.getValue("inbox:$id").dirty)
+        assertFalse(f.store.read().enabled);assertTrue(remote.pushes.isEmpty());assertFalse(f.schedule.enabled)
+    }
+    @Test fun manualEnabledSyncFinishesNewPagesArrivingAfterInitialPull()=runBlocking {
+        val f=Fixture();val remote=PagedRemote(0)
+        remote.beforePull={if(remote.pulls==2) remote.total=153}
+        val engine=SyncEngine(f.store,f.vault,remote,f.schedule,nowSeconds={100});engine.initialize()
+        assertEquals(SyncOutcome.DONE,engine.sync(manual=true))
+        assertEquals(153L,f.store.read().cursor);assertEquals(153,f.store.read().items.size)
+        assertTrue(engine.previewReady.value);assertTrue(f.store.read().enabled)
+    }
+    @Test fun revokeBetweenImmediatePagesStopsManualPreviewBeforeNextRequest()=runBlocking {
+        val f=Fixture(enabled=false);val remote=PagedRemote(153);val firstPage=CompletableDeferred<Unit>()
+        remote.beforePull={firstPage.complete(Unit)}
+        val engine=SyncEngine(f.store,f.vault,remote,f.schedule,nowSeconds={100});engine.initialize()
+        val running=async {engine.sync(manual=true)}
+        val stopping=launch {firstPage.await();engine.revoke()}
+        assertEquals(SyncOutcome.SKIPPED,running.await());stopping.join()
+        assertEquals(1L,f.store.read().cursor);assertEquals(1,remote.pulls)
+        assertFalse(engine.previewReady.value);assertFalse(f.store.read().enabled)
+        assertTrue(remote.pushes.isEmpty());assertFalse(f.schedule.enabled)
+    }
+    @Test fun signOutBetweenImmediatePagesStopsManualPreviewAndClearsSession()=runBlocking {
+        val f=Fixture(enabled=false);val remote=PagedRemote(153);val firstPage=CompletableDeferred<Unit>()
+        remote.beforePull={firstPage.complete(Unit)}
+        val engine=SyncEngine(f.store,f.vault,remote,f.schedule,nowSeconds={100});engine.initialize()
+        val running=async {engine.sync(manual=true)}
+        val stopping=launch {firstPage.await();engine.signOut()}
+        assertEquals(SyncOutcome.SKIPPED,running.await());stopping.join()
+        assertEquals(1L,f.store.read().cursor);assertEquals(1,remote.pulls)
+        assertFalse(engine.previewReady.value);assertNull(f.vault.value);assertNull(engine.session.value)
+        assertFalse(f.store.read().enabled);assertTrue(remote.pushes.isEmpty());assertFalse(f.schedule.enabled)
+    }
+    @Test fun cancellationBetweenImmediatePagesKeepsSavedCursorWithoutFinishingPreview()=runBlocking {
+        val f=Fixture(enabled=false);val remote=PagedRemote(153);val firstPage=CompletableDeferred<Unit>()
+        remote.beforePull={firstPage.complete(Unit)}
+        val engine=SyncEngine(f.store,f.vault,remote,f.schedule,nowSeconds={100});engine.initialize()
+        val running=launch {engine.sync(manual=true)}
+        val stopping=launch {firstPage.await();running.cancel()}
+        running.join();stopping.join()
+        assertEquals(1L,f.store.read().cursor);assertEquals(1,remote.pulls)
+        assertFalse(engine.previewReady.value);assertFalse(engine.busy.value)
+        assertFalse(f.store.read().enabled);assertTrue(remote.pushes.isEmpty())
     }
     @Test fun pauseDuringPullStopsTheNextUploadAndCancelsScheduling()=runBlocking {
         val entered=CompletableDeferred<Unit>();val release=CompletableDeferred<Unit>()
@@ -128,6 +214,8 @@ class SyncEngineTest {
         val engine=SyncEngine(f.store,f.vault,remote,f.schedule,nowSeconds={100},maxPages=2);engine.initialize()
         assertEquals(SyncOutcome.RETRY,engine.sync());assertEquals(2L,f.store.read().cursor)
         assertEquals(2,requests);assertFalse(engine.previewReady.value);assertTrue(remote.pushes.isEmpty())
+        assertTrue(engine.status.value.contains("继续"));assertFalse(engine.status.value.contains("联网"))
+        assertTrue(f.schedule.enabled)
     }
     @Test fun cancellationDuringPushRetainsImmutableRequestForLaterRetry()=runBlocking {
         val f=Fixture();val entered=CompletableDeferred<Unit>()
