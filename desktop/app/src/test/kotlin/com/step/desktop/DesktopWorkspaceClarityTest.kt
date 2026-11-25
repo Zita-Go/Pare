@@ -28,7 +28,7 @@ class DesktopWorkspaceClarityTest {
         } finally {r.close()}
     }
 
-    @Test fun quadrantDateAndVisibleInclusionPrecedeSettingTheFocus()=runDesktopComposeUiTest(width=1280,height=900) {
+    @Test fun quadrantDateKeepsInclusionAndFocusAvailable()=runDesktopComposeUiTest(width=1280,height=900) {
         val r=fixture()
         try {
             val day=TimelineDay.fromPlanId(ContentActions.planId(r.engine.state.value,Instant.now()))
@@ -38,7 +38,7 @@ class DesktopWorkspaceClarityTest {
             onNodeWithTag("planning_next_day").performClick()
             onNodeWithTag("nav_四象限").performClick()
             onNodeWithTag("planning_date").assertTextContains("${day.date.plusDays(1).monthValue}月${day.date.plusDays(1).dayOfMonth}日",substring=true)
-            onNodeWithTag("day_win_$FIRST").assertDoesNotExist()
+            onNodeWithTag("day_win_$FIRST").assertIsDisplayed()
             onNodeWithTag("day_include_$FIRST").assertIsDisplayed().performClick()
             waitUntil(timeoutMillis=5_000){DayTaskSelection.contains(r.engine.state.value,FIRST,tomorrow)}
             onNodeWithTag("day_win_$FIRST").assertIsDisplayed().performClick()

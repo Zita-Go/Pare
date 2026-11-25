@@ -30,6 +30,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import java.awt.Cursor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -186,7 +190,8 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     val focus=tasks.firstOrNull {planWin(state,planId,it.id)&&!it.completed()}
     val remaining=tasks.filterNot {it.id==focus?.id}
     val actionScroll=rememberLazyListState()
-    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+    var dragLayerOrigin by remember {mutableStateOf(Offset.Zero)}
+    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned {dragLayerOrigin=it.localToRoot(Offset.Zero)}) {
         val compact=maxWidth<900.dp
         Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -208,6 +213,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                 TimeOverview(state,planId,onSchedule,Modifier.width(300.dp).fillMaxHeight())
             }
         }
+        TaskDragPreview(drag,dragLayerOrigin,planId)
     }
 }
 
@@ -321,13 +327,13 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                 LaunchedEffect(keyboard.selection,tasks.map {it.id}) {
                     tasks.indexOfFirst {keyboard.selection==OrganizeSelection("task",it.id)}.takeIf {it>=0}?.let {scroll.animateScrollToItem(it)}
                 }
-                StepCard(modifier=Modifier.weight(1f).fillMaxHeight().testTag("quadrant_$q").onGloballyPositioned {drag.groups[q]=it.boundsInRoot()}.then(if(dropTarget)Modifier.border(2.dp,StepGold,MaterialTheme.shapes.medium)else Modifier),accent=if(dropTarget)StepGold else accent,emphasis=dropTarget) {
+                StepCard(modifier=Modifier.weight(1f).fillMaxHeight().testTag("quadrant_$q").onGloballyPositioned {drag.groups[q]=it.boundsInRoot()}.then(if(dropTarget)Modifier.border(1.5.dp,accent.copy(alpha=.65f),MaterialTheme.shapes.medium)else Modifier),accent=accent) {
                     Column(Modifier.fillMaxSize()) {
                         Row(Modifier.padding(horizontal=14.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(6.dp).background(accent,CircleShape))
                             Text("0${q+1}",color=accent,style=MaterialTheme.typography.labelMedium)
                             Text(quadrantNames[q],style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
-                            if(dropTarget)Text("松开移入",color=StepGold,style=MaterialTheme.typography.labelMedium,modifier=Modifier.testTag("quadrant_drop_$q"))
+                            if(dropTarget)Text("松开移入",color=accent.copy(alpha=.8f),style=MaterialTheme.typography.labelMedium,modifier=Modifier.testTag("quadrant_drop_$q"))
                             else Text(tasks.size.toString(),color=StepMuted,style=MaterialTheme.typography.bodySmall)
                         }
                         HorizontalDivider(Modifier.padding(horizontal=16.dp),color=StepLine)
@@ -348,6 +354,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
         }}
     }
     if(needsBoardScroll)VerticalScrollbar(rememberScrollbarAdapter(boardScroll),Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp))
+    TaskDragPreview(drag,viewport?.topLeft?:Offset.Zero,planId)
     LaunchedEffect(drag.active!=null,needsBoardScroll) {
         while(needsBoardScroll&&drag.active!=null) {
             val point=drag.active!!.pointer
@@ -362,17 +369,20 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
 }
 @Composable internal fun TaskRow(task:Entity,state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,featured:Boolean=false,runtime:DesktopRuntime?=null,drag:UiTaskDrag?=null,showDaySelection:Boolean=false,dense:Boolean=false,selected:Boolean=false) {
     val included=DayTaskSelection.contains(state,task.id,planId);val win=planWin(state,planId,task.id)
-    DisposableEffect(drag,task.id){onDispose {drag?.rows?.remove(task.id)}}
+    DisposableEffect(drag,task.id){onDispose {drag?.rows?.remove(task.id);drag?.previewRows?.remove(task.id)}}
     val insert=drag?.active?.id!=task.id&&drag?.target()?.second==task.id
     val gold=StepGold
     val isDragging=drag?.active?.id==task.id
     val selectionVisibility=remember(task.id){BringIntoViewRequester()}
     LaunchedEffect(selected) {if(selected)selectionVisibility.bringIntoView()}
-    val rowModifier=Modifier.testTag("task_${task.id}").bringIntoViewRequester(selectionVisibility).onGloballyPositioned {drag?.rows?.set(task.id,it.boundsInRoot())}
+    val rowModifier=Modifier.testTag("task_${task.id}").bringIntoViewRequester(selectionVisibility).onGloballyPositioned {
+        drag?.rows?.set(task.id,it.boundsInRoot())
+        drag?.previewRows?.set(task.id,Rect(it.localToRoot(Offset.Zero),Size(it.size.width.toFloat(),it.size.height.toFloat())))
+    }
         .alpha(if(isDragging).62f else 1f)
         .semantics {if(isDragging)stateDescription="正在拖动"}
         .then(if(selected)Modifier.border(1.dp,StepGold,MaterialTheme.shapes.small)else Modifier)
-        .drawWithContent {drawContent();if(insert)drawLine(gold,Offset.Zero,Offset(size.width,0f),strokeWidth=2.dp.toPx())}
+        .drawWithContent {drawContent();if(insert)drawLine(gold.copy(alpha=.45f),Offset.Zero,Offset(size.width,0f),strokeWidth=1.dp.toPx())}
     ContextMenuArea(items = {
         buildList {
             add(ContextMenuItem("打开 / 编辑") { onTask(task.id) })
@@ -391,8 +401,15 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
             }
         }
     }) {
+        val canDrag=drag!=null&&taskCanBePlanned(task)
+        val bodyDrag=if(drag!=null)Modifier.stepDragHandle("task_drag_surface_${task.id}",
+            enabled=canDrag&&!work.busy&&task.conflict==null&&task.conflictGroup.isEmpty(),respectChildConsumption=true,
+            onBegin={drag.begin(state,task.id,it)},onMove=drag::update,onFinish=drag::finish,onCancel=drag::cancel)else Modifier
+        val moveCursor=remember {PointerIcon(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR))}
         val rowContent:@Composable ()->Unit = {
-            Column {
+            // Inside the clickable Surface: descendant buttons consume down before this
+            // gesture; title/blank drags consume movement and cancel the Surface's tap.
+            Column(bodyDrag) {
                 if(featured)Row(Modifier.padding(start=18.dp,end=18.dp,top=if(dense)10.dp else 16.dp,bottom=2.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     StepIcon(Icons.Outlined.StarBorder,color=StepGold)
                     Text("今日重点",style=MaterialTheme.typography.labelLarge,color=StepGold)
@@ -400,15 +417,18 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                     Text("先推进这一件",style=MaterialTheme.typography.bodySmall,color=StepMuted)
                 }
                 Row(Modifier.fillMaxWidth().padding(start=4.dp,end=8.dp,top=if(featured)4.dp else 2.dp,bottom=if(featured&&!dense)14.dp else 6.dp),verticalAlignment=Alignment.Top) {
-                    if(drag!=null&&!task.completed())TaskDragHandle(drag,state,task)
                     TaskCompletionControl(task.completed(),!work.busy,task.title()) {value->
                         work.complete(task.id,value)
                     }
                     Column(Modifier.weight(1f).padding(top=if(dense)6.dp else 11.dp),verticalArrangement=Arrangement.spacedBy(if(featured&&!dense)7.dp else 4.dp)) {
-                        Text(task.title(),maxLines=2,overflow=TextOverflow.Ellipsis,
-                            style=if(featured)MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
-                            color=when {task.completed()->StepMuted;win->MaterialTheme.colorScheme.onPrimaryContainer;else->MaterialTheme.colorScheme.onSurface},
-                            textDecoration=if(task.completed())TextDecoration.LineThrough else TextDecoration.None)
+                        val title:@Composable ()->Unit = {
+                            Text(task.title(),maxLines=2,overflow=TextOverflow.Ellipsis,
+                                modifier=if(canDrag)Modifier.testTag("${if(drag?.planId==null)"quadrant"else"today"}_drag_${task.id}").pointerHoverIcon(moveCursor)else Modifier,
+                                style=if(featured)MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+                                color=when {task.completed()->StepMuted;win->MaterialTheme.colorScheme.onPrimaryContainer;else->MaterialTheme.colorScheme.onSurface},
+                                textDecoration=if(task.completed())TextDecoration.LineThrough else TextDecoration.None)
+                        }
+                        if(canDrag)TaskDragHint(title)else title()
                         val next=task.content().str("nextAction")
                         if(next.isNotBlank())Text("下一步 · $next",maxLines=2,overflow=TextOverflow.Ellipsis,style=if(featured)MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,color=if(featured)MaterialTheme.colorScheme.onSurface else StepMuted)
                         if(featured && task.content().str("definitionOfDone").isNotBlank())Text(task.content().str("definitionOfDone"),maxLines=2,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall,color=StepMuted)
@@ -417,17 +437,13 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                         if(task.conflict!=null)Text("存在同步冲突 · 在设置中处理",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                         if(runtime!=null)QuickTaskActions(runtime,task,compact=!featured,featured=featured)
                     }
-                    Column(horizontalAlignment=Alignment.End,modifier=Modifier.padding(top=2.dp)) {
-                        Row(verticalAlignment=Alignment.CenterVertically) {
-                            if(!task.completed()&&showDaySelection)IconButton({work.edit {DayTaskActions.setIncluded(it,task.id,!included,planId,Instant.now())}},
-                                enabled=!work.busy&&task.conflict==null&&task.conflictGroup.isEmpty(),modifier=Modifier.testTag("day_include_${task.id}").size(36.dp)) {
-                                StepIcon(Icons.Outlined.LightMode,if(included)"已选${planningDayLabel(planId)}，点击移出"else"加入${planningDayLabel(planId)}",if(included)StepGold else StepMuted)
-                            }
-                            IconButton({onTask(task.id)},Modifier.testTag("task_detail_${task.id}").size(36.dp)) {StepIcon(Icons.Outlined.MoreHoriz,"任务详情：${task.title()}")}
+                    Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.padding(top=2.dp)) {
+                        if(!task.completed()&&showDaySelection)IconButton({work.edit {DayTaskActions.setIncluded(it,task.id,!included,planId,Instant.now())}},
+                            enabled=!work.busy&&task.conflict==null&&task.conflictGroup.isEmpty(),modifier=Modifier.testTag("day_include_${task.id}").size(36.dp)) {
+                            StepIcon(Icons.Outlined.LightMode,if(included)"已选${planningDayLabel(planId)}，点击移出"else"加入${planningDayLabel(planId)}",if(included)StepGold else StepMuted)
                         }
-                        if(included&&!task.completed())StepTextButton({work.edit {DayTaskActions.setWin(it,task.id,!win,planId,Instant.now())}},enabled=!work.busy,contentPadding=PaddingValues(4.dp),modifier=Modifier.testTag("day_win_${task.id}").width(36.dp)){
-                            StepIcon(if(win)Icons.Outlined.Star else Icons.Outlined.StarBorder,if(win)"取消当日重点"else"设为当日重点",if(win)StepGold else StepMuted)
-                        }
+                        DailyWinButton(task,state,planId,work)
+                        IconButton({onTask(task.id)},Modifier.testTag("task_detail_${task.id}").size(36.dp)) {StepIcon(Icons.Outlined.MoreHoriz,"任务详情：${task.title()}")}
                     }
                 }
             }

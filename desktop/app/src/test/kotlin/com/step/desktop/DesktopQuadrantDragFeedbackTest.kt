@@ -16,18 +16,16 @@ import javax.imageio.ImageIO
 /** Inspect the actual pointer preview and its transaction, using an isolated fictional library. */
 @OptIn(ExperimentalTestApi::class)
 class DesktopQuadrantDragFeedbackTest {
-    @Test fun handleIsEasyToGrabAndHoverExplainsCrossQuadrantDragging() = runDesktopComposeUiTest(width=1280,height=900) {
+    @Test fun titleSupportsDirectDraggingAndHoverExplainsIt() = runDesktopComposeUiTest(width=1280,height=900) {
         fixture().use {runtime->
             setContent {DesktopUi(runtime,{}, {}, {})}
             onNodeWithTag("nav_四象限").performClick()
             val handle=onNodeWithTag("quadrant_drag_$A",useUnmergedTree=true)
-            handle.assertIsDisplayed().assertWidthIsAtLeast(androidx.compose.ui.unit.Dp(32f))
+            handle.assertIsDisplayed().assertTextContains("虚构拖动来源")
             val bounds=handle.fetchSemanticsNode().boundsInRoot
-            val before=handle.captureToImage().toAwtImage().pixelHash()
             onNodeWithTag("desktop_root").performMouseInput {moveTo(bounds.center)}
             mainClock.advanceTimeBy(700);waitForIdle()
-            assertNotEquals("The handle should visibly respond before the user starts dragging",before,handle.captureToImage().toAwtImage().pixelHash())
-            onNodeWithText("拖动到其他象限或调整顺序").assertIsDisplayed()
+            onNodeWithText("拖动任务文字或空白处移动").assertIsDisplayed()
             assertEquals(bounds,handle.fetchSemanticsNode().boundsInRoot)
             assertEquals(0,runtime.engine.state.value.items.getValue("task:$A").content().number("quadrant"))
         }
@@ -119,11 +117,11 @@ class DesktopQuadrantDragFeedbackTest {
     private fun DesktopComposeUiTest.beginDragTo(target:String) {
         val source=onNodeWithTag("quadrant_drag_$A",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
         val destination=onNodeWithTag("task_$target").fetchSemanticsNode().boundsInRoot
-        // Grab near the handle edge, away from its center icon.
+        // Grab the task title directly, as on Mac.
         val from=Offset(source.left+3f,source.center.y)
         onNodeWithTag("desktop_root").performMouseInput {
             moveTo(from);press();moveTo(from+Offset(0f,12f),delayMillis=80)
-            moveTo(Offset(destination.center.x,destination.top+6f),delayMillis=250)
+            moveTo(Offset(destination.left+32f,destination.top+6f),delayMillis=250)
         }
         waitForIdle()
     }
