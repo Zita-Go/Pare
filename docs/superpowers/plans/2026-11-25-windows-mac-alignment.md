@@ -34,9 +34,13 @@ Quick capture follows Mac's focus-first input, today list, feedback and Organize
 
 ## Tasks
 
-- [ ] Root: behavior tests for inline quadrant addition, navigation reachability, keyboard classification and text-input isolation; run RED, implement compact Mac shell and inputs, run GREEN.
-- [ ] Parallel agent: direct start/control/check time actions with concurrency semantics; RED then GREEN coordinated by root.
-- [ ] Capture agent: extract quick capture, align focused input and task controls; repeat open/hide, IME, Esc, child dialogs, draft/save-error tests.
-- [ ] Auditor: evidence-based capability matrix, distinguishing available, differently exposed and missing Mac features.
-- [ ] Root: full core/app tests, inspect real Compose renders at compact/wide sizes, independent review, fix regressions and document honest native limitations.
-- [ ] Root: build and Windows CI acceptance before producing or publishing an updated installer; keep exact source and evidence provenance.
+- [x] Root: behavior tests for inline quadrant addition, navigation reachability, keyboard classification and text-input isolation; run RED, implement compact Mac shell and inputs, run GREEN.
+- [x] Parallel agent: direct start/control/check time actions with concurrency semantics; RED then GREEN coordinated by root.
+- [x] Capture agent: extract quick capture, align focused input and task controls; repeat open/hide, IME, Esc, child dialogs, draft/save-error tests.
+- [x] Auditor: evidence-based capability matrix, distinguishing available, differently exposed and missing Mac features.
+- [x] Root: full core/app tests, inspect real Compose renders at compact/wide sizes, independent review, fix regressions and document honest native limitations.
+- [x] Root: build and Windows CI acceptance before producing or publishing an updated installer; keep exact source and evidence provenance.
+
+## Result
+
+Shipped Windows 0.4.0 from `dbaa41eb64d90e7635398fefc79299d16d4855ef`. Core 304 and desktop 170 tests passed on Windows; accepted native run 45550190558 has 42 passed / 5 unsupported checks. See `docs/releases/windows-v0.4.0-verification.json` for provenance and `docs/qa/windows-mac-parity.md` for remaining Mac parity gaps.

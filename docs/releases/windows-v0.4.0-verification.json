@@ -1,0 +1,112 @@
+{
+  "version": "0.4.0",
+  "source_commit": "dbaa41eb64d90e7635398fefc79299d16d4855ef",
+  "build_run": "https://github.com/Zita-Go/Pare/actions/runs/45547495593",
+  "tests": {
+    "core": 304,
+    "desktop": 170,
+    "failures": 0,
+    "windows_skipped": 0,
+    "android": "unchanged; not rerun for this Windows-only change"
+  },
+  "installer_artifact": {
+    "id": 14993110865,
+    "sha256": "51d76b616a82c7e9cf321494e82d35413710327dd0bf5731373393c62e0c5e4e"
+  },
+  "verification_artifact": {
+    "id": 14992681260,
+    "sha256": "d97a9e70c071737fd799044ac70d8f1525f909bfcbc4b8ae4ada541af18c777a"
+  },
+  "upgrade_from": "0.3.0",
+  "upgrade_preserves_store_and_steps": true,
+  "native_acceptance": {
+    "run": "https://github.com/Zita-Go/Pare/actions/runs/45550190558",
+    "artifact_id": 14993029705,
+    "artifact_sha256": "5afc588f3240a3d2d71d127014906ec6a022a24f537306987bcf66b927ba7dc0",
+    "harness_commit": "de63e6edbc47256a398b181add0a7cb7a4c87068",
+    "environment": "Disposable Windows Server 2022 hosted runner, one physical 96-DPI display",
+    "overall": "incomplete",
+    "checks": {
+      "result_merge_self_test": "pass",
+      "interactive_desktop": "pass",
+      "input_method_inventory": "pass",
+      "notification_platform": "unsupported",
+      "pinyin_profile_configuration": "pass",
+      "window_open": "pass",
+      "main_window_fit_in_workarea": "pass",
+      "window_fit_in_workarea": "pass",
+      "actual_window_dpi": "pass",
+      "multi_monitor_scaling": "unsupported",
+      "quick_capture_hotkey": "pass",
+      "editor_ready_for_unicode": "pass",
+      "capture_window_fit_in_workarea": "pass",
+      "unicode_initial_input": "pass",
+      "unicode_select_all_replace": "pass",
+      "unicode_save_persistence": "pass",
+      "return_save_persistence": "pass",
+      "return_empty_no_duplicate": "pass",
+      "unicode_edit_save": "pass",
+      "fictional_clipboard_cleanup": "pass",
+      "quick_capture_repeated_toggle": "pass",
+      "editor_ready_for_paste": "pass",
+      "clipboard_paste_initial": "pass",
+      "clipboard_paste_replace": "pass",
+      "clipboard_paste_edit_save": "pass",
+      "ime_draft_reset": "pass",
+      "pinyin_activation": "pass",
+      "ime_candidate_screenshot": "pass",
+      "microsoft_pinyin": "pass",
+      "microsoft_pinyin_return": "pass",
+      "ime_candidate_layout": "unsupported",
+      "pinyin_keyboard_restored": "pass",
+      "test_draft_cleanup": "pass",
+      "input_languages_restored": "pass",
+      "notification_registration": "pass",
+      "notification_show_api": "pass",
+      "notification_history": "pass",
+      "notification_visible": "unsupported",
+      "normal_exit_before_reminder": "pass",
+      "scheduled_reminder_processing": "pass",
+      "scheduled_delivery": "pass",
+      "normal_exit_before_locked_reminder": "pass",
+      "workstation_locked": "pass",
+      "locked_reminder_processing": "pass",
+      "lock_screen_delivery": "pass",
+      "lock_screen_visible": "unsupported",
+      "cleanup": "pass"
+    },
+    "hotkey_toggle_cycles": 10,
+    "unverified_additional_scenarios": [
+      "physical mixed-DPI multi-monitor transitions",
+      "exclusive fullscreen and third-party foreground coverage",
+      "notification click routing",
+      "full IME candidate layout and composition variants",
+      "visible secure lock-screen pixels"
+    ]
+  },
+  "superseded_acceptance_runs": [
+    {
+      "run": 45545891549,
+      "accepted": false,
+      "reason": "Initial capture typing failed; removed Frame focus request and added input-initialization focus recovery."
+    },
+    {
+      "run": 45548663228,
+      "accepted": false,
+      "reason": "Input scenarios passed, but cleanup was still in Pinyin composition and its failure was overwritten by unsupported. Restored target-thread HKL and made failure results sticky before the accepted rerun."
+    }
+  ],
+  "release": {
+    "url": "https://github.com/Zita-Go/Pare/releases/tag/windows-v0.4.0",
+    "published_at": "2026-11-25T05:04:15Z",
+    "prerelease": false,
+    "marked_latest": false
+  },
+  "package_sha256": {
+    "SHA256SUMS.txt": "15f85086cd128b4c3bdac452edf3dc0c2c75901734ffa7fda4a1ae2f2509cee3",
+    "Step-0.4.0-windows-x64-portable.zip": "e383274348a6cb4a07d252d7cb26c7bb5a646e4c12f77d9ae7785c3a32239e92",
+    "Step-0.4.0.exe": "52974cdd0ef168c08721eb9052bbbf8653dca89b4b3624fda19ebf44a8b0a6e8",
+    "Step-0.4.0.msi": "76ca6fc8e64fe2d7c848229e4c5454235f85a68ab8d24a49d8a8decebc736ffc"
+  },
+  "test_data": "Isolated fictional stores; no personal tasks, credentials or AI history"
+}

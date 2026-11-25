@@ -12,3 +12,5 @@
 下载 `Step-0.4.0.exe` 安装，或选择 MSI、便携包。覆盖安装前一版本会保留本机资料。账号同步仍需在设置中完成首次确认。
 
 两端仍有差异：Windows 随手记使用 Esc、快捷键或关闭按钮收起，尚不支持点击其他应用自动收起。Mac 的中文时间识别、每日规划/收尾/每周回顾定时提醒，以及部分系统触发计划尚未完整移植。支持情况见[功能对照](https://github.com/Zita-Go/Pare/blob/main/docs/qa/windows-mac-parity.md)。
+
+验证包括：304项核心、170项桌面测试；真实Windows快捷键连续开合、中文输入、复制粘贴、回车保存和覆盖升级。真实多屏、独占全屏、候选窗完整布局及锁屏画面可见性仍未覆盖。[查看验证范围](https://github.com/Zita-Go/Pare/blob/main/docs/releases/windows-v0.4.0-verification.json)。
