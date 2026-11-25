@@ -5,7 +5,7 @@ permissions:
   contents: write
   actions: read
 concurrency:
-  group: windows-release-0.3.0
+  group: windows-release-0.4.0
   cancel-in-progress: false
 jobs:
   stage:
@@ -14,8 +14,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: Zita-Go/Pare
-      TAG: windows-v0.3.0
-      SOURCE: 91b8d636e918b6003dfd4c174ca692c5e03e9ef8
+      TAG: windows-v0.4.0
+      SOURCE: 4f4cc71ccc1d8af3c5a05264172be597b87206b8
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: Verify accepted build identity
@@ -23,8 +23,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$REPO"
-          gh api "repos/$REPO/actions/runs/45417186016" > "$RUNNER_TEMP/step-release-run.json"
-          gh api "repos/$REPO/actions/artifacts/14933182097" > "$RUNNER_TEMP/step-release-artifact.json"
+          gh api "repos/$REPO/actions/runs/45544524803" > "$RUNNER_TEMP/step-release-run.json"
+          gh api "repos/$REPO/actions/artifacts/14990734048" > "$RUNNER_TEMP/step-release-artifact.json"
           python3 - <<'PY'
           import json,os
           from pathlib import Path
@@ -33,12 +33,12 @@ jobs:
           artifact=json.loads((root/'step-release-artifact.json').read_text())
           assert run['conclusion']=='success' and run['head_sha']==os.environ['SOURCE']
           assert not artifact['expired'] and artifact['workflow_run']['head_sha']==os.environ['SOURCE']
-          assert artifact['digest']=='sha256:912ed9a6ed3262ee1e17482000aa5458a4cb622a36a82f15a97806b4ac660080'
+          assert artifact['digest']=='sha256:fdb9aa8691ce364a1e92ee8655cef8d44d6e6ee2276cf856d1bb6ca975b9555d'
           PY
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          artifact-ids: '14933182097'
-          run-id: '45417186016'
+          artifact-ids: '14990734048'
+          run-id: '45544524803'
           github-token: ${{ github.token }}
           repository: Zita-Go/Pare
           path: packages
@@ -51,7 +51,7 @@ jobs:
           from pathlib import Path
           import hashlib,re,json,os
           root=Path('packages')
-          names={'Step-0.3.0.exe','Step-0.3.0.msi','Step-0.3.0-windows-x64-portable.zip'}
+          names={'Step-0.4.0.exe','Step-0.4.0.msi','Step-0.4.0-windows-x64-portable.zip'}
           assert {p.name for p in root.iterdir()}==names|{'SHA256SUMS.txt'}
           expected={}
           for line in (root/'SHA256SUMS.txt').read_text().splitlines():
@@ -78,7 +78,7 @@ jobs:
           assert r['isDraft'] and r['targetCommitish']==os.environ['SOURCE'],'Refusing to modify an existing published/different release'
           PY
           else
-            gh release create "$TAG" --repo "$REPO" --target "$SOURCE" --draft --latest=false --title 'Step for Windows 0.3.0' --notes-file docs/releases/windows-v0.3.0-github.md
+            gh release create "$TAG" --repo "$REPO" --target "$SOURCE" --draft --latest=false --title 'Step for Windows 0.4.0' --notes-file docs/releases/windows-v0.4.0-github.md
           fi
           release_id=$(gh release view "$TAG" --repo "$REPO" --json databaseId --jq .databaseId)
           [[ "$release_id" =~ ^[0-9]+$ ]] || exit 1

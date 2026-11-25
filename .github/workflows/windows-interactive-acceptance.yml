@@ -23,14 +23,14 @@ jobs:
       - name: Verify accepted artifact identity
         shell: pwsh
         run: |
-          $run = gh api repos/Zita-Go/Pare/actions/runs/45417186016 | ConvertFrom-Json
-          if ($run.conclusion -ne 'success' -or $run.head_sha -ne '91b8d636e918b6003dfd4c174ca692c5e03e9ef8') { throw 'Accepted source/build changed' }
-          $artifact = gh api repos/Zita-Go/Pare/actions/artifacts/14933182097 | ConvertFrom-Json
-          if ($artifact.expired -or $artifact.digest -ne 'sha256:912ed9a6ed3262ee1e17482000aa5458a4cb622a36a82f15a97806b4ac660080') { throw 'Accepted artifact changed' }
+          $run = gh api repos/Zita-Go/Pare/actions/runs/45544524803 | ConvertFrom-Json
+          if ($run.conclusion -ne 'success' -or $run.head_sha -ne '4f4cc71ccc1d8af3c5a05264172be597b87206b8') { throw 'Accepted source/build changed' }
+          $artifact = gh api repos/Zita-Go/Pare/actions/artifacts/14990734048 | ConvertFrom-Json
+          if ($artifact.expired -or $artifact.digest -ne 'sha256:fdb9aa8691ce364a1e92ee8655cef8d44d6e6ee2276cf856d1bb6ca975b9555d') { throw 'Accepted artifact changed' }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          artifact-ids: '14933182097'
-          run-id: '45417186016'
+          artifact-ids: '14990734048'
+          run-id: '45544524803'
           github-token: ${{ github.token }}
           repository: Zita-Go/Pare
           path: packages
@@ -38,7 +38,7 @@ jobs:
       - name: Verify each installer checksum
         shell: pwsh
         run: |
-          $expectedNames = @('Step-0.3.0.exe','Step-0.3.0.msi','Step-0.3.0-windows-x64-portable.zip')
+          $expectedNames = @('Step-0.4.0.exe','Step-0.4.0.msi','Step-0.4.0-windows-x64-portable.zip')
           $seen = @()
           foreach ($line in Get-Content packages/SHA256SUMS.txt) {
             if ($line -notmatch '^([0-9a-f]{64})  ([^\\/]+)$') { throw 'Invalid checksum entry' }
@@ -50,8 +50,8 @@ jobs:
           if ($seen.Count -ne 3) { throw 'Missing installer checksums' }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          artifact-ids: '14902437909'
-          run-id: '45356191207'
+          artifact-ids: '14933182097'
+          run-id: '45417186016'
           github-token: ${{ github.token }}
           repository: Zita-Go/Pare
           path: prior-packages
@@ -62,27 +62,27 @@ jobs:
           $tokens=$null; $issues=$null
           [Management.Automation.Language.Parser]::ParseFile((Resolve-Path .github/scripts/windows-interactive-acceptance.ps1),[ref]$tokens,[ref]$issues) | Out-Null
           if ($issues.Count) { $issues | Format-List; throw 'Acceptance script parse failed' }
-      - name: Upgrade from the previous Windows 0.2.2
+      - name: Upgrade from the previous Windows 0.3.0
         timeout-minutes: 8
         shell: pwsh
         run: |
           . .github/scripts/windows-checks.ps1
-          $line = Get-Content prior-packages/SHA256SUMS.txt | Where-Object { $_ -match '^([0-9a-f]{64})  Step-0[.]2[.]2[.]msi$' }
-          if (!$line -or $line -notmatch '^([0-9a-f]{64})  Step-0[.]2[.]2[.]msi$') { throw 'Missing prior installer checksum' }
-          if ((Get-FileHash prior-packages/Step-0.2.2.msi -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Matches[1]) { throw 'Prior installer checksum mismatch' }
-          $prior=(Resolve-Path prior-packages/Step-0.2.2.msi).Path
+          $line = Get-Content prior-packages/SHA256SUMS.txt | Where-Object { $_ -match '^([0-9a-f]{64})  Step-0[.]3[.]0[.]msi$' }
+          if (!$line -or $line -notmatch '^([0-9a-f]{64})  Step-0[.]3[.]0[.]msi$') { throw 'Missing prior installer checksum' }
+          if ((Get-FileHash prior-packages/Step-0.3.0.msi -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Matches[1]) { throw 'Prior installer checksum mismatch' }
+          $prior=(Resolve-Path prior-packages/Step-0.3.0.msi).Path
           $code=Invoke-StepCheckProcess msiexec.exe @('/i',$prior,'/qn','/norestart') 'step-interactive-prior-install' 180
           if ($code -notin @(0,3010)) { throw "Prior install failed: $code" }
           $oldData=Join-Path $env:RUNNER_TEMP 'step-from-02-fixture'
           $code=Invoke-StepCheckProcess (Get-StepInstalledExecutable) @('--self-test','--data-dir',"`"$oldData`"") 'step-interactive-prior-fixture'
           if ($code -ne 0) { throw 'Prior fixture creation failed' }
-          $msi=(Resolve-Path packages/Step-0.3.0.msi).Path
+          $msi=(Resolve-Path packages/Step-0.4.0.msi).Path
           $code=Invoke-StepCheckProcess msiexec.exe @('/i',$msi,'/qn','/norestart') 'step-interactive-install' 180
           if ($code -notin @(0,3010)) { throw "Install failed: $code" }
           $code=Invoke-StepCheckProcess (Get-StepInstalledExecutable) @('--upgrade-self-test','--data-dir',"`"$oldData`"") 'step-interactive-upgrade-fixture'
-          if ($code -ne 0 -or !(Test-Path "$oldData/upgrade-self-test.json")) { throw '0.2.2 upgrade validation failed' }
+          if ($code -ne 0 -or !(Test-Path "$oldData/upgrade-self-test.json")) { throw '0.3.0 upgrade validation failed' }
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/step-interactive-reports" | Out-Null
-          Copy-Item "$oldData/upgrade-self-test.json" "$env:RUNNER_TEMP/step-interactive-reports/from-0.2.2-upgrade.json"
+          Copy-Item "$oldData/upgrade-self-test.json" "$env:RUNNER_TEMP/step-interactive-reports/from-0.3.0-upgrade.json"
       - name: Exercise actual installed desktop and final lock stage
         timeout-minutes: 10
         shell: pwsh
@@ -100,8 +100,8 @@ jobs:
         shell: pwsh
         run: |
           . .github/scripts/windows-checks.ps1
-          if (Test-Path packages/Step-0.3.0.msi) {
-            $msi=(Resolve-Path packages/Step-0.3.0.msi).Path
+          if (Test-Path packages/Step-0.4.0.msi) {
+            $msi=(Resolve-Path packages/Step-0.4.0.msi).Path
             Invoke-StepCheckProcess msiexec.exe @('/x',$msi,'/qn','/norestart') 'step-interactive-uninstall' 180 | Out-Null
           }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
