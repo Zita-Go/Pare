@@ -15,7 +15,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPO: Zita-Go/Pare
       TAG: windows-v0.4.0
-      SOURCE: 4f4cc71ccc1d8af3c5a05264172be597b87206b8
+      SOURCE: dbaa41eb64d90e7635398fefc79299d16d4855ef
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: Verify accepted build identity
@@ -23,8 +23,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$REPO"
-          gh api "repos/$REPO/actions/runs/45544524803" > "$RUNNER_TEMP/step-release-run.json"
-          gh api "repos/$REPO/actions/artifacts/14990734048" > "$RUNNER_TEMP/step-release-artifact.json"
+          gh api "repos/$REPO/actions/runs/45547495593" > "$RUNNER_TEMP/step-release-run.json"
+          gh api "repos/$REPO/actions/artifacts/14993110865" > "$RUNNER_TEMP/step-release-artifact.json"
           python3 - <<'PY'
           import json,os
           from pathlib import Path
@@ -33,12 +33,12 @@ jobs:
           artifact=json.loads((root/'step-release-artifact.json').read_text())
           assert run['conclusion']=='success' and run['head_sha']==os.environ['SOURCE']
           assert not artifact['expired'] and artifact['workflow_run']['head_sha']==os.environ['SOURCE']
-          assert artifact['digest']=='sha256:fdb9aa8691ce364a1e92ee8655cef8d44d6e6ee2276cf856d1bb6ca975b9555d'
+          assert artifact['digest']=='sha256:51d76b616a82c7e9cf321494e82d35413710327dd0bf5731373393c62e0c5e4e'
           PY
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          artifact-ids: '14990734048'
-          run-id: '45544524803'
+          artifact-ids: '14993110865'
+          run-id: '45547495593'
           github-token: ${{ github.token }}
           repository: Zita-Go/Pare
           path: packages
