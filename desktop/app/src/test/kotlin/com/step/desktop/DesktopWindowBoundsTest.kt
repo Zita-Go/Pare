@@ -1,6 +1,7 @@
 package com.step.desktop
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.input.key.Key
 import com.pare.app.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -12,6 +13,25 @@ import java.time.Instant
 
 @OptIn(ExperimentalTestApi::class)
 class DesktopWindowBoundsTest {
+    @Test fun shortBoardKeyboardBringsTheLowerQuadrantSelectionIntoView()=runDesktopComposeUiTest(width=960,height=480) {
+        val r=DesktopRuntime(Files.createTempDirectory("step-short-board-keyboard-"),DesktopConfig(),{_,_->},TestProtector(),NoNetwork,FixtureClock(),MobileAIClient())
+        try {
+            r.initialize()
+            val top="00000000-0000-4000-8000-000000000861"
+            val bottom="00000000-0000-4000-8000-000000000862"
+            r.edit {state->
+                val at=Instant.now()
+                val next=StateMachine.edit(state,"task",top,ContentActions.save(null,"task","虚构上排行动","",0,top,at))
+                StateMachine.edit(next,"task",bottom,ContentActions.save(null,"task","虚构下排行动","",2,bottom,at))
+            }.getOrThrow()
+            setContent {DesktopUi(r,{}, {})}
+            onNodeWithTag("organize_keyboard").performClick()
+            onNodeWithTag("desktop_root").performKeyInput {pressKey(Key.DirectionDown);pressKey(Key.DirectionDown)}
+            onNodeWithTag("task_detail_$bottom").assertIsDisplayed().performClick()
+            onNode(hasSetTextAction() and hasText("下一步具体做什么？")).assertIsDisplayed()
+        } finally {r.close()}
+    }
+
     @Test fun mainWindowFitsA1024DesktopAfterTheTaskbarIsRemoved() {
         val area = DesktopWindowBounds.workArea(Rectangle(0, 0, 1024, 768), Insets(0, 0, 40, 0))
         assertEquals(Rectangle(0, 0, 1024, 728), area)
@@ -71,6 +91,7 @@ class DesktopWindowBoundsTest {
             assertTrue("Dialog must fit the 480-pixel content surface", dialog.height <= 480f)
             onNodeWithText("关闭").assertIsDisplayed().performMouseInput { click() }
             onNodeWithTag("desktop_dialog").assertDoesNotExist()
+            onNodeWithTag("quadrant_add_3").performScrollTo().assertIsDisplayed()
         }
     }
 }

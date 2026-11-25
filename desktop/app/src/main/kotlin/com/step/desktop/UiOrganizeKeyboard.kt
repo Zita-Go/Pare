@@ -16,11 +16,11 @@ internal sealed interface OrganizeKeyboardAction {
 }
 
 /** Match the visible inbox and the matrix's row-major quadrant order; identity includes entity kind. */
-internal fun organizeKeyboardItems(state:SyncState,inboxVisible:Boolean):List<OrganizeSelection> = buildList {
+internal fun organizeKeyboardItems(state:SyncState,inboxVisible:Boolean,now:Instant=Instant.now()):List<OrganizeSelection> = buildList {
     if(inboxVisible)state.items.values.filter {it.kind=="inbox"&&!it.deleted}
         .sortedByDescending {it.content().str("createdAt")}
         .forEach {add(OrganizeSelection("inbox",it.id))}
-    (0..3).forEach {quadrant->OrganizeActions.tasks(state,quadrant).forEach {add(OrganizeSelection("task",it.id))}}
+    (0..3).forEach {quadrant->DesktopQuadrantProjection.tasks(state,quadrant,now).forEach {add(OrganizeSelection("task",it.id))}}
 }
 
 internal fun organizeKeyCommand(key:Key,keyDown:Boolean,hasModifiers:Boolean,inputFocused:Boolean):OrganizeKeyCommand? {
@@ -48,15 +48,13 @@ internal class UiOrganizeKeyboard {
         item?.let {previousVisible.indexOf(it)}?.takeIf {it>=0}?.let {anchorIndex=it}
     }
 
-    /** A completed selection is retained so Space can immediately restore it; deleted items never are. */
+    /** Navigation always follows visible rows, including today's completions until rollover. */
     fun reconcile(state:SyncState,visible:List<OrganizeSelection>) {
         selection?.let {selected->
             val index=visible.indexOf(selected)
             if(index>=0)anchorIndex=index
             else {
-                val item=state.items[selected.key]
-                val retainedCompletion=selected.kind=="task"&&item!=null&&!item.deleted&&item.completed()&&!LibrarySearch.archived(item)
-                if(!retainedCompletion)selection=visible.getOrNull(anchorIndex.coerceAtMost(visible.lastIndex))
+                selection=visible.getOrNull(anchorIndex.coerceAtMost(visible.lastIndex))
             }
         }
         previousVisible=visible

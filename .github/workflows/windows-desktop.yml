@@ -44,7 +44,7 @@ jobs:
         shell: pwsh
         run: |
           $baseline = Join-Path $env:RUNNER_TEMP 'step-upgrade-baseline'
-          git fetch --depth=1 origin 91b8d636e918b6003dfd4c174ca692c5e03e9ef8
+          git fetch --depth=1 origin dbaa41eb64d90e7635398fefc79299d16d4855ef
           if ($LASTEXITCODE -ne 0) { throw 'Could not obtain reviewed upgrade baseline' }
           git worktree add --detach $baseline FETCH_HEAD
           if ($LASTEXITCODE -ne 0) { throw 'Could not prepare isolated upgrade baseline' }
@@ -106,11 +106,11 @@ jobs:
           New-Item -ItemType Directory -Force desktop/artifacts | Out-Null
           Copy-Item desktop/app/build/compose/binaries/main/exe/*.exe desktop/artifacts/
           Copy-Item desktop/app/build/compose/binaries/main/msi/*.msi desktop/artifacts/
-          Compress-Archive -Path desktop/app/build/compose/binaries/main/app/Step -DestinationPath desktop/artifacts/Step-0.4.0-windows-x64-portable.zip
+          Compress-Archive -Path desktop/app/build/compose/binaries/main/app/Step -DestinationPath desktop/artifacts/Step-0.4.1-windows-x64-portable.zip
           Get-ChildItem desktop/artifacts -File | ForEach-Object { $h=Get-FileHash $_.FullName -Algorithm SHA256; "$($h.Hash.ToLower())  $($_.Name)" } | Set-Content desktop/artifacts/SHA256SUMS.txt -Encoding ascii
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Step-0.4.0-windows-x64
+          name: Step-0.4.1-windows-x64
           path: desktop/artifacts/*
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

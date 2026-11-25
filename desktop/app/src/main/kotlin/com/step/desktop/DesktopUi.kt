@@ -2,6 +2,9 @@ package com.step.desktop
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -21,13 +24,16 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
@@ -44,7 +50,7 @@ import java.time.*
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->Unit,onDesktopOptions:()->Unit={},openTaskId:String?=null,onOpenTaskConsumed:()->Unit={}) {
+fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->Unit,onDesktopOptions:()->Unit={},openTaskId:String?=null,onOpenTaskConsumed:()->Unit={},clock:Clock=Clock.systemUTC()) {
     val state by runtime.engine.state.collectAsState()
     val initialized by runtime.engine.initialized.collectAsState()
     val syncStatus by runtime.engine.status.collectAsState()
@@ -66,10 +72,13 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     var searchRequest by remember {mutableStateOf(0)}
     val keyboard=remember {UiOrganizeKeyboard()}
     val boardFocus=remember {FocusRequester()}
-    val keyboardItems=organizeKeyboardItems(state,inboxExpanded&&page=="四象限")
+    var clockPulse by remember(clock) {mutableStateOf(clock.instant())}
+    LaunchedEffect(clock) {while(true) {delay(30_000);clockPulse=clock.instant()}}
+    // Read fresh time after a task edit too: a completion just after midnight
+    // must not use the previous day's last idle tick and briefly disappear.
+    val now=remember(clock,clockPulse,state,page){clock.instant()}
+    val keyboardItems=organizeKeyboardItems(state,inboxExpanded&&page=="四象限",now)
     LaunchedEffect(state,keyboardItems) {keyboard.reconcile(state,keyboardItems)}
-    var now by remember {mutableStateOf(Instant.now())}
-    LaunchedEffect(Unit) {while(true) {delay(30_000);now=Instant.now()}}
     val todayId=ContentActions.planId(state,now)
     var date by remember(todayId) {mutableStateOf(LocalDate.parse(todayId.substringBefore('@')))}
     val planId="$date@${todayId.substringAfter('@')}"
@@ -117,7 +126,7 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
                             "资料库" -> LibraryPane(runtime,searchRequest){kind,id->if(kind=="task")openTask(id)else editor=kind to id}
                             "回顾" -> ReviewPane(runtime){openTask(it)}
                             "今天" -> TodayPane(runtime,state,planId,date,{date=it},{openTask(it)},work,{task,targetPlan->openTask(task,"schedule",targetPlan=targetPlan)})
-                            "四象限" -> QuadrantPane(runtime,state,planId,date,{date=it},work,{openTask(it)},quadrantDrafts,keyboard)
+                            "四象限" -> QuadrantPane(runtime,state,planId,work,{openTask(it)},quadrantDrafts,keyboard,now)
                             "想法","目标" -> CollectionPane(state,if(page=="想法")"idea" else "goal",{editor=it.kind to it.id})
                             else -> InboxPane(state,work,{editor="inbox" to it},{ai=AiTarget(PlanningAIKind.INBOX,it,planId)})
                         }
@@ -285,34 +294,41 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
         }
     }
 }
-@Composable private fun ColumnScope.QuadrantPane(runtime:DesktopRuntime,state:SyncState,planId:String,date:LocalDate,onDate:(LocalDate)->Unit,work:UiWork,onTask:(String)->Unit,drafts:List<QuadrantInputDraft>,keyboard:UiOrganizeKeyboard) {
+@Composable private fun ColumnScope.QuadrantPane(runtime:DesktopRuntime,state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,drafts:List<QuadrantInputDraft>,keyboard:UiOrganizeKeyboard,now:Instant) {
     val drag=remember(work,planId){UiTaskDrag(work)}
+    val groups=remember(state,now){(0..3).map {DesktopQuadrantProjection.tasks(state,it,now)}}
     DragFeedback(drag)
-    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-    val available=(maxHeight-12.dp).coerceAtLeast(1.dp)
+    var viewport by remember {mutableStateOf<Rect?>(null)}
+    val boardScroll=rememberScrollState()
+    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("quadrant_board_viewport").onGloballyPositioned {viewport=it.boundsInRoot()}) {
+    // Keep one complete row and its actions reachable even in a short work area.
+    // The whole board scrolls instead of letting fixed add fields cover its rows.
+    val boardHeight=maxOf(maxHeight,460.dp)
+    val needsBoardScroll=boardHeight>maxHeight
+    val available=(boardHeight-12.dp).coerceAtLeast(1.dp)
     val minimum=minOf(220.dp,available/2)
-    val topDemand=maxOf(OrganizeActions.tasks(state,0).size,OrganizeActions.tasks(state,1).size,1).toFloat()
-    val bottomDemand=maxOf(OrganizeActions.tasks(state,2).size,OrganizeActions.tasks(state,3).size,1).toFloat()
+    val topDemand=maxOf(groups[0].size,groups[1].size,1).toFloat()
+    val bottomDemand=maxOf(groups[2].size,groups[3].size,1).toFloat()
     val topHeight=(available*(topDemand/(topDemand+bottomDemand))).coerceIn(minimum,available-minimum)
-    Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxWidth().padding(end=if(needsBoardScroll)10.dp else 0.dp).verticalScroll(boardScroll).height(boardHeight),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         repeat(2) {row-> Row(Modifier.height(if(row==0)topHeight else available-topHeight),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             repeat(2) {column->
                 val q=row*2+column
-                val completedSelection=keyboard.selection?.takeIf {it.kind=="task"}?.let {state.items[it.key]}
-                    ?.takeIf {!it.deleted&&it.completed()&&it.content().number("quadrant")==q&&!LibrarySearch.archived(it)}
-                val tasks=OrganizeActions.tasks(state,q)+listOfNotNull(completedSelection)
+                val tasks=groups[q]
+                val dropTarget=drag.active!=null&&drag.target()?.first==q
                 val accent=LocalStepPalette.current.quadrants[q]
                 val scroll=rememberLazyListState()
                 LaunchedEffect(keyboard.selection,tasks.map {it.id}) {
                     tasks.indexOfFirst {keyboard.selection==OrganizeSelection("task",it.id)}.takeIf {it>=0}?.let {scroll.animateScrollToItem(it)}
                 }
-                StepCard(modifier=Modifier.weight(1f).fillMaxHeight().onGloballyPositioned {drag.groups[q]=it.boundsInRoot()}.then(if(drag.target()?.first==q)Modifier.border(1.dp,StepGold,MaterialTheme.shapes.medium)else Modifier),accent=accent) {
+                StepCard(modifier=Modifier.weight(1f).fillMaxHeight().testTag("quadrant_$q").onGloballyPositioned {drag.groups[q]=it.boundsInRoot()}.then(if(dropTarget)Modifier.border(2.dp,StepGold,MaterialTheme.shapes.medium)else Modifier),accent=if(dropTarget)StepGold else accent,emphasis=dropTarget) {
                     Column(Modifier.fillMaxSize()) {
                         Row(Modifier.padding(horizontal=14.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(6.dp).background(accent,CircleShape))
                             Text("0${q+1}",color=accent,style=MaterialTheme.typography.labelMedium)
                             Text(quadrantNames[q],style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
-                            Text(tasks.size.toString(),color=StepMuted,style=MaterialTheme.typography.bodySmall)
+                            if(dropTarget)Text("松开移入",color=StepGold,style=MaterialTheme.typography.labelMedium,modifier=Modifier.testTag("quadrant_drop_$q"))
+                            else Text(tasks.size.toString(),color=StepMuted,style=MaterialTheme.typography.bodySmall)
                         }
                         HorizontalDivider(Modifier.padding(horizontal=16.dp),color=StepLine)
                         Box(Modifier.weight(1f).fillMaxWidth().padding(start=4.dp,end=6.dp,bottom=6.dp).onGloballyPositioned {drag.scrollAreas[q]=it.boundsInRoot() to scroll}) {
@@ -331,6 +347,17 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
             }
         }}
     }
+    if(needsBoardScroll)VerticalScrollbar(rememberScrollbarAdapter(boardScroll),Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp))
+    LaunchedEffect(drag.active!=null,needsBoardScroll) {
+        while(needsBoardScroll&&drag.active!=null) {
+            val point=drag.active!!.pointer
+            viewport?.takeIf {it.contains(point)}?.let {area->
+                val amount=when {point.y<area.top+30f->-10f;point.y>area.bottom-30f->10f;else->0f}
+                if(amount!=0f)boardScroll.scrollBy(amount)
+            }
+            delay(30)
+        }
+    }
 }
 }
 @Composable internal fun TaskRow(task:Entity,state:SyncState,planId:String,work:UiWork,onTask:(String)->Unit,featured:Boolean=false,runtime:DesktopRuntime?=null,drag:UiTaskDrag?=null,showDaySelection:Boolean=false,dense:Boolean=false,selected:Boolean=false) {
@@ -338,7 +365,12 @@ fun DesktopUi(runtime:DesktopRuntime,onQuickCapture:()->Unit,onRequestClose:()->
     DisposableEffect(drag,task.id){onDispose {drag?.rows?.remove(task.id)}}
     val insert=drag?.active?.id!=task.id&&drag?.target()?.second==task.id
     val gold=StepGold
-    val rowModifier=Modifier.testTag("task_${task.id}").onGloballyPositioned {drag?.rows?.set(task.id,it.boundsInRoot())}
+    val isDragging=drag?.active?.id==task.id
+    val selectionVisibility=remember(task.id){BringIntoViewRequester()}
+    LaunchedEffect(selected) {if(selected)selectionVisibility.bringIntoView()}
+    val rowModifier=Modifier.testTag("task_${task.id}").bringIntoViewRequester(selectionVisibility).onGloballyPositioned {drag?.rows?.set(task.id,it.boundsInRoot())}
+        .alpha(if(isDragging).62f else 1f)
+        .semantics {if(isDragging)stateDescription="正在拖动"}
         .then(if(selected)Modifier.border(1.dp,StepGold,MaterialTheme.shapes.small)else Modifier)
         .drawWithContent {drawContent();if(insert)drawLine(gold,Offset.Zero,Offset(size.width,0f),strokeWidth=2.dp.toPx())}
     ContextMenuArea(items = {

@@ -1,19 +1,24 @@
 package com.step.desktop
 
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
@@ -21,10 +26,12 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pare.app.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import java.awt.Cursor
 import java.time.Instant
 
 /** Drag previews are local; the immutable shown version is checked only when the pointer is released. */
@@ -50,6 +57,7 @@ internal class UiTaskDrag(private val work:UiWork,val planId:String?=null) {
     fun target():Pair<Int,String?>? {
         val drag=active?:return null
         val group=groups.entries.firstOrNull {it.value.contains(drag.pointer)}?.key?:return null
+        // Visible completed rows are feedback only; ordering anchors must stay in the active domain.
         val ids=if(planId==null)OrganizeActions.tasks(drag.shown,group).map {it.id}else drag.order!!.orderedTaskIds
         val hit=ids.firstOrNull {rows[it]?.contains(drag.pointer)==true}
         if(hit==drag.id)return group to drag.id
@@ -89,8 +97,9 @@ internal class UiTaskDrag(private val work:UiWork,val planId:String?=null) {
     val begin by rememberUpdatedState(onBegin);val move by rememberUpdatedState(onMove)
     val finish by rememberUpdatedState(onFinish);val cancel by rememberUpdatedState(onCancel)
     val focus=remember {FocusRequester()}
-    return testTag(tag).onGloballyPositioned {coordinates=it}.focusRequester(focus).focusable(enabled)
+    return testTag(tag).onGloballyPositioned {coordinates=it}.focusRequester(focus)
         .onPreviewKeyEvent {if(it.key==Key.Escape&&it.type==KeyEventType.KeyDown){cancel();true}else false}
+        .focusable(enabled)
         .pointerInput(enabled) {
             if(!enabled)return@pointerInput
             awaitEachGesture {
@@ -115,19 +124,61 @@ internal class UiTaskDrag(private val work:UiWork,val planId:String?=null) {
         }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable internal fun TaskDragHandle(controller:UiTaskDrag,state:SyncState,task:Entity) {
-    Box(Modifier.width(22.dp).height(42.dp).semantics {contentDescription="拖动排序：${task.title()}"}
-        .stepDragHandle("${if(controller.planId==null)"quadrant"else"today"}_drag_${task.id}",enabled=!task.completed(),
-            onBegin={controller.begin(state,task.id,it)},onMove=controller::update,onFinish=controller::finish,onCancel=controller::cancel)) {
-        Icon(Icons.Outlined.DragIndicator,null,tint=StepMuted,modifier=Modifier.padding(top=12.dp).size(16.dp))
+    val interaction=remember {MutableInteractionSource()}
+    val hovered by interaction.collectIsHoveredAsState()
+    val active=controller.active?.id==task.id
+    val enabled=!task.completed()
+    val hint=if(controller.planId==null)"拖动到其他象限或调整顺序"else"拖动调整今日顺序"
+    val cursor=remember {PointerIcon(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR))}
+    TooltipArea(tooltip={
+        if(controller.active==null)Surface(shape=MaterialTheme.shapes.small,shadowElevation=4.dp,color=MaterialTheme.colorScheme.inverseSurface) {
+            Text(hint,Modifier.padding(horizontal=10.dp,vertical=6.dp),color=MaterialTheme.colorScheme.inverseOnSurface,style=MaterialTheme.typography.bodySmall)
+        }
+    },delayMillis=450) {
+        Box(Modifier.width(36.dp).height(44.dp).semantics {contentDescription="$hint：${task.title()}"}
+            .pointerHoverIcon(if(enabled)cursor else PointerIcon.Default).hoverable(interaction,enabled)
+            .stepDragHandle("${if(controller.planId==null)"quadrant"else"today"}_drag_${task.id}",enabled=enabled,
+                onBegin={controller.begin(state,task.id,it)},onMove=controller::update,onFinish=controller::finish,onCancel=controller::cancel)
+            .padding(horizontal=3.dp,vertical=4.dp)
+            .background(if(active||hovered)LocalStepPalette.current.selection else LocalStepPalette.current.raised.copy(alpha=.55f),MaterialTheme.shapes.small)
+            .border(1.dp,if(active||hovered)StepGold.copy(alpha=.65f)else StepLine,MaterialTheme.shapes.small),contentAlignment=Alignment.Center) {
+            Icon(Icons.Outlined.DragIndicator,null,tint=if(active||hovered)StepGold else StepMuted,modifier=Modifier.size(22.dp))
+        }
     }
 }
 @Composable internal fun DragFeedback(controller:UiTaskDrag) {
     val active=controller.active;val target=controller.target()
-    Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-        if(active!=null)Text(if(target==null)"移到目标位置，Esc取消"else if(controller.planId==null)"松开移至${quadrantNames[target.first]}"else"松开调整今日顺序",style=MaterialTheme.typography.bodySmall,color=StepGold)
-        else controller.message?.let {Text(it,style=MaterialTheme.typography.bodySmall,color=StepMuted)}
-        if(controller.canUndo)StepTextButton(controller::undo,modifier=Modifier.testTag(if(controller.planId==null)"organize_undo"else"today_order_undo")){Text("撤销${if(controller.planId==null)"移动"else"排序"}")}
+    if(controller.planId!=null) {
+        // Today places feedback beside its view controls; leave space for the overview action.
+        Row(horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=Alignment.CenterVertically) {
+            if(active!=null)Text(if(target==null)"移到目标位置 · Esc 取消"else"松开调整顺序 · Esc 取消",
+                maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall,color=StepGold)
+            else controller.message?.let {Text(it,style=MaterialTheme.typography.bodySmall,color=StepMuted)}
+            if(controller.canUndo)StepTextButton(controller::undo,enabled=active==null,modifier=Modifier.testTag("today_order_undo")){Text("撤销排序")}
+        }
+    } else {
+    Row(Modifier.fillMaxWidth().heightIn(min=32.dp)
+        .then(if(active!=null)Modifier.background(LocalStepPalette.current.selection,MaterialTheme.shapes.small)else Modifier)
+        .padding(horizontal=8.dp,vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=Alignment.CenterVertically) {
+        if(active!=null) {
+            val title=active.shown.items["task:${active.id}"]?.title().orEmpty()
+            Text("正在移动 · $title",modifier=Modifier.weight(1f).testTag("task_drag_feedback"),maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall,color=StepGold)
+            Text(when {
+                target==null->"移到目标位置"
+                target.second==active.id->"拖到新位置后松开"
+                target.first==active.organize?.sourceQuadrant->"松开调整顺序"
+                else->"松开移入 · ${quadrantNames[target.first]}"
+            },style=MaterialTheme.typography.bodySmall,color=StepGold)
+            Text("Esc 取消",style=MaterialTheme.typography.bodySmall,color=StepMuted)
+        } else {
+            val hint=controller.message?:"拖动左侧把手，可调整顺序或移到其他象限"
+            Text(hint,modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,color=StepMuted)
+        }
+        // Keep the existing receipt in layout while dragging so the board does not jump on a second move.
+        if(controller.canUndo)StepTextButton(controller::undo,enabled=active==null,modifier=Modifier.testTag("organize_undo")){Text("撤销移动")}
+    }
     }
     LaunchedEffect(active!=null) {
         while(controller.active!=null) {

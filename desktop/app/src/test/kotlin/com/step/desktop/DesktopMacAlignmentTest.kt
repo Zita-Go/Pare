@@ -11,7 +11,7 @@ import java.time.Instant
 @OptIn(ExperimentalTestApi::class)
 class DesktopMacAlignmentTest {
     @Test fun matrixKeyboardMovesCompletesAndRestoresWhileTextFieldsKeepTheirKeys()=runDesktopComposeUiTest(width=960,height=760) {
-        val r=fixture()
+        val r=fixture(FixtureClock().apply {time=time.copy(wallMillis=Instant.now().toEpochMilli())})
         try {
             val id="00000000-0000-4000-8000-000000001451"
             r.edit {StateMachine.edit(it,"task",id,ContentActions.save(null,"task","虚构键盘归类","",0,id,Instant.now()))}.getOrThrow()
@@ -94,5 +94,5 @@ class DesktopMacAlignmentTest {
         } finally {r.close()}
     }
 
-    private suspend fun fixture():DesktopRuntime = DesktopRuntime(Files.createTempDirectory("step-alignment-test-"),DesktopConfig(),{_,_->},TestProtector(),NoNetwork,FixtureClock(),MobileAIClient()).also {it.initialize()}
+    private suspend fun fixture(clock:FixtureClock=FixtureClock()):DesktopRuntime = DesktopRuntime(Files.createTempDirectory("step-alignment-test-"),DesktopConfig(),{_,_->},TestProtector(),NoNetwork,clock,MobileAIClient()).also {it.initialize()}
 }

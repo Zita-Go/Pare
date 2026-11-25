@@ -9,7 +9,7 @@ import java.time.Instant
 class DesktopOrganizeKeyboardTest {
     @Test fun arrowsFollowVisibleInboxThenQuadrantOrderAndStopAtTheEdges() {
         val state=fixture();val keyboard=UiOrganizeKeyboard()
-        val items=organizeKeyboardItems(state,true)
+        val items=organizeKeyboardItems(state,true,NOW)
         assertEquals(listOf(selection("inbox",I),selection("task",A),selection("task",B),selection("task",C)),items)
         keyboard.handle(OrganizeKeyCommand.DOWN,state,items){error("Navigation must not change content")}
         assertEquals(selection("inbox",I),keyboard.selection)
@@ -26,10 +26,10 @@ class DesktopOrganizeKeyboardTest {
 
     @Test fun firstDigitOnlySelectsThenInboxConversionFollowsTheNewTaskWithoutAddingToday() {
         var state=fixture();val keyboard=UiOrganizeKeyboard();val original=state
-        keyboard.handle(OrganizeKeyCommand.FOUR,state,organizeKeyboardItems(state,true)){error("First digit must only select")}
+        keyboard.handle(OrganizeKeyCommand.FOUR,state,organizeKeyboardItems(state,true,NOW)){error("First digit must only select")}
         assertEquals(original,state)
         assertEquals(selection("inbox",I),keyboard.selection)
-        keyboard.handle(OrganizeKeyCommand.FOUR,state,organizeKeyboardItems(state,true)){action->
+        keyboard.handle(OrganizeKeyCommand.FOUR,state,organizeKeyboardItems(state,true,NOW)){action->
             assertTrue(action is OrganizeKeyboardAction.Edit)
             action as OrganizeKeyboardAction.Edit
             state=action.change(state)
@@ -47,7 +47,7 @@ class DesktopOrganizeKeyboardTest {
         val original=fixture();val keyboard=UiOrganizeKeyboard()
         keyboard.select(selection("task",A))
         var move:OrganizeKeyboardAction.Edit?=null
-        keyboard.handle(OrganizeKeyCommand.TWO,original,organizeKeyboardItems(original,false)){move=it as OrganizeKeyboardAction.Edit}
+        keyboard.handle(OrganizeKeyCommand.TWO,original,organizeKeyboardItems(original,false,NOW)){move=it as OrganizeKeyboardAction.Edit}
         val action=requireNotNull(move)
         val moved=action.change(original)
         assertEquals(listOf(B,C,A),OrganizeActions.tasks(moved,1).map {it.id})
@@ -60,7 +60,7 @@ class DesktopOrganizeKeyboardTest {
     @Test fun assigningTheCurrentQuadrantDoesNotReorderItsTasks() {
         val state=fixture();val keyboard=UiOrganizeKeyboard();keyboard.select(selection("task",B))
         var after=state
-        keyboard.handle(OrganizeKeyCommand.TWO,state,organizeKeyboardItems(state,false)){action->
+        keyboard.handle(OrganizeKeyCommand.TWO,state,organizeKeyboardItems(state,false,NOW)){action->
             action as OrganizeKeyboardAction.Edit
             after=action.change(state)
         }
@@ -71,16 +71,16 @@ class DesktopOrganizeKeyboardTest {
     @Test fun spaceCompletesAndRestoresTheSelectedTaskButNeverCompletesInbox() {
         var state=fixture();val keyboard=UiOrganizeKeyboard()
         keyboard.select(selection("inbox",I))
-        keyboard.handle(OrganizeKeyCommand.SPACE,state,organizeKeyboardItems(state,true)){error("Inbox has no completion action")}
+        keyboard.handle(OrganizeKeyCommand.SPACE,state,organizeKeyboardItems(state,true,NOW)){error("Inbox has no completion action")}
         keyboard.select(selection("task",A))
-        fun space() {keyboard.handle(OrganizeKeyCommand.SPACE,state,organizeKeyboardItems(state,true)){action->
+        fun space() {keyboard.handle(OrganizeKeyCommand.SPACE,state,organizeKeyboardItems(state,true,NOW)){action->
             assertTrue(action is OrganizeKeyboardAction.Complete)
             action as OrganizeKeyboardAction.Complete
             state=CompletionActions.set(state,action.taskId,action.completed,NOW)
         }}
         space()
         assertTrue(state.items.getValue("task:$A").completed())
-        keyboard.reconcile(state,organizeKeyboardItems(state,true))
+        keyboard.reconcile(state,organizeKeyboardItems(state,true,NOW))
         assertEquals(selection("task",A),keyboard.selection)
         space()
         assertFalse(state.items.getValue("task:$A").completed())
@@ -90,19 +90,19 @@ class DesktopOrganizeKeyboardTest {
 
     @Test fun syncDeletionRecoversToTheNearestVisibleItemAndHiddenInboxIsSkipped() {
         var state=fixture();val keyboard=UiOrganizeKeyboard()
-        keyboard.reconcile(state,organizeKeyboardItems(state,true))
+        keyboard.reconcile(state,organizeKeyboardItems(state,true,NOW))
         keyboard.select(selection("task",B))
         state=StateMachine.edit(state,"task",B,null,true)
-        keyboard.reconcile(state,organizeKeyboardItems(state,true))
+        keyboard.reconcile(state,organizeKeyboardItems(state,true,NOW))
         assertEquals(selection("task",C),keyboard.selection)
         state=StateMachine.edit(state,"task",C,null,true)
-        keyboard.reconcile(state,organizeKeyboardItems(state,true))
+        keyboard.reconcile(state,organizeKeyboardItems(state,true,NOW))
         assertEquals(selection("task",A),keyboard.selection)
         keyboard.select(selection("inbox",I))
-        keyboard.reconcile(state,organizeKeyboardItems(state,false))
+        keyboard.reconcile(state,organizeKeyboardItems(state,false,NOW))
         assertEquals(selection("task",A),keyboard.selection)
         state=StateMachine.edit(state,"task",A,null,true)
-        keyboard.reconcile(state,organizeKeyboardItems(state,false))
+        keyboard.reconcile(state,organizeKeyboardItems(state,false,NOW))
         assertNull(keyboard.selection)
     }
 
@@ -116,14 +116,14 @@ class DesktopOrganizeKeyboardTest {
         assertEquals(OrganizeKeyCommand.ONE,organizeKeyCommand(Key.One,true,false,false))
         assertEquals(OrganizeKeyCommand.DOWN,organizeKeyCommand(Key.DirectionDown,true,false,false))
         val state=fixture();val keyboard=UiOrganizeKeyboard()
-        assertFalse(keyboard.handle(OrganizeKeyCommand.ONE,state,organizeKeyboardItems(state,true),busy=true){error("Busy edits cannot change selection or content")})
+        assertFalse(keyboard.handle(OrganizeKeyCommand.ONE,state,organizeKeyboardItems(state,true,NOW),busy=true){error("Busy edits cannot change selection or content")})
         assertNull(keyboard.selection)
     }
 
     @Test fun failedInboxConversionKeepsItsSelectionAndDoesNotReplaceNewerText() {
         val shown=fixture();val keyboard=UiOrganizeKeyboard();keyboard.select(selection("inbox",I))
         var pending:OrganizeKeyboardAction.Edit?=null
-        keyboard.handle(OrganizeKeyCommand.ONE,shown,organizeKeyboardItems(shown,true)){pending=it as OrganizeKeyboardAction.Edit}
+        keyboard.handle(OrganizeKeyCommand.ONE,shown,organizeKeyboardItems(shown,true,NOW)){pending=it as OrganizeKeyboardAction.Edit}
         val action=requireNotNull(pending)
         val updated=StateMachine.edit(shown,"inbox",I,ContentActions.save(shown.items.getValue("inbox:$I"),"inbox","虚构同步更新","",1,I,NOW))
         assertThrows(IllegalArgumentException::class.java){action.change(updated)}
