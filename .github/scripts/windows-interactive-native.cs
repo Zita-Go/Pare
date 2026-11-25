@@ -254,12 +254,15 @@ public static class StepAcceptanceNative {
         }
         return false;
     }
-    public static bool CandidateVisible() {
-        bool found=false;
+    public static long[] CandidateWindows() {
+        // Handles let the Enter regression distinguish a newly shown candidate from a
+        // pre-existing window. This remains observation, not a candidate-layout verdict.
+        var found=new List<long>();
         EnumWindows(delegate(IntPtr w,IntPtr p) {if(IsWindowVisible(w)) {var s=new StringBuilder(256);GetClassName(w,s,256);
-            if(s.ToString().IndexOf("Candidate",StringComparison.OrdinalIgnoreCase)>=0)found=true;}return true;},IntPtr.Zero);
-        return found;
+            if(s.ToString().IndexOf("Candidate",StringComparison.OrdinalIgnoreCase)>=0)found.Add(w.ToInt64());}return true;},IntPtr.Zero);
+        return found.ToArray();
     }
+    public static bool CandidateVisible() {return CandidateWindows().Length>0;}
     public static bool VisibleNotificationText(string marker, int timeoutMillis) {
         bool found=false;
         var worker=new Thread(delegate() {try {

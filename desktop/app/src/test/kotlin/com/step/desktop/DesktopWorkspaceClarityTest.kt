@@ -16,6 +16,7 @@ class DesktopWorkspaceClarityTest {
             val today=ContentActions.planId(r.engine.state.value,Instant.now())
             val tomorrow=TimelineDay.fromPlanId(today).let {TimelineDay(it.date.plusDays(1),it.zone).planId}
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("planning_next_day").performClick()
             onNodeWithTag("create_day_task").performClick()
             onNode(hasSetTextAction() and hasText("任务名称")).performTextReplacement("虚构｜明天整理纸卡")
@@ -33,6 +34,7 @@ class DesktopWorkspaceClarityTest {
             val day=TimelineDay.fromPlanId(ContentActions.planId(r.engine.state.value,Instant.now()))
             val tomorrow=TimelineDay(day.date.plusDays(1),day.zone).planId
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("planning_next_day").performClick()
             onNodeWithTag("nav_四象限").performClick()
             onNodeWithTag("planning_date").assertTextContains("${day.date.plusDays(1).monthValue}月${day.date.plusDays(1).dayOfMonth}日",substring=true)
@@ -49,6 +51,7 @@ class DesktopWorkspaceClarityTest {
         val r=fixture()
         try {
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("schedule_task_$FIRST").assertIsDisplayed().performClick()
             onNode(hasSetTextAction() and hasText("开始时间 HH:mm")).assertIsDisplayed()
             onNode(hasSetTextAction() and hasText("下一步具体做什么？")).assertDoesNotExist()
@@ -59,6 +62,7 @@ class DesktopWorkspaceClarityTest {
         val r=fixture()
         try {
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("featured_start_$FIRST").assertIsDisplayed().performClick()
             waitUntil(timeoutMillis=5_000){r.execution.state.value.focus?.taskId==FIRST}
             assertEquals(5,r.execution.state.value.focus?.targetMinutes)
@@ -75,6 +79,7 @@ class DesktopWorkspaceClarityTest {
             r.edit {TimelineActions.setSchedule(it,SECOND,source.planId,source.date.atTime(23,45).atZone(source.zone).toInstant(),45,
                 TimelineScheduleBaseline.from(it,source.planId,SECOND))}.getOrThrow()
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("schedule_task_$SECOND").assertIsDisplayed().performClick()
             onNode(hasSetTextAction() and hasText("开始时间 HH:mm")).assertTextContains("23:45")
             onNodeWithText(source.date.toString(),substring=true).assertExists()
@@ -85,6 +90,7 @@ class DesktopWorkspaceClarityTest {
         val r=fixture()
         try {
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("time_overview").assertDoesNotExist()
             onNodeWithTag("task_$THIRD").assertIsDisplayed()
             onNodeWithTag("schedule_overview_toggle").assertIsDisplayed().performClick()

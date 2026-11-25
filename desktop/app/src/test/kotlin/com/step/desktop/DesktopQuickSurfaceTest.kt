@@ -16,7 +16,7 @@ class DesktopQuickSurfaceTest {
             var requested by mutableStateOf<String?>(null)
             setContent {DesktopUi(r,{}, {}, {},requested,{requested=null})}
             onNodeWithTag("nav_四象限").performClick()
-            onNodeWithTag("task_$A").performClick()
+            onNodeWithTag("task_detail_$A").performClick()
             val input=hasSetTextAction() and hasText("下一步具体做什么？")
             onNode(input).performTextReplacement("尚未保存的虚构动作")
             runOnIdle {requested=B}

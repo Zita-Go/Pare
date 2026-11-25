@@ -73,6 +73,9 @@ fun main(args:Array<String>) {
     application {
         var visible by remember {mutableStateOf("--start-hidden" !in args || !SystemTray.isSupported())}
         var capture by remember {mutableStateOf(false)}
+        var captureActivation by remember {mutableIntStateOf(0)}
+        var mainActivation by remember {mutableIntStateOf(0)}
+        fun showCapture() {capture=true;captureActivation++}
         var desktopOptions by remember {mutableStateOf(false)}
         var quitting by remember {mutableStateOf(false)}
         var confirmExit by remember {mutableStateOf(false)}
@@ -84,7 +87,7 @@ fun main(args:Array<String>) {
         val runtime=remember {runCatching {DesktopRuntime(path,configuration()) {title,body ->
             SwingUtilities.invokeLater {notices.add(title to body);trayIcon.value?.displayMessage(title,body,TrayIcon.MessageType.INFO)}
         }}.getOrElse {initializationError=it.message ?: "本机资料暂不可用";null}}
-        val platform=remember {runtime?.let {DesktopPlatform(path) {capture=!capture}}}
+        val platform=remember {runtime?.let {DesktopPlatform(path) {if(capture)capture=false else showCapture()}}}
         val optionsContent: (@Composable (DesktopOptionsDraft)->Unit)?=if(platform==null)null else {draft->DesktopOptionsContent(platform,draft)}
         val taskRequest by (runtime?.requestedTask ?: MutableStateFlow<String?>(null)).collectAsState()
         val installerRequest by (runtime?.requestedInstaller ?: MutableStateFlow<Path?>(null)).collectAsState()
@@ -119,7 +122,7 @@ fun main(args:Array<String>) {
                 val image=ImageIO.read(object {}.javaClass.getResource("/step.png"))
                 val menu=PopupMenu()
                 fun entry(title:String,action:()->Unit) {menu.add(MenuItem(title).apply {addActionListener(ActionListener {action()})})}
-                entry("打开 Step") {visible=true};entry("随手记") {capture=true};entry("桌面选项") {visible=true;desktopOptions=true}
+                entry("打开 Step") {visible=true;mainActivation++};entry("随手记") {showCapture()};entry("桌面选项") {visible=true;desktopOptions=true}
                 entry("桌面小窗") {platform?.changeWidget(true)}
                 menu.addSeparator();entry("退出 Step") {quit()}
                 icon=TrayIcon(image,"Step",menu).apply {isImageAutoSize=true;addActionListener {visible=true}}
@@ -129,11 +132,14 @@ fun main(args:Array<String>) {
         }
         Window(visible=visible,onCloseRequest=requestClose,title="Step",icon=painterResource("step.png"),state=rememberFittedWindowState(1160,780)) {
             KeepWindowInWorkArea(window,960,680,visible)
+            LaunchedEffect(visible,mainActivation) {if(visible)SwingUtilities.invokeLater {
+                if(window.isVisible){window.toFront();window.requestFocus()}
+            }}
             CompositionLocalProvider(LocalDesktopWindow provides window) {
             LaunchedEffect(window,darkAppearance,visible) {applyWindowsFrameAppearance(window,darkAppearance)}
             if(runtime!=null && initializationError==null)Box {
                 CompositionLocalProvider(LocalDesktopOptionsContent provides optionsContent) {
-                    DesktopUi(runtime,{capture=true},requestClose,{desktopOptions=true},taskRequest,{runtime.requestedTask.value=null})
+                    DesktopUi(runtime,{showCapture()},requestClose,{desktopOptions=true},taskRequest,{runtime.requestedTask.value=null})
                 }
                 notices.firstOrNull()?.let {notice -> DesktopTheme {Box(Modifier.fillMaxSize()) {
                     Surface(modifier=Modifier.align(Alignment.BottomEnd).padding(20.dp).widthIn(max=460.dp),shadowElevation=8.dp,shape=MaterialTheme.shapes.medium) {
@@ -156,18 +162,21 @@ fun main(args:Array<String>) {
             }}
             }
         }
-        if(runtime!=null) Window(visible=capture,onCloseRequest={capture=false},title="Step · 随手记",icon=painterResource("step.png"),alwaysOnTop=true,resizable=false,state=rememberFittedWindowState(460,400)) {
+        if(runtime!=null) Window(visible=capture,onCloseRequest={capture=false},title="Step · 随手记",icon=painterResource("step.png"),alwaysOnTop=true,resizable=false,state=rememberFittedWindowState(460,520)) {
             KeepWindowInWorkArea(window,340,260,capture)
+            LaunchedEffect(capture,captureActivation) {if(capture)SwingUtilities.invokeLater {
+                if(window.isVisible){window.toFront();window.requestFocus()}
+            }}
             CompositionLocalProvider(LocalDesktopWindow provides window) {
             LaunchedEffect(window,darkAppearance,capture) {applyWindowsFrameAppearance(window,darkAppearance)}
-            QuickCaptureUi(runtime,onClose={capture=false},visible=capture)
+            StepCaptureUi(runtime,onClose={capture=false},visible=capture,onOrganize={visible=true;mainActivation++})
             }
         }
         if(runtime!=null && platform!=null)Window(visible=widgetVisible,onCloseRequest={platform.changeWidget(false)},title="Step · 桌面小窗",alwaysOnTop=widgetPinned,state=rememberFittedWindowState(390,560),icon=painterResource("step.png")) {
             KeepWindowInWorkArea(window,340,420,widgetVisible)
             CompositionLocalProvider(LocalDesktopWindow provides window) {
             LaunchedEffect(window,darkAppearance) {applyWindowsFrameAppearance(window,darkAppearance)}
-            DesktopWidgetUi(runtime,{id->runtime.requestedTask.value=id;visible=true},{capture=true})
+            DesktopWidgetUi(runtime,{id->runtime.requestedTask.value=id;visible=true},{showCapture()})
             }
         }
         if(confirmExit) DialogWindow(onCloseRequest={confirmExit=false;runtime?.requestedInstaller?.value=null},title=if(installerRequest!=null)"安装更新前保存草稿"else"退出 Step？",icon=painterResource("step.png"),resizable=false,state=rememberFittedDialogState(420,220)) {

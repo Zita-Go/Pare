@@ -48,22 +48,3 @@ import kotlinx.coroutines.delay
         }
     }
 }
-
-@Composable internal fun CaptureTodayControls(runtime:DesktopRuntime) {
-    val state by runtime.engine.state.collectAsState()
-    val day=TimelineDay.today(state,Instant.now())
-    val overview=TodayOverviewProjection.project(state,day)
-    val tasks=(overview.scheduled+overview.unscheduled).map {it.task}.distinctBy {it.id}
-        .sortedByDescending {planWin(state,day.planId,it.id)}.take(3)
-    if(tasks.isEmpty())return
-    Column(Modifier.fillMaxWidth().testTag("capture_today"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        HorizontalDivider(color=StepLine)
-        SectionLabel("顺手推进今天","完成一步不会结束整个任务")
-        tasks.forEach {task->
-            Column(verticalArrangement=Arrangement.spacedBy(2.dp)) {
-                Text(task.title(),style=MaterialTheme.typography.titleMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
-                QuickTaskActions(runtime,task,prefix="capture",compact=true)
-            }
-        }
-    }
-}

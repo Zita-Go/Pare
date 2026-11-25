@@ -61,7 +61,7 @@ class DesktopWindowBoundsTest {
                 ContentActions.save(null, "task", "虚构：小屏研究任务", "", 0, id, Instant.now())) }.getOrThrow()
             setContent { DesktopUi(runtime, {}, {}, {}) }
             onNodeWithTag("nav_四象限").performClick()
-            onNodeWithTag("task_$id").performClick()
+            onNodeWithTag("task_detail_$id").performClick()
             onNodeWithText("任务详情").performClick()
             onNode(hasSetTextAction() and hasText("背景与备注")).performScrollTo().performTextInput("虚构：小屏仍能保存中文备注")
             onNodeWithText("保存任务详情").performScrollTo().assertIsDisplayed().performMouseInput { click() }

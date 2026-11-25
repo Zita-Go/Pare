@@ -57,7 +57,7 @@ internal fun desktopSyncPresentation(state:SyncState,session:Session?,initialize
     else -> StepMuted
 }
 
-@Composable internal fun SyncStatusButton(runtime:DesktopRuntime,onClick:()->Unit) {
+@Composable internal fun SyncStatusButton(runtime:DesktopRuntime,compact:Boolean=false,onClick:()->Unit) {
     val presentation=rememberDesktopSyncPresentation(runtime)
     val icon=when(presentation.phase) {
         DesktopSyncPhase.SYNCED -> Icons.Outlined.CloudDone
@@ -66,8 +66,8 @@ internal fun desktopSyncPresentation(state:SyncState,session:Session?,initialize
         DesktopSyncPhase.PAUSED -> Icons.Outlined.Pause
         else -> Icons.Outlined.CloudOff
     }
-    StepTextButton(onClick,modifier=Modifier.testTag("sync_status")) {
+    StepTextButton(onClick,modifier=Modifier.testTag("sync_status"),contentPadding=if(compact)PaddingValues(horizontal=8.dp,vertical=3.dp)else PaddingValues(horizontal=9.dp,vertical=7.dp)) {
         StepIcon(icon,color=presentation.color());Spacer(Modifier.width(8.dp))
-        Text(presentation.label,color=presentation.color(),maxLines=1,overflow=TextOverflow.Ellipsis)
+        Text(presentation.label,color=presentation.color(),style=if(compact)MaterialTheme.typography.bodySmall else MaterialTheme.typography.labelLarge,maxLines=1,overflow=TextOverflow.Ellipsis)
     }
 }

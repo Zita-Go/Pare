@@ -5,12 +5,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.pare.app.*
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 private val LocalQuickSupportRequest=staticCompositionLocalOf<((Entity)->Unit)?> {null}
 
@@ -24,42 +26,58 @@ private val LocalQuickSupportRequest=staticCompositionLocalOf<((Entity)->Unit)?>
 }
 
 /** Shared by ordinary rows, quick capture and the small desktop window. */
+@OptIn(ExperimentalLayoutApi::class,ExperimentalMaterial3Api::class)
 @Composable internal fun QuickTaskActions(runtime:DesktopRuntime,task:Entity,prefix:String="quick",compact:Boolean=false,featured:Boolean=false) {
     if(task.completed() || task.deleted)return
     val execution by runtime.execution.state.collectAsState()
     val ready by runtime.executionReady.collectAsState()
     val work=rememberWork(runtime)
     var focusMenu by remember(task.id){mutableStateOf(false)}
+    var checkMenu by remember(task.id){mutableStateOf(false)}
     var support by remember(task.id){mutableStateOf(false)}
     val requestSupport=LocalQuickSupportRequest.current
     val baseline=SmallStepBaseline.from(task)
     val completionId=remember(task.id,baseline){uid()}
-    val control=if(compact)Modifier.height(30.dp)else Modifier
-    val padding=if(compact)PaddingValues(horizontal=4.dp,vertical=3.dp)else PaddingValues(horizontal=9.dp,vertical=7.dp)
-    val run=execution.focus?.takeIf {it.taskId==task.id}?:execution.external.firstOrNull {it.taskId==task.id}
-    Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-        Row(horizontalArrangement=Arrangement.spacedBy(4.dp),verticalAlignment=Alignment.CenterVertically) {
-            if(run==null)Row(horizontalArrangement=Arrangement.spacedBy(4.dp),verticalAlignment=Alignment.CenterVertically) {
-                if(featured)StepButton({work.execute {it.startFocus(task.id,5)}},modifier=Modifier.testTag("featured_start_${task.id}"),enabled=ready&&!work.busy&&execution.focus==null){IconLabel(Icons.Outlined.PlayArrow,"开始 5 分钟")}
+    val control=Modifier.defaultMinSize(minWidth=1.dp,minHeight=if(compact)28.dp else 30.dp)
+    val padding=PaddingValues(horizontal=if(compact)4.dp else 6.dp,vertical=3.dp)
+    val parallel=execution.external.firstOrNull {it.taskId==task.id}
+    val run=execution.focus?.takeIf {it.taskId==task.id}?:parallel
+    // These mouse/keyboard controls keep their natural text height and wrap even in a narrow quadrant.
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+    Column(verticalArrangement=Arrangement.spacedBy(2.dp)) {
+        FlowRow(horizontalArrangement=Arrangement.spacedBy(4.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+            if(run==null) {
+                if(featured)StepButton({work.execute {it.startFocus(task.id,5)}},modifier=control.testTag("featured_start_${task.id}"),enabled=ready&&!work.busy&&execution.focus==null,contentPadding=padding){IconLabel(Icons.Outlined.PlayArrow,"开始 5 分钟")}
                 Box {
                 StepTextButton({focusMenu=true},modifier=control.testTag("${prefix}_focus_${task.id}"),enabled=ready&&!work.busy&&execution.focus==null,contentPadding=padding) {IconLabel(Icons.Outlined.PlayArrow,if(featured)"时长"else"专注")}
                 DropdownMenu(focusMenu,{focusMenu=false}) {listOf(5,15,30,60).forEach {minutes->
                     DropdownMenuItem(text={Text("$minutes 分钟")},onClick={focusMenu=false;work.execute {it.startFocus(task.id,minutes)}})
                 }}
                 }
+                StepTextButton({work.execute {it.startExternal(task.id)}},modifier=control.testTag("${prefix}_parallel_${task.id}"),enabled=ready&&!work.busy,contentPadding=padding) {IconLabel(Icons.Outlined.CallSplit,"并行")}
             } else {
                 if(!run.due)StepTextButton({work.execute {if(run.paused)it.resume(task.id)else it.pause(task.id)}},modifier=control.testTag("${prefix}_${if(run.paused)"resume"else"pause"}_${task.id}"),enabled=!work.busy,contentPadding=padding) {
                     IconLabel(if(run.paused)Icons.Outlined.PlayArrow else Icons.Outlined.Pause,if(run.paused)"继续"else"暂停")
                 }
                 StepTextButton({work.execute {it.finish(task.id)}},modifier=control.testTag("${prefix}_finish_${task.id}"),enabled=!work.busy,contentPadding=padding){IconLabel(Icons.Outlined.Stop,"结束")}
+                if(parallel!=null)Box {
+                    val checkAt=parallel.nextCheckAtMillis?.let {Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"))}
+                    StepTextButton({checkMenu=true},modifier=control.testTag("${prefix}_check_${task.id}"),enabled=!work.busy,contentPadding=padding) {IconLabel(Icons.Outlined.Schedule,checkAt?.let {"$it 检查"}?:"检查时间")}
+                    DropdownMenu(checkMenu,{checkMenu=false}) {
+                        listOf(5,15,30,60).forEach {minutes->
+                            DropdownMenuItem(text={Text("$minutes 分钟后检查")},modifier=Modifier.testTag("${prefix}_check_${minutes}_${task.id}"),onClick={checkMenu=false;work.execute {it.setCheck(task.id,minutes)}})
+                        }
+                        if(parallel.nextCheckAtMillis!=null)DropdownMenuItem(text={Text("取消检查时间")},modifier=Modifier.testTag("${prefix}_check_cancel_${task.id}"),onClick={checkMenu=false;work.execute {it.setCheck(task.id,null)}})
+                    }
+                }
             }
             if(baseline.nextAction.isNotBlank())StepTextButton({work.edit {NextStepActions.complete(it,task.id,completionId,baseline,Instant.now())}},modifier=control.testTag("${prefix}_next_${task.id}"),enabled=!work.busy&&baseline.nextAction.isNotBlank()&&task.conflict==null,contentPadding=padding) {
                 if(compact)Text("完成这一步")else IconLabel(Icons.Outlined.Check,"完成这一步")
             }
             StepTextButton({if(requestSupport!=null)requestSupport(task)else support=true},modifier=control.testTag("${prefix}_support_${task.id}"),enabled=!work.busy,contentPadding=padding){val label=if(baseline.nextAction.isBlank())"写下一步"else"卡住了";if(compact)Text(label)else IconLabel(Icons.Outlined.Lightbulb,label)}
         }
-        if(featured&&run==null&&execution.focus!=null)Text("另一项任务正在专注，请先在上方结束或取消。",style=MaterialTheme.typography.bodySmall,color=StepMuted)
         WorkFeedback(work)
+    }
     }
     if(support)QuickSupportSheet(runtime,task.id,{support=false})
 }

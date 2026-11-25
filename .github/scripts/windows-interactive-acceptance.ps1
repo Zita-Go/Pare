@@ -239,6 +239,19 @@ function Get-Inbox {
     $snapshot=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
     return @($snapshot.state.items.PSObject.Properties | ForEach-Object {$_.Value} | Where-Object {$_.kind -eq 'inbox'})
 }
+function Get-CaptureSaveEvidence([string[]]$beforeIds,[string]$expected,[long]$handle) {
+    $created=@(Get-Inbox | Where-Object {$beforeIds -notcontains $_.id})
+    $exact=@($created | Where-Object {[string]::Equals($_.payload.content.text,$expected,[StringComparison]::Ordinal)})
+    return @{
+        captureHandle=$handle;
+        newRecordCount=$created.Count;exactTextCount=$exact.Count;
+        exactPersistedText=($created.Count -eq 1 -and $exact.Count -eq 1);
+        createdIds=@($created | ForEach-Object {$_.id});
+        persistedTexts=@($created | Select-Object -First 3 | ForEach-Object {$value=[string]$_.payload.content.text;$value.Substring(0,[Math]::Min(256,$value.Length))});
+        captureStillVisible=[StepAcceptanceNative]::IsWindowVisible([IntPtr]$handle);
+        captureStillForeground=([StepAcceptanceNative]::GetForegroundWindow().ToInt64() -eq $handle)
+    }
+}
 function Focus-Step([long]$handle) {
     [void][StepAcceptanceNative]::ShowWindow([IntPtr]$handle,9)
     [void][StepAcceptanceNative]::SetForegroundWindow([IntPtr]$handle)
@@ -562,7 +575,7 @@ try {
     Result 'notification_platform' $(if($probe.notificationSetting -eq 'unavailable'){'unsupported'}else{'pass'}) 'Queried OS notification setting; this does not prove delivery or visibility.' @{setting=$probe.notificationSetting;taskScheduler=$probe.taskSchedulerConnected}
     if (!$disposable) {
         Result 'runner_scope' 'unsupported' 'Synthetic input and profile mutation are limited to a disposable GitHub-hosted runner.'
-        foreach ($name in @('window_open','window_fit_in_workarea','main_window_fit_in_workarea','capture_window_fit_in_workarea','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling','notification_history','notification_visible','scheduled_delivery','lock_screen_delivery')) {Result $name 'unsupported' 'No interactive operations attempted outside the disposable runner.'}
+        foreach ($name in @('window_open','window_fit_in_workarea','main_window_fit_in_workarea','capture_window_fit_in_workarea','quick_capture_hotkey','quick_capture_repeated_toggle','unicode_edit_save','return_save_persistence','return_empty_no_duplicate','microsoft_pinyin','microsoft_pinyin_return','actual_window_dpi','multi_monitor_scaling','notification_history','notification_visible','scheduled_delivery','lock_screen_delivery')) {Result $name 'unsupported' 'No interactive operations attempted outside the disposable runner.'}
         return
     }
     if (!$pinyinAvailable -and $probe.pinyinTipRegistered) {
@@ -636,13 +649,58 @@ try {
             Require-ClipboardIdle
             Focus-Step $capture.Handle
             [void](Settle-CaptureStage $capture.Handle 'unicode-before-save')
-            [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
-            $saved=Wait-Until { @(Get-Inbox | Where-Object {$beforeUnicode -notcontains $_.id -and [string]::Equals($_.payload.content.text,$savedText,[StringComparison]::Ordinal)}).Count -eq 1 } 12
-            $persistedTexts=@(Get-Inbox | Where-Object {$beforeUnicode -notcontains $_.id} | Select-Object -First 3 | ForEach-Object {$value=[string]$_.payload.content.text;$value.Substring(0,[Math]::Min(256,$value.Length))})
-            Result 'unicode_save_persistence' $(if($saved){'pass'}else{'fail'}) 'Sent native Ctrl+Enter once, then checked newly created isolated inbox records for exact persisted text.' @{exactPersistedText=$saved;persistedTexts=$persistedTexts;replacementWasReadBack=$replacementReadback.exactReadback}
+            [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x0D))
+            $saved=Wait-Until { (Get-CaptureSaveEvidence $beforeUnicode $savedText $capture.Handle).exactPersistedText } 12
+            $returnEvidence=Get-CaptureSaveEvidence $beforeUnicode $savedText $capture.Handle
+            $saved=$saved -and $returnEvidence.exactPersistedText
+            $persistedTexts=$returnEvidence.persistedTexts
+            Result 'unicode_save_persistence' $(if($saved){'pass'}else{'fail'}) 'Sent native Return once, then required exactly one new isolated inbox record with the exact replacement text.' $returnEvidence
+            $returnPassed=$saved -and $returnEvidence.captureStillVisible -and $returnEvidence.captureStillForeground
+            Result 'return_save_persistence' $(if($returnPassed){'pass'}else{'fail'}) 'Plain Return must persist one exact new record and leave the same capture window visible and foreground; no forced focus after submitting.' $returnEvidence
+            if ($returnPassed) {
+                [void](Settle-CaptureStage $capture.Handle 'return-saved-feedback')
+                try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$capture.Handle,(Join-Path $OutputDirectory 'step-capture-saved-native.png'))} catch {Result 'saved_feedback_screenshot' 'unsupported' (Error-Detail $_)}
+                [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x0D))
+                [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x0D))
+                [void](Settle-CaptureStage $capture.Handle 'return-empty-repeat')
+                $emptyReturnEvidence=Get-CaptureSaveEvidence $beforeUnicode $savedText $capture.Handle
+                Result 'return_empty_no_duplicate' $(if($emptyReturnEvidence.exactPersistedText -and $emptyReturnEvidence.captureStillVisible){'pass'}else{'fail'}) 'Two further Returns after successful save must not create another inbox record or hide the panel.' $emptyReturnEvidence
+            }
             $unicodePassed=$rawEditorReady -and $initialReadback.exactReadback -and $replacementReadback.exactReadback -and $saved
             Result 'unicode_edit_save' $(if($unicodePassed){'pass'}else{'fail'}) 'Unicode initial input, select-all replacement and save must each pass their independent readback/persistence check. This is NOT an IME test.' @{unicodeCharacterIntervalMillis=110;initialReadback=$initialReadback;replacementReadback=$replacementReadback;exactPersistedText=$saved;persistedTexts=$persistedTexts}
             Clear-TestClipboard
+            # Ten native hide/reopen cycles from the main window. Never force capture focus:
+            # prefix typed before hide plus suffix after reopen must persist as one exact item.
+            # The client-paint sampler adapts to the new 460x520 preference and work-area clamp.
+            $toggleSamples=New-Object Collections.ArrayList
+            try {
+                $capture=Ensure-Capture
+                for ($cycle=0;$cycle -lt 10;$cycle++) {
+                    $beforeCycle=@(Get-Inbox | ForEach-Object {$_.id})
+                    $prefix='stepcycle'+[char](97+$cycle);$expectedCycle=$prefix+'z'
+                    [void](Settle-CaptureStage $capture.Handle ('toggle-'+$cycle+'-before-draft'))
+                    [StepAcceptanceNative]::AsciiKeys($prefix)
+                    [void](Settle-CaptureStage $capture.Handle ('toggle-'+$cycle+'-before-hide'))
+                    [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x10,0x20))
+                    $hidden=Wait-Until {![StepAcceptanceNative]::IsWindowVisible([IntPtr]$capture.Handle)} 5
+                    if (!$hidden) {throw ('Native hotkey did not hide capture on cycle '+$cycle)}
+                    Focus-Step $main.Handle
+                    $capture=Open-Capture
+                    $reopened=Settle-CaptureStage $capture.Handle ('toggle-'+$cycle+'-reopened')
+                    [StepAcceptanceNative]::AsciiKeys('z')
+                    [void](Settle-CaptureStage $capture.Handle ('toggle-'+$cycle+'-append'))
+                    $cycleReadback=Confirm-CaptureText $capture.Handle $expectedCycle
+                    Require-ClipboardIdle
+                    if (!$cycleReadback.exactReadback) {throw ('Capture draft/focus readback failed after reopening cycle '+$cycle)}
+                    [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x0D))
+                    $cycleSaved=Wait-Until {(Get-CaptureSaveEvidence $beforeCycle $expectedCycle $capture.Handle).exactPersistedText} 8
+                    $cycleEvidence=Get-CaptureSaveEvidence $beforeCycle $expectedCycle $capture.Handle
+                    [void]$toggleSamples.Add(@{cycle=($cycle+1);hiddenObserved=$hidden;reopenSurface=$reopened;readback=$cycleReadback;save=$cycleEvidence})
+                    if (!$cycleSaved -or !$cycleEvidence.exactPersistedText -or !$cycleEvidence.captureStillVisible -or !$cycleEvidence.captureStillForeground) {throw ('Return save or retained foreground failed on toggle cycle '+$cycle)}
+                }
+                Result 'quick_capture_repeated_toggle' 'pass' 'Ten real hotkey hide/reopen cycles preserved prefix drafts, accepted suffix typing without focus repair, and each Return created one exact new record while retaining the panel. Main-window foreground scenario only.' @{completedCycles=$toggleSamples.Count;requiredCycles=10;samples=@($toggleSamples)}
+            } catch {Result 'quick_capture_repeated_toggle' 'fail' (Error-Detail $_) @{completedCycles=$toggleSamples.Count;requiredCycles=10;samples=@($toggleSamples)}}
+            finally {Clear-TestClipboard}
             # Independent user paste path. Expected text contains a native x/y keystroke,
             # so merely reading the string written to the clipboard cannot pass this test.
             try {
@@ -717,9 +775,59 @@ try {
                     [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x20))
                     [void](Settle-CaptureStage $capture.Handle 'ime-commit-before-save')
                     [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x11,0x0D))
-                    $converted=Wait-Until { @(Get-Inbox | Where-Object {$before -notcontains $_.id -and [string]::Equals($_.payload.content.text,'你好',[StringComparison]::Ordinal)}).Count -gt 0 } 12
-                    $imeActual=@(Get-Inbox | Where-Object {$before -notcontains $_.id} | Select-Object -First 3 | ForEach-Object {$value=[string]$_.payload.content.text;$value.Substring(0,[Math]::Min(256,$value.Length))})
+                    $converted=Wait-Until { (Get-CaptureSaveEvidence $before '你好' $capture.Handle).exactPersistedText } 12
+                    $legacyImeEvidence=Get-CaptureSaveEvidence $before '你好' $capture.Handle
+                    $converted=$converted -and $legacyImeEvidence.exactPersistedText
+                    $imeActual=$legacyImeEvidence.persistedTexts
                     Result 'microsoft_pinyin' $(if($imeClean -and $converted){'pass'}else{'fail'}) 'Proved the earlier draft was replaced by ASCII and cleared; activated real Pinyin; sent only Latin nihao and Space; required a new inbox text exactly equal to 你好.' @{draftResetVerified=$imeClean;activationHresult=$activation;targetLanguageId=($targetLayout -band 0xffff);candidateWindowObserved=$candidate;exactChinesePersisted=$converted;persistedTexts=$imeActual}
+                    # Independent Enter case, after the existing Space + Ctrl+Enter Chinese
+                    # conversion test. Microsoft Pinyin Enter retains raw Latin input rather
+                    # than choosing the highlighted candidate; only the SECOND Return saves.
+                    # https://support.microsoft.com/en-us/windows/hardware/input-devices/microsoft-simplified-chinese-ime
+                    $enterEvidence=@{legacyChineseSavePassed=$converted;activationHresult=$activation;targetLanguageId=($targetLayout -band 0xffff);expectedCommittedText='nihao';candidateWindowsBefore=@();candidateWindowsDuring=@();candidateDismissedByFirstReturn=$false;firstReturnCreatedRecords=$null}
+                    try {
+                        if (!$converted -or ![StepAcceptanceNative]::IsWindowVisible([IntPtr]$capture.Handle)) {
+                            Result 'microsoft_pinyin_return' 'unsupported' 'The preceding exact Chinese save did not leave a capture window ready for the independent Enter case.' $enterEvidence
+                        } else {
+                            $candidateBaseline=@([StepAcceptanceNative]::CandidateWindows())
+                            $enterEvidence.candidateWindowsBefore=$candidateBaseline
+                            if ($candidateBaseline.Count -gt 0) {
+                                Result 'microsoft_pinyin_return' 'unsupported' 'A candidate window was already visible before this case; no ambiguous composition or Return was injected.' $enterEvidence
+                            } else {
+                                $beforeEnter=@(Get-Inbox | ForEach-Object {$_.id})
+                                [void](Settle-CaptureStage $capture.Handle 'ime-return-before-composition')
+                                [StepAcceptanceNative]::AsciiKeys('nihao')
+                                $enterCandidate=Wait-Until {@([StepAcceptanceNative]::CandidateWindows()).Count -gt 0} 3
+                                $enterEvidence.candidateWindowsDuring=@([StepAcceptanceNative]::CandidateWindows())
+                                if (!$enterCandidate) {
+                                    Result 'microsoft_pinyin_return' 'unsupported' 'No native candidate appeared for Latin nihao; no Return or clipboard shortcut was sent to bypass candidate confirmation.' $enterEvidence
+                                } else {
+                                    try {[StepAcceptanceNative]::CaptureWindow([IntPtr]$capture.Handle,(Join-Path $OutputDirectory 'step-ime-before-first-return-native.png'))} catch {Result 'ime_return_candidate_screenshot' 'unsupported' (Error-Detail $_)}
+                                    [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x0D))
+                                    $dismissed=Wait-Until {@([StepAcceptanceNative]::CandidateWindows()).Count -eq 0} 3
+                                    $enterEvidence.candidateDismissedByFirstReturn=$dismissed
+                                    if (!$dismissed) {throw 'The first Return did not dismiss the observed native candidate; no second Return or copy was sent.'}
+                                    [void](Settle-CaptureStage $capture.Handle 'ime-first-return-committed')
+                                    $premature=@(Get-Inbox | Where-Object {$beforeEnter -notcontains $_.id})
+                                    $enterEvidence.firstReturnCreatedRecords=$premature.Count
+                                    if ($premature.Count -ne 0) {throw 'The candidate-confirming first Return already created an inbox record.'}
+                                    # Read only after the candidate disappeared, so Ctrl+A/C
+                                    # cannot perform the composition confirmation under test.
+                                    $commitReadback=Confirm-CaptureText $capture.Handle 'nihao'
+                                    $enterEvidence.committedReadback=$commitReadback
+                                    Require-ClipboardIdle
+                                    $premature=@(Get-Inbox | Where-Object {$beforeEnter -notcontains $_.id})
+                                    $enterEvidence.firstReturnCreatedRecords=$premature.Count
+                                    if (!$commitReadback.exactReadback -or $premature.Count -ne 0) {throw 'First Return did not retain exactly nihao without saving; no second Return was sent.'}
+                                    [StepAcceptanceNative]::Chord([System.UInt16[]]@(0x0D))
+                                    $enterSaved=Wait-Until {(Get-CaptureSaveEvidence $beforeEnter 'nihao' $capture.Handle).exactPersistedText} 12
+                                    $enterEvidence.secondReturn=Get-CaptureSaveEvidence $beforeEnter 'nihao' $capture.Handle
+                                    $enterPassed=$enterSaved -and $enterEvidence.secondReturn.exactPersistedText -and $enterEvidence.secondReturn.captureStillVisible -and $enterEvidence.secondReturn.captureStillForeground
+                                    Result 'microsoft_pinyin_return' $(if($enterPassed){'pass'}else{'fail'}) 'Observed native Pinyin candidate; first Return dismissed it, retained exact nihao and created zero records; second Return must create exactly one nihao record and retain the foreground panel. No Unicode, paste or Space substituted for candidate confirmation.' $enterEvidence
+                                }
+                            }
+                        }
+                    } catch {Result 'microsoft_pinyin_return' 'fail' (Error-Detail $_) $enterEvidence}
                     Result 'ime_candidate_layout' 'unsupported' 'Candidate-window observation alone cannot validate placement, clipping or all composition interactions.' @{candidateWindowObserved=$candidate}
                 } catch {Result 'microsoft_pinyin' $(if((Get-Variable imeActivated -ErrorAction SilentlyContinue) -and $imeActivated){'fail'}else{'unsupported'}) ((Error-Detail $_)+'; no login, unlock or unregistered package installation attempted.')}
                 finally {if (Get-Variable originalLayout -ErrorAction SilentlyContinue) {[void][StepAcceptanceNative]::RestoreKeyboard($originalLayout)}}
@@ -727,7 +835,7 @@ try {
         } catch {Result 'interactive_input' 'fail' (Error-Detail $_)}
         finally {Clear-CaptureDraft;Clear-TestClipboard;Stop-Step $uiProcess;$uiProcess=$null}
     } else {
-        foreach ($name in @('window_open','window_fit_in_workarea','main_window_fit_in_workarea','capture_window_fit_in_workarea','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling')) {Result $name 'unsupported' 'Active interactive desktop prerequisite failed; see probe JSON.'}
+        foreach ($name in @('window_open','window_fit_in_workarea','main_window_fit_in_workarea','capture_window_fit_in_workarea','quick_capture_hotkey','quick_capture_repeated_toggle','unicode_edit_save','return_save_persistence','return_empty_no_duplicate','microsoft_pinyin','microsoft_pinyin_return','actual_window_dpi','multi_monitor_scaling')) {Result $name 'unsupported' 'Active interactive desktop prerequisite failed; see probe JSON.'}
     }
     Clear-TestClipboard
     Restore-TestLanguages
@@ -810,7 +918,7 @@ finally {
             Result 'cleanup' $(if(!$cleaned.shortcut -and !$cleaned.protocol -and !$cleaned.taskFolder){'pass'}else{'fail'}) 'Removed only isolated Step notification registrations and scheduled-task folder.' $cleaned
         } catch {Result 'cleanup' 'fail' (Error-Detail $_)}
     }
-    foreach ($required in @('window_open','window_fit_in_workarea','main_window_fit_in_workarea','capture_window_fit_in_workarea','quick_capture_hotkey','unicode_edit_save','microsoft_pinyin','actual_window_dpi','multi_monitor_scaling','notification_registration','notification_show_api','notification_history','notification_visible','scheduled_delivery','normal_exit_before_reminder','normal_exit_before_locked_reminder','lock_screen_delivery','lock_screen_visible')) {
+    foreach ($required in @('window_open','window_fit_in_workarea','main_window_fit_in_workarea','capture_window_fit_in_workarea','quick_capture_hotkey','quick_capture_repeated_toggle','unicode_edit_save','return_save_persistence','return_empty_no_duplicate','microsoft_pinyin','microsoft_pinyin_return','actual_window_dpi','multi_monitor_scaling','notification_registration','notification_show_api','notification_history','notification_visible','scheduled_delivery','normal_exit_before_reminder','normal_exit_before_locked_reminder','lock_screen_delivery','lock_screen_visible')) {
         if (!$checks.Contains($required)) {Result $required 'unsupported' 'Not reached because an earlier prerequisite/check failed; see other checks and probe JSON.'}
     }
     Save-Report

@@ -160,22 +160,25 @@ import java.time.format.DateTimeFormatter
     if(run==null) {
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf(5,15,30,60).forEach {minutes->StepOutlinedButton({work.execute {it.startFocus(task.id,minutes)}},enabled=ready&&!work.busy&&!task.completed()&&execution.focus==null){Text("$minutes 分钟")}}}
         execution.focus?.let {Text("本机已有另一段专注，请先结束或取消它。",color=StepMuted)}
-        HorizontalDivider();SectionLabel("等待其他人或 AI","这是你主动记录的等待；Step 不会监测外部工具。")
-        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {StepButton({work.execute {it.startExternal(task.id,30)}},enabled=ready&&!work.busy&&!task.completed()){Text("开始等待 · 30 分钟后检查")};StepTextButton({work.execute {it.startExternal(task.id,null)}},enabled=ready&&!work.busy&&!task.completed()){Text("等待，不设检查时间")}}
+        HorizontalDivider();SectionLabel("并行推进","主动记录其他人或 AI 正在推进的事项；等待时长与个人投入分开。")
+        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {StepButton({work.execute {it.startExternal(task.id,30)}},enabled=ready&&!work.busy&&!task.completed()){Text("开始并行 · 30 分钟后检查")};StepTextButton({work.execute {it.startExternal(task.id,null)}},enabled=ready&&!work.busy&&!task.completed()){Text("开始并行，不设检查时间")}}
     } else {
         val total=run.elapsedMillis(moment)/1000
         Text("${total/60}:${(total%60).toString().padStart(2,'0')}",style=MaterialTheme.typography.headlineLarge)
-        Text(if(execution.focus?.id==run.id) "个人专注 · ${if(run.due)"已到点"else if(run.paused)"已暂停"else"进行中"}" else "外部等待 · ${if(run.paused)"已暂停"else"进行中"}",color=StepMuted)
+        Text(if(execution.focus?.id==run.id) "个人专注 · ${if(run.due)"已到点"else if(run.paused)"已暂停"else"进行中"}" else "并行记录 · ${if(run.paused)"已暂停"else"进行中"}",color=StepMuted)
         run.recoveryNotice?.let {Text(it,color=StepGold)}
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             if(!run.due)StepOutlinedButton({work.execute {if(run.paused)it.resume(task.id)else it.pause(task.id)}},enabled=!work.busy){Text(if(run.paused)"继续"else"暂停")}
             StepButton({work.execute {it.finish(task.id)}},enabled=!work.busy){Text("结束并记录")}
             StepTextButton({work.execute {it.cancel(task.id)}},enabled=!work.busy){Text("取消本段")}
         }
-        if(execution.external.any {it.id==run.id})Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf(5,15,30,60).forEach {m->StepTextButton({work.execute {it.setCheck(task.id,m)}},enabled=!work.busy){Text("$m 分钟后检查")}}}
+        if(execution.external.any {it.id==run.id}) {
+            SectionLabel("设置检查时间")
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf(5,15,30,60).forEach {m->StepTextButton({work.execute {it.setCheck(task.id,m)}},enabled=!work.busy){Text("$m 分钟后检查")}}}
+        }
     }
     val sessions=task.content().array("progressSessions");val waits=task.content().array("parallelRunSessions")
-    Text("已记录 ${sessions.size} 段个人投入 · ${waits.size} 段外部等待",style=MaterialTheme.typography.bodySmall,color=StepMuted)
+    Text("已记录 ${sessions.size} 段个人投入 · ${waits.size} 段并行推进",style=MaterialTheme.typography.bodySmall,color=StepMuted)
 }
 
 private data class UiLinkedTaskTarget(val taskId:String,val planId:String)
@@ -186,13 +189,21 @@ private data class UiLinkedTaskTarget(val taskId:String,val planId:String)
     var contentBaseline by remember{mutableStateOf(ContentEditBaseline.from(initial))}
     var stage by remember{mutableStateOf(initial?.content().str("stage").ifBlank {"seed"})};var question by remember{mutableStateOf(initial?.content().str("nextQuestion"))}
     var contextBaseline by remember{mutableStateOf(initial?.let {IdeaContextBaseline.from(it)})}
+    // A review draft keeps its source zone and expected value across parent day changes.
+    val reviewZone=remember(id){ZoneId.of(planId.substringAfter('@'))}
+    val reviewFormat=remember {DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")}
+    fun reviewText(value:JsonElement?)=(value as? JsonPrimitive)?.contentOrNull?.let {Instant.parse(it).atZone(reviewZone).format(reviewFormat)}.orEmpty()
+    var reviewBaseline by remember {mutableStateOf(initial?.let {IdeaManagementBaseline.from(it)}?:IdeaManagementBaseline(null,null))}
+    var review by remember {mutableStateOf(reviewText(reviewBaseline.reviewAt))}
+    var savedReview by remember {mutableStateOf(review)}
+    fun acceptReview(idea:Entity) {reviewBaseline=IdeaManagementBaseline.from(idea);review=reviewText(reviewBaseline.reviewAt);savedReview=review}
     var entry by remember{mutableStateOf("")};var entryKind by remember{mutableStateOf("note")};var entryId by remember{mutableStateOf(uid())}
     var action by remember{mutableStateOf("")};var actionId by remember{mutableStateOf(uid())};var tab by remember{mutableStateOf("context")};var showLink by remember{mutableStateOf(false)}
     var linkedTask by remember{mutableStateOf<UiLinkedTaskTarget?>(null)}
     var linkedAI by remember{mutableStateOf<AiTarget?>(null)}
     var createdTaskId by remember{mutableStateOf<String?>(null)}
     val work=rememberWork(runtime)
-    val dirty=title!=contentBaseline.text || notes!=contentBaseline.note || stage!=(contextBaseline?.stage?:"seed") || question!=(contextBaseline?.nextQuestion?:"") || entry.isNotBlank() || action.isNotBlank()
+    val dirty=title!=contentBaseline.text || notes!=contentBaseline.note || stage!=(contextBaseline?.stage?:"seed") || question!=(contextBaseline?.nextQuestion?:"") || entry.isNotBlank() || action.isNotBlank() || review!=savedReview
     // Keep the parent draft and its quit protection alive while showing a linked task.
     ReportUnsavedEdits(dirty)
     if(linkedTask==null)UiModal(if(current==null)"种下一个想法"else"想法孵化",onClose,work,width=840,
@@ -209,6 +220,28 @@ private data class UiLinkedTaskTarget(val taskId:String,val planId:String)
                 if(ib!=null)next=IdeaActions.saveContext(next,id,chosen,q,ib,Instant.now())
                 next
             }},enabled=title.isNotBlank()&&!work.busy){Text(if(current==null)"保存想法"else"保存背景与阶段")}
+            if(current!=null) {
+                val reviewAvailable=!current.deleted&&current.conflict==null&&current.conflictGroup.isEmpty()&&current.content()!=null
+                val reviewChanged=IdeaManagementBaseline.from(current).reviewAt!=reviewBaseline.reviewAt
+                HorizontalDivider(color=StepLine)
+                SectionLabel("选一天再回看","本地轻提示会参考这个时间，帮助你重新看看想法。时间按 ${reviewZone.id} 保存。")
+                DesktopDateTimeField("回看时间",review,{review=it},enabled=!work.busy&&reviewAvailable)
+                if(!reviewAvailable)Text("想法已不可用或存在冲突；回看草稿仍保留。",color=MaterialTheme.colorScheme.error)
+                if(reviewChanged)Text("回看时间已在别处更新；这份草稿仍然保留。",color=StepGold,style=MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    StepButton({
+                        val value=review;val expected=reviewBaseline
+                        work.editSnapshot({snapshot->acceptReview(snapshot.items.getValue("idea:$id"))}) {snapshot->
+                            val at=value.trim().takeIf {it.isNotEmpty()}?.let {text->
+                                runCatching {LocalDateTime.parse(text,reviewFormat).atZone(reviewZone).toInstant()}
+                                    .getOrElse {error("请填写有效的回看日期与时间，例如 2031-04-10 09:30")}
+                            }
+                            IdeaManagementActions.review(snapshot,id,at,expected,Instant.now())
+                        }
+                    },enabled=reviewAvailable&&!work.busy&&review!=savedReview,modifier=Modifier.testTag("idea_review_save")){Text(if(review.isBlank())"清除回看时间"else"保存回看时间")}
+                    if(reviewChanged)StepTextButton({acceptReview(current);work.message=null},enabled=reviewAvailable&&!work.busy,modifier=Modifier.testTag("idea_review_reload")){Text("载入最新回看时间")}
+                }
+            }
         } else if(tab=="explore") {
             SectionLabel("积累探索","不用立刻变成任务。先留下观察、发现或决定。")
             Field(entry,{entry=it},"这次记下什么？",lines=3,enabled=!work.busy)

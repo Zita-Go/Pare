@@ -21,7 +21,7 @@ class DesktopWorkflowUiTest {
         try {
             setContent {DesktopUi(runtime,{}, {}, {})}
             onNodeWithTag("nav_四象限").performClick()
-            onNodeWithTag("task_$TASK").performClick()
+            onNodeWithTag("task_detail_$TASK").performClick()
 
             input("下一步具体做什么？").performTextReplacement("列出三个示例章节标题")
             input("做到什么就可以停下来？").performTextReplacement("看到三个标题就停")
@@ -106,7 +106,7 @@ class DesktopWorkflowUiTest {
         try {
             setContent {DesktopUi(runtime,{}, {}, {})}
             onNodeWithTag("nav_四象限").performClick()
-            onNodeWithTag("task_$TASK").performClick()
+            onNodeWithTag("task_detail_$TASK").performClick()
             runOnIdle {assertFalse(DesktopDraftStatus.hasUnsavedEdits.value)}
             input("下一步具体做什么？").performTextReplacement("尚未保存的示例下一步")
             runOnIdle {assertTrue(DesktopDraftStatus.hasUnsavedEdits.value)}
@@ -151,7 +151,7 @@ class DesktopWorkflowUiTest {
             setContent {QuickCaptureUi(runtime,{visible=false},visible)}
             input("此刻想到什么？").performTextReplacement("示例收件一：记录纸卡构想")
             onNodeWithText("保存到收件箱").performClick()
-            waitUntil(timeoutMillis=5_000) {!visible}
+            waitUntil(timeoutMillis=5_000) {onAllNodesWithText("已记下 · 待整理").fetchSemanticsNodes().isNotEmpty()}
             val first=runtime.engine.state.value.items.values.single {it.kind=="inbox"&&!it.deleted}
             assertEquals("示例收件一：记录纸卡构想",first.title())
 
@@ -160,7 +160,7 @@ class DesktopWorkflowUiTest {
             assertEquals("",input("此刻想到什么？").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
             input("此刻想到什么？").performTextReplacement("示例收件二：记下验证方式")
             onNodeWithText("保存到收件箱").performClick()
-            waitUntil(timeoutMillis=5_000) {!visible}
+            waitUntil(timeoutMillis=5_000) {onAllNodesWithText("已记下 · 待整理").fetchSemanticsNodes().isNotEmpty()}
             val captures=runtime.engine.state.value.items.values.filter {it.kind=="inbox"&&!it.deleted}
             runOnIdle {assertFalse(DesktopDraftStatus.hasUnsavedEdits.value)}
             assertEquals(2,captures.size)
@@ -183,7 +183,7 @@ class DesktopWorkflowUiTest {
             waitForIdle()
             assertEquals("示例草稿：还没有整理完的阅读灵感",input("此刻想到什么？").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
             onNodeWithText("保存到收件箱").performClick()
-            waitUntil(timeoutMillis=5_000) {!visible}
+            waitUntil(timeoutMillis=5_000) {onAllNodesWithText("已记下 · 待整理").fetchSemanticsNodes().isNotEmpty()}
             assertEquals("示例草稿：还没有整理完的阅读灵感",runtime.engine.state.value.items.values.single {it.kind=="inbox"&&!it.deleted}.title())
         } finally {runtime.close()}
     }

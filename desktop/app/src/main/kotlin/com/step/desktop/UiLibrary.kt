@@ -7,6 +7,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,7 +30,7 @@ internal object DesktopLibraryQuery {
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun ColumnScope.LibraryPane(runtime:DesktopRuntime,onOpen:(String,String)->Unit) {
+@Composable internal fun ColumnScope.LibraryPane(runtime:DesktopRuntime,focusRequest:Int=0,onOpen:(String,String)->Unit) {
     val state by runtime.engine.state.collectAsState()
     val work=rememberWork(runtime)
     var query by remember {mutableStateOf("")}
@@ -36,7 +38,9 @@ internal object DesktopLibraryQuery {
     var stage by remember {mutableStateOf<String?>(null)}
     var pending by remember {mutableStateOf<Pair<String,Entity>?>(null)}
     var erase by remember {mutableStateOf<LocalTrashEntry?>(null)}
-    Field(query,{query=it},"搜索任务、想法、下一步或背景",Modifier.testTag("library_search"))
+    val searchFocus=remember {FocusRequester()}
+    LaunchedEffect(focusRequest) {if(focusRequest>0)searchFocus.requestFocus()}
+    Field(query,{query=it},"搜索任务、想法、下一步或背景",Modifier.testTag("library_search"),inputModifier=Modifier.focusRequester(searchFocus).testTag("library_search_input"))
     FlowRow(horizontalArrangement=Arrangement.spacedBy(7.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
         LibraryScope.entries.forEach {s->FilterChip(scope==s,{scope=s},label={Text(s.label)},modifier=Modifier.testTag("library_scope_${s.name}"))}
     }

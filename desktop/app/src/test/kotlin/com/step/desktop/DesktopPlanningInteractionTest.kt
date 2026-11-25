@@ -22,6 +22,7 @@ class DesktopPlanningInteractionTest {
     @Test fun draggingAcrossQuadrantsInsertsAtTargetAndUndoRestores() = runDesktopComposeUiTest(width=1280,height=900) {
         fixture().use {r->
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("nav_四象限").performClick()
             drag("quadrant_drag_$A","task_$B",before=true)
             waitUntil(timeoutMillis=5_000){r.engine.state.value.items.getValue("task:$A").content().number("quadrant")==1}
@@ -35,6 +36,7 @@ class DesktopPlanningInteractionTest {
         fixture().use {r->
             val plan=ContentActions.planId(r.engine.state.value,Instant.now())
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             drag("today_drag_$C","task_$A",before=true)
             waitUntil(timeoutMillis=5_000){ordered(r,plan)==listOf(C,A,B)}
             assertTrue(r.engine.state.value.items.values.filter {it.kind=="task"}.none {it.completed()})
@@ -46,6 +48,7 @@ class DesktopPlanningInteractionTest {
         fixture().use {r->
             val plan=ContentActions.planId(r.engine.state.value,Instant.now());val day=TimelineDay.fromPlanId(plan)
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("view_timeline").performClick()
             drag("timeline_unscheduled_$A","timeline_slot_540")
             waitUntil(timeoutMillis=5_000){planEntry(r.engine.state.value,plan,A).str("scheduled_at").isNotEmpty()}
@@ -68,6 +71,7 @@ class DesktopPlanningInteractionTest {
     @Test fun emptyTimelineSlotCreatesAndSchedulesWithoutStartingFocus() = runDesktopComposeUiTest(width=1280,height=900) {
         fixture().use {r->
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("view_timeline").performClick()
             onNodeWithTag("timeline_slot_660").performClick()
             onNodeWithTag("timeline_new_title").performTextReplacement("虚构：给报告写摘要")
@@ -82,6 +86,7 @@ class DesktopPlanningInteractionTest {
     @Test fun rowQuickFocusAndNextStepDoNotCompleteTheParent() = runDesktopComposeUiTest(width=1280,height=900) {
         fixture().use {r->
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("quick_focus_$A").performClick()
             onNodeWithText("5 分钟").performClick()
             waitUntil(timeoutMillis=5_000){r.execution.state.value.focus?.taskId==A}
@@ -95,6 +100,7 @@ class DesktopPlanningInteractionTest {
     @Test fun blockerSheetSavesSmallerStepAndStartsOnlyAfterSuccessfulSave() = runDesktopComposeUiTest(width=1280,height=900) {
         fixture().use {r->
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("quick_support_$A").performClick()
             onNodeWithText("不知道下一步").performClick()
             onNodeWithTag("quick_next_action").performTextReplacement("虚构：先写一个标题")
@@ -116,6 +122,7 @@ class DesktopPlanningInteractionTest {
                 next
             }.getOrThrow()
             setContent {DesktopUi(r,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
             onNodeWithTag("view_timeline").performClick()
             listOf("expanded","compact").forEachIndexed {index,scale->
                 if(index>0)onNodeWithTag("timeline_scale_toggle").performClick()

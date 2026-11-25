@@ -59,7 +59,8 @@ class DesktopInputScaleAcceptanceTest {
                     capture("capture", scale, onRoot(), 460, 400)
 
                     field.performClick().performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Enter) } }
-                    waitUntil(timeoutMillis = 5_000) { closeCount == 2 }
+                    waitUntil(timeoutMillis = 5_000) { runtime.engine.state.value.items.values.any { it.kind == "inbox" } }
+                    assertEquals("Saving keeps the panel ready for another capture",1,closeCount)
                     assertEquals(listOf(CAPTURE), runtime.engine.state.value.items.values.filter { it.kind == "inbox" }.map { it.title() })
                     runOnIdle { visible = true }
                     field.assertEditableText("")
@@ -81,7 +82,7 @@ class DesktopInputScaleAcceptanceTest {
                 isolatedDesktopRuntime(home, seedTask = true).use { runtime ->
                     setContent { DesktopUi(runtime, {}, {}, {}) }
                     onNodeWithTag("nav_四象限").performClick()
-                    onNodeWithTag("task_$TASK").assertIsDisplayed().performMouseInput { click() }
+                    onNodeWithTag("task_detail_$TASK").assertIsDisplayed().performMouseInput { click() }
                     val next = onNode(hasSetTextAction() and hasText("下一步具体做什么？"))
                     next.performScrollTo().performTextReplacement(NEXT)
                     onNodeWithText("保存下一步").performScrollTo().assertIsDisplayed().performMouseInput { click() }
@@ -105,7 +106,7 @@ class DesktopInputScaleAcceptanceTest {
                     capture("task-detail", scale, onNodeWithTag("desktop_dialog"), 960, 760, fullWindow = false)
                     onNodeWithText("关闭").assertIsDisplayed().performClick()
                     onNodeWithTag("desktop_dialog").assertDoesNotExist()
-                    onNodeWithTag("task_$TASK").performClick()
+                    onNodeWithTag("task_detail_$TASK").performClick()
                     onNodeWithText("任务详情").performClick()
                     title.assertEditableText(TITLE)
                     note.assertEditableText(NOTE)
@@ -129,7 +130,7 @@ class DesktopInputScaleAcceptanceTest {
             isolatedDesktopRuntime(home, seedTask = true).use { runtime ->
                 setContent { DesktopUi(runtime, {}, {}, {}) }
                 onNodeWithTag("nav_四象限").performClick()
-                onNodeWithTag("task_$TASK").performClick()
+                onNodeWithTag("task_detail_$TASK").performClick()
                 onNodeWithText("任务详情").performClick()
                 val note = onNode(hasSetTextAction() and hasText("背景与备注"))
                 note.performScrollTo().performTextInput(NOTE)

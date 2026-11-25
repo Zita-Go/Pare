@@ -44,6 +44,7 @@ class DesktopVisualFixtureTest {
                 try {
                     DesktopAppearance.dark.value=dark
                     setContent {DesktopUi(runtime,{}, {}, {})}
+            onNodeWithTag("nav_今天").performClick()
                     waitForIdle()
 
                     // Three unfinished selections, one completion, a daily focus and two real time blocks.
@@ -78,7 +79,7 @@ class DesktopVisualFixtureTest {
                     listOf(REPORT,TRIP,REPLY,BOOKMARKS).forEach {onNodeWithTag("task_$it").assertIsDisplayed()}
                     capture(dark,width,height,"quadrants","desktop_root",fullWindow=true)
 
-                    onNodeWithTag("task_$REPORT").performClick()
+                    onNodeWithTag("task_detail_$REPORT").performClick()
                     onNode(hasSetTextAction() and hasText("下一步具体做什么？"))
                         .assertTextContains("打开文档，先写三个小标题")
                     onNodeWithTag("step_history_toggle").performScrollTo().performClick()
