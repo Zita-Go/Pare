@@ -8,3 +8,5 @@
 - 很矮的窗口可滚动查看四个象限，任务操作和底部添加框保持可达。
 
 下载 `Step-0.4.1.exe` 覆盖安装。之前已经完成的任务没有被删除，更新后今天完成的任务会重新显示；更早的完成记录可在「搜索与记录」找到。
+
+已通过 Windows 构建中的304项核心测试、186项桌面测试，以及0.4.0覆盖升级和系统注册检查。[验证记录](https://github.com/Zita-Go/Pare/blob/main/docs/releases/windows-v0.4.1-verification.json)。

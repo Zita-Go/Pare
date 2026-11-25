@@ -1,0 +1,54 @@
+{
+  "version": "0.4.1",
+  "source_commit": "3c6bc2163d2cc0cb28a91b117772e079f07a0d34",
+  "build_run": "https://github.com/Zita-Go/Pare/actions/runs/45569049423",
+  "tests": {
+    "core": 304,
+    "desktop": 186,
+    "failures": 0,
+    "windows_skipped": 0
+  },
+  "installer_artifact": {
+    "id": 15001362947,
+    "sha256": "42de19d853214357369494903c7e65d90860232899be02e94258494ddc59d927"
+  },
+  "verification_artifact": {
+    "id": 15002165522,
+    "sha256": "36a7468960e2e48bf10ae76fff6dfd443f006e5b9649ea860b6de06ff194ecde"
+  },
+  "upgrade_from": "0.4.0",
+  "upgrade_preserves_store_and_steps": true,
+  "native_system_registration_smoke": true,
+  "component_interaction_coverage": [
+    "mouse completion remains visible across navigation and can be undone",
+    "keyboard deselection retains today completion",
+    "planning-zone midnight hides old completions without deleting history",
+    "changing selected planning date does not change completion-day visibility",
+    "completion just after midnight before idle refresh",
+    "visible completion never enters active drag/order domain",
+    "larger drag handle hover feedback and source/destination preview",
+    "cross-quadrant pointer drop and undo",
+    "Escape cancels without saving",
+    "short-window keyboard brings lower quadrant into view",
+    "short-window edge drag scrolls then saves only on release"
+  ],
+  "native_interactive_reference": {
+    "version": "0.4.0",
+    "report": "windows-v0.4.0-verification.json",
+    "rerun_for_this_patch": false,
+    "scope": "This patch was verified with Windows component pointer/keyboard tests and installer upgrade/system-registration smoke. Earlier native hotkey, IME and notification results are a reference, not a new 0.4.1 acceptance claim."
+  },
+  "release": {
+    "url": "https://github.com/Zita-Go/Pare/releases/tag/windows-v0.4.1",
+    "published_at": "2026-11-25T07:48:18Z",
+    "prerelease": false,
+    "marked_latest": false
+  },
+  "package_sha256": {
+    "SHA256SUMS.txt": "f38615797e5b929f11a5c3cc87a9b6a399400fc61851b38c6c6d458e34e1bd91",
+    "Step-0.4.1-windows-x64-portable.zip": "cca4c28ccf510d27f8e1a6bfb7d1150fc497b659e47d6cd70c7343c657949a04",
+    "Step-0.4.1.exe": "2dfb1d1b18246a47ff6c4eb891dfd67aa30f58e4c64655834193d515a492ecd9",
+    "Step-0.4.1.msi": "a71c5c32a0ae8f448b00a2a0a19766ce26f698bb3bbbe6b89de6280d41dceb39"
+  },
+  "test_data": "Isolated fictional stores; no personal tasks, credentials or AI history"
+}
