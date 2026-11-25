@@ -1,0 +1,54 @@
+{
+  "version": "0.4.2",
+  "source_commit": "34d52ff77d808b6c9ddd39820841aeb8890ea698",
+  "build_run": "https://github.com/Zita-Go/Pare/actions/runs/45576670427",
+  "tests": {
+    "core": 304,
+    "desktop": 200,
+    "failures": 0,
+    "windows_skipped": 0
+  },
+  "installer_artifact": {
+    "id": 15005117621,
+    "sha256": "4af62f33a1de2ead66ac629d4e3171ef2ccdcb04a7329fb80615899de8e4043a"
+  },
+  "verification_artifact": {
+    "id": 15004304056,
+    "sha256": "d30cd3b6f7b7339a3ba9bfdfe95ce95c7b606ae6ea231aeddee0e7a7b602fcd6"
+  },
+  "upgrade_from": "0.4.1",
+  "upgrade_preserves_store_and_steps": true,
+  "native_system_registration_smoke": true,
+  "component_interaction_coverage": [
+    "focus star available for every unfinished task and inline with inclusion/details",
+    "focus atomically includes an unplanned task in the selected day",
+    "changing/clearing focus preserves membership and other dates",
+    "task/profile/plan conflicts reject writes without partial membership",
+    "task title and blank surface drag without a leading grip",
+    "drag preview retains grab offset and follows pointer",
+    "8 action-button press-drag-release paths neither drag nor click",
+    "ordinary click, small mouse jitter and context menu preserved",
+    "Escape/outside release leaves data unchanged",
+    "shared timeline, today ordering and quadrant undo regression",
+    "completion-day retention and short-window edge/keyboard scrolling retained"
+  ],
+  "native_interactive_reference": {
+    "version": "0.4.0",
+    "report": "windows-v0.4.0-verification.json",
+    "rerun_for_this_patch": false,
+    "scope": "Windows component mouse/keyboard tests cover this UI change; upgrade and system registration were run on the new installer. Earlier native hotkey, IME and notification results remain historical references."
+  },
+  "release": {
+    "url": "https://github.com/Zita-Go/Pare/releases/tag/windows-v0.4.2",
+    "published_at": "2026-11-25T08:48:28Z",
+    "prerelease": false,
+    "marked_latest": false
+  },
+  "package_sha256": {
+    "SHA256SUMS.txt": "036e791fb2732d016307c872e583838a97e859c1a9ca55355493bbe179a72315",
+    "Step-0.4.2-windows-x64-portable.zip": "44ffca58ae05365b6b566c7af0887ab654275e42380b578220a6b6509992a134",
+    "Step-0.4.2.exe": "adb1beb08fd085b91524e026b69d8184a55e2cf8f52836b82e6a66c42ea9b8b2",
+    "Step-0.4.2.msi": "045f9491de0ee2702f6c67f244452adf70f3fd01b654b58d1f403233451c5b47"
+  },
+  "test_data": "Isolated fictional stores; no personal tasks, credentials, user screenshots or AI history"
+}

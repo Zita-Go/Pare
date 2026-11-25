@@ -8,3 +8,5 @@
 - 完成、星标、太阳、详情及专注等按钮仍独立响应点击；从按钮按下后移开不会误拖任务。
 
 0.4.1 的当天完成保留、跨日收起和短窗口滚动继续保留。下载 `Step-0.4.2.exe` 覆盖安装即可。
+
+已通过 Windows 构建中的304项核心测试、200项桌面测试，以及0.4.1覆盖升级和系统注册检查。[使用说明与拖动效果](https://github.com/Zita-Go/Pare/blob/main/docs/guide-windows.md) · [验证记录](https://github.com/Zita-Go/Pare/blob/main/docs/releases/windows-v0.4.2-verification.json)。
