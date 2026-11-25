@@ -244,6 +244,13 @@ public static class StepAcceptanceNative {
         foreach(char c in text) {if(c<'a'||c>'z')throw new ArgumentException("Lowercase Latin letters only");Chord(new [] {(ushort)Char.ToUpperInvariant(c)});Thread.Sleep(110);}
     }
     public static long WindowKeyboardLayout(IntPtr window) {uint pid;return GetKeyboardLayout(GetWindowThreadProcessId(window,out pid)).ToInt64();}
+    public static bool RequestKeyboardInput(IntPtr window,long layout) {
+        // TSF activation in this harness is not acknowledgement from Step's GUI thread.
+        // DefWindowProc handles this request on the target thread and changes its HKL.
+        // The caller must observe WindowKeyboardLayout afterward, not trust PostMessage.
+        // https://learn.microsoft.com/windows/win32/winmsg/wm-inputlangchangerequest
+        return layout!=0&&PostMessage(window,0x50,IntPtr.Zero,new IntPtr(layout));
+    }
     public static bool RequestChineseInput(IntPtr window) {
         var layouts=new IntPtr[32];int count=GetKeyboardLayoutList(layouts.Length,layouts);
         for(int n=0;n<count;n++)if((layouts[n].ToInt64()&0xffff)==0x804) {

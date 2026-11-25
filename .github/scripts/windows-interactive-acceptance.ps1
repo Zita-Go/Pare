@@ -71,6 +71,7 @@ $helper = Join-Path $DataDirectory 'windows-system\step-windows.ps1'
 $started = [DateTimeOffset]::UtcNow
 $helperReady = $false
 $uiProcess = $null
+$captureKeyboardReady = $true
 
 function Write-JsonFile([string]$path,$value) {
     $temporary = $path+'.tmp'
@@ -86,11 +87,38 @@ function Save-Report {
         fixtureOnly=$true; checks=$checks
     })
 }
+function Merge-CheckResult([Collections.IDictionary]$previous,[Collections.IDictionary]$entry) {
+    if ($null -eq $previous -or $previous['status'] -ne 'fail') {return $entry}
+    # Pure merge: preserve the first failure and its evidence without mutating either input.
+    $merged=[ordered]@{}
+    foreach ($key in $previous.Keys) {$merged[$key]=$previous[$key]}
+    $followups=@();if ($previous.Contains('followups')) {$followups=@($previous['followups'])}
+    $merged['followups']=$followups+@($entry)
+    return $merged
+}
+function Test-ResultMerging {
+    $failed=[ordered]@{status='fail';detail='fictional failure';evidence=@{marker='original'}}
+    $unsupported=[ordered]@{status='unsupported';detail='fictional follow-up'}
+    $passed=[ordered]@{status='pass';detail='fictional retry'}
+    $afterUnsupported=Merge-CheckResult $failed $unsupported
+    $afterPass=Merge-CheckResult $afterUnsupported $passed
+    if ($afterUnsupported.status -ne 'fail' -or $afterPass.status -ne 'fail' -or
+        $afterPass.detail -ne 'fictional failure' -or $afterPass.evidence.marker -ne 'original' -or
+        $afterPass.followups.Count -ne 2 -or $afterPass.followups[0].status -ne 'unsupported' -or $afterPass.followups[1].status -ne 'pass') {
+        throw 'Result merge self-test failed: fail must survive unsupported/pass with original evidence and ordered follow-ups.'
+    }
+    if ($failed.Contains('followups') -or $afterUnsupported.followups.Count -ne 1) {throw 'Result merge self-test failed: previous results were mutated.'}
+    $recovered=Merge-CheckResult $unsupported $passed
+    if ($recovered.status -ne 'pass') {throw 'Result merge self-test failed: unsupported may become pass when its prerequisite recovers.'}
+}
 function Result([string]$name,[ValidateSet('pass','fail','unsupported')][string]$status,[string]$detail,$evidence=$null) {
-    $checks[$name] = [ordered]@{status=$status;detail=$detail}
-    if ($null -ne $evidence) {$checks[$name]['evidence']=$evidence}
+    $entry = [ordered]@{status=$status;detail=$detail}
+    if ($null -ne $evidence) {$entry['evidence']=$evidence}
+    $previous=if($checks.Contains($name)){$checks[$name]}else{$null}
+    $retainedFailure=$null -ne $previous -and $previous.status -eq 'fail'
+    $checks[$name]=Merge-CheckResult $previous $entry
     Save-Report
-    Write-Host ($name+': '+$status+' - '+$detail)
+    Write-Host ($name+': '+$(if($retainedFailure){'fail (retained; follow-up '+$status+')'}else{$status})+' - '+$detail)
 }
 function Error-Detail($failure) { return ($failure.Exception.GetType().Name+': '+$failure.Exception.Message).Substring(0,[Math]::Min(260,($failure.Exception.GetType().Name+': '+$failure.Exception.Message).Length)) }
 function Wait-Until([scriptblock]$condition,[int]$seconds=20) {
@@ -441,10 +469,32 @@ function Reset-CaptureEditor([long]$handle,[string]$checkName) {
 }
 function Clear-CaptureDraft {
     if ($null -eq $uiProcess) {return}
+    if (!$captureKeyboardReady) {
+        Result 'test_draft_cleanup' 'unsupported' 'No ASCII cleanup attempted because restoration of the capture thread keyboard was not confirmed; see pinyin_keyboard_restored.'
+        return
+    }
     $visible=@(Get-StepWindows $uiProcess | Where-Object {$_.Title -like 'Step*随手记*'})
     if (!$visible.Count) {return}
     try {[void](Reset-CaptureEditor $visible[0].Handle 'test_draft_cleanup')}
     catch {Result 'test_draft_cleanup' 'unsupported' ('Draft cleanup could not be verified; a subsequent draft-protection dialog is not an exit regression. '+(Error-Detail $_))}
+}
+function Restore-CaptureKeyboard([long]$handle,[long]$layout) {
+    $evidence=@{captureHandle=$handle;expectedLayout=$layout;layoutBefore=[StepAcceptanceNative]::WindowKeyboardLayout([IntPtr]$handle);activationHresult=$null;requestPosted=$false;layoutAfter=$null;candidateWindowsAfter=@();observedRestored=$false}
+    try {
+        $evidence.activationHresult=[StepAcceptanceNative]::RestoreKeyboard($layout)
+        $evidence.requestPosted=[StepAcceptanceNative]::RequestKeyboardInput([IntPtr]$handle,$layout)
+        $observed=Wait-Until {
+            [StepAcceptanceNative]::WindowKeyboardLayout([IntPtr]$handle) -eq $layout -and @([StepAcceptanceNative]::CandidateWindows()).Count -eq 0
+        } 5
+        $evidence.layoutAfter=[StepAcceptanceNative]::WindowKeyboardLayout([IntPtr]$handle)
+        $evidence.candidateWindowsAfter=@([StepAcceptanceNative]::CandidateWindows())
+        $evidence.observedRestored=$observed -and $evidence.layoutAfter -eq $layout -and $evidence.candidateWindowsAfter.Count -eq 0
+        $script:captureKeyboardReady=$evidence.activationHresult -eq 0 -and $evidence.requestPosted -and $evidence.observedRestored
+        Result 'pinyin_keyboard_restored' $(if($captureKeyboardReady){'pass'}else{'fail'}) 'Restored the original TSF keyboard profile, posted WM_INPUTLANGCHANGEREQUEST to the actual capture HWND, and required its GUI thread HKL to match the original with no candidate window before ASCII cleanup.' $evidence
+    } catch {
+        $script:captureKeyboardReady=$false
+        Result 'pinyin_keyboard_restored' 'fail' (Error-Detail $_) $evidence
+    }
 }
 function Invoke-PackagedHelper([string]$operation,[hashtable]$payload) {
     $script:helperNumber++
@@ -548,6 +598,8 @@ function Wait-Reminder($event,[int]$seconds=90) {
 }
 
 try {
+    Test-ResultMerging
+    Result 'result_merge_self_test' 'pass' 'Pure status merge retained failure across unsupported/pass, preserved original evidence and follow-up order without mutation, and allowed unsupported to become pass.'
     Add-Type -AssemblyName System.Windows.Forms,System.Drawing,UIAutomationClient,UIAutomationTypes,WindowsBase
     $references=@('System.dll','System.Core.dll',[Windows.Forms.Form].Assembly.Location,[Drawing.Bitmap].Assembly.Location,[Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.AutomationIdentifier].Assembly.Location,[Windows.Rect].Assembly.Location)
     Add-Type -Path (Join-Path $PSScriptRoot 'windows-interactive-native.cs') -ReferencedAssemblies $references
@@ -754,6 +806,7 @@ try {
                     $capture=Fresh-StepWindow $capture.Handle
                     Check-WindowFit 'capture' $capture.Handle
                     $originalLayout=[StepAcceptanceNative]::WindowKeyboardLayout([IntPtr]$capture.Handle)
+                    $captureKeyboardReady=$false
                     $before=@(Get-Inbox | ForEach-Object {$_.id})
                     $imeActivated=$false
                     if (![StepAcceptanceNative]::RequestChineseInput([IntPtr]$capture.Handle)) {throw 'No loaded Chinese input locale accepted the language-change request.'}
@@ -830,7 +883,7 @@ try {
                     } catch {Result 'microsoft_pinyin_return' 'fail' (Error-Detail $_) $enterEvidence}
                     Result 'ime_candidate_layout' 'unsupported' 'Candidate-window observation alone cannot validate placement, clipping or all composition interactions.' @{candidateWindowObserved=$candidate}
                 } catch {Result 'microsoft_pinyin' $(if((Get-Variable imeActivated -ErrorAction SilentlyContinue) -and $imeActivated){'fail'}else{'unsupported'}) ((Error-Detail $_)+'; no login, unlock or unregistered package installation attempted.')}
-                finally {if (Get-Variable originalLayout -ErrorAction SilentlyContinue) {[void][StepAcceptanceNative]::RestoreKeyboard($originalLayout)}}
+                finally {if (Get-Variable originalLayout -ErrorAction SilentlyContinue) {Restore-CaptureKeyboard $capture.Handle $originalLayout}}
             } else {Result 'microsoft_pinyin' 'unsupported' 'Microsoft Pinyin could not be made available from the existing registered/configured profiles in this session; no Unicode result counts as IME acceptance.'}
         } catch {Result 'interactive_input' 'fail' (Error-Detail $_)}
         finally {Clear-CaptureDraft;Clear-TestClipboard;Stop-Step $uiProcess;$uiProcess=$null}
