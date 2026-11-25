@@ -59,8 +59,8 @@ import java.util.Locale
             ReportUnsavedEdits(draft.text.isNotBlank())
             // Re-focus after every show, native activation and closing a task detail. Child
             // windows own their input while open; no WindowFocusLost handler hides this panel.
-            LaunchedEffect(visible,windowFocused,detail,ai,work.busy) {
-                if(visible&&windowFocused&&detail==null&&ai==null&&!work.busy)focus.requestFocus()
+            LaunchedEffect(visible,windowFocused,initialized,detail,ai,work.busy) {
+                if(visible&&windowFocused&&initialized&&detail==null&&ai==null&&!work.busy)focus.requestFocus()
             }
             val save:()->Unit={
                 if(initialized&&draft.text.isNotBlank()&&draft.composition==null&&!work.busy) {

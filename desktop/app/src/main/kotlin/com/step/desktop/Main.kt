@@ -133,7 +133,8 @@ fun main(args:Array<String>) {
         Window(visible=visible,onCloseRequest=requestClose,title="Step",icon=painterResource("step.png"),state=rememberFittedWindowState(1160,780)) {
             KeepWindowInWorkArea(window,960,680,visible)
             LaunchedEffect(visible,mainActivation) {if(visible)SwingUtilities.invokeLater {
-                if(window.isVisible){window.toFront();window.requestFocus()}
+                // Raising the window must not move component focus off Compose's content.
+                if(window.isVisible)window.toFront()
             }}
             CompositionLocalProvider(LocalDesktopWindow provides window) {
             LaunchedEffect(window,darkAppearance,visible) {applyWindowsFrameAppearance(window,darkAppearance)}
@@ -165,7 +166,8 @@ fun main(args:Array<String>) {
         if(runtime!=null) Window(visible=capture,onCloseRequest={capture=false},title="Step · 随手记",icon=painterResource("step.png"),alwaysOnTop=true,resizable=false,state=rememberFittedWindowState(460,520)) {
             KeepWindowInWorkArea(window,340,260,capture)
             LaunchedEffect(capture,captureActivation) {if(capture)SwingUtilities.invokeLater {
-                if(window.isVisible){window.toFront();window.requestFocus()}
+                // Frame.requestFocus() steals focus from the Compose editor on Windows.
+                if(window.isVisible)window.toFront()
             }}
             CompositionLocalProvider(LocalDesktopWindow provides window) {
             LaunchedEffect(window,darkAppearance,capture) {applyWindowsFrameAppearance(window,darkAppearance)}
